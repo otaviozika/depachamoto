@@ -8,16 +8,23 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import pg from "pg";
 import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const VERSION = "1.3.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
   process.exit(1);
+}
+
+if (process.env.NODE_ENV === "production" && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
+  console.warn("AVISO: SESSION_SECRET ausente ou curta. Use pelo menos 32 caracteres em produção.");
 }
 
 const pool = new Pool({
@@ -36,8 +43,12 @@ app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
-  store: new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: true }),
-  secret: process.env.SESSION_SECRET || "troque-esta-chave",
+  store: new PgSession({
+    pool,
+    tableName: "user_sessions",
+    createTableIfMissing: true
+  }),
+  secret: process.env.SESSION_SECRET || "troque-esta-chave-em-producao",
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -48,7 +59,28 @@ app.use(session({
   }
 }));
 
-// Estrutura base + migrações compatíveis com v1.0/v1.1.
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: "Muitas tentativas de login. Aguarde alguns minutos e tente novamente." }
+});
+
+const registrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 8,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Muitos cadastros a partir deste acesso. Tente novamente mais tarde." }
+});
+
 await pool.query(`
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
@@ -62,6 +94,9 @@ CREATE TABLE IF NOT EXISTS users (
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS dispatches (
   id BIGSERIAL PRIMARY KEY,
@@ -116,7 +151,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO app_settings(setting_key,setting_value) VALUES
   ('alert_attention_minutes','40'),
   ('alert_delayed_minutes','50'),
-  ('alert_critical_minutes','60')
+  ('alert_critical_minutes','60'),
+  ('public_registration_enabled','true')
 ON CONFLICT (setting_key) DO NOTHING;
 `);
 
@@ -125,13 +161,17 @@ async function seedAdmin() {
   const exists = await pool.query("SELECT id FROM users WHERE username=$1", [username]);
   if (!exists.rowCount) {
     await pool.query(
-      `INSERT INTO users(name,username,password_hash,role,approval_status,active)
-       VALUES($1,$2,$3,'admin','APPROVED',true)`,
-      [process.env.ADMIN_NAME || "Administrador", username, await bcrypt.hash(process.env.ADMIN_PASSWORD || "admin123", 12)]
+      `INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password)
+       VALUES($1,$2,$3,'admin','APPROVED',true,false)`,
+      [
+        process.env.ADMIN_NAME || "Administrador",
+        username,
+        await bcrypt.hash(process.env.ADMIN_PASSWORD || "admin123", 12)
+      ]
     );
   } else {
     await pool.query(
-      "UPDATE users SET approval_status='APPROVED', active=true WHERE username=$1 AND role='admin'",
+      "UPDATE users SET approval_status='APPROVED',active=true WHERE username=$1 AND role='admin'",
       [username]
     );
   }
@@ -154,11 +194,24 @@ function courierOnly(req, res, next) {
   if (req.session.user?.role !== "courier") return res.status(403).json({ error: "Acesso restrito ao motoboy." });
   next();
 }
+async function currentUser(userId) {
+  const q = await pool.query(
+    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash FROM users WHERE id=$1",
+    [userId]
+  );
+  return q.rows[0] || null;
+}
 async function audit(userId, action, entity, entityId, details = {}) {
   await pool.query(
     "INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)",
     [userId || null, action, entity, entityId || null, JSON.stringify(details)]
   );
+}
+function requestMeta(req) {
+  return {
+    ip: req.ip || null,
+    user_agent: String(req.get("user-agent") || "").slice(0, 250)
+  };
 }
 function normalizeOrders(body) {
   const raw = Array.isArray(body.order_numbers)
@@ -190,6 +243,17 @@ COALESCE(
   json_build_array(${alias}.order_number)
 ) AS order_numbers
 `;
+async function getSetting(key, fallback) {
+  const q = await pool.query("SELECT setting_value FROM app_settings WHERE setting_key=$1", [key]);
+  return q.rows[0]?.setting_value ?? fallback;
+}
+async function setSetting(key, value) {
+  await pool.query(`
+    INSERT INTO app_settings(setting_key,setting_value,updated_at)
+    VALUES($1,$2,NOW())
+    ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()
+  `, [key, String(value)]);
+}
 async function getAlertSettings() {
   const q = await pool.query(`
     SELECT setting_key,setting_value FROM app_settings
@@ -214,13 +278,21 @@ function csvCell(v) {
   return `"${s.replaceAll('"', '""')}"`;
 }
 
-app.post("/api/login", asyncRoute(async (req, res) => {
+app.get("/api/public/config", asyncRoute(async (req, res) => {
+  res.json({
+    registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
+    version: VERSION
+  });
+}));
+
+app.post("/api/login", loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const q = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
   const user = q.rows[0];
 
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    await audit(null, "LOGIN_FAILED", "security", null, { username, ...requestMeta(req) });
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
   }
   if (!user.active) return res.status(403).json({ error: "Este usuário está desativado. Procure o administrador." });
@@ -231,12 +303,30 @@ app.post("/api/login", asyncRoute(async (req, res) => {
     return res.status(403).json({ error: "Seu cadastro não foi aprovado. Procure o administrador." });
   }
 
-  req.session.user = { id: user.id, name: user.name, username: user.username, role: user.role };
-  await audit(user.id, "LOGIN", "user", user.id, {});
-  res.json({ user: req.session.user, server_now: new Date().toISOString() });
+  await new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
+  req.session.user = {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    role: user.role
+  };
+
+  await audit(user.id, "LOGIN", "user", user.id, requestMeta(req));
+  res.json({
+    user: {
+      ...req.session.user,
+      mustChangePassword: !!user.must_change_password
+    },
+    server_now: new Date().toISOString()
+  });
 }));
 
-app.post("/api/register", asyncRoute(async (req, res) => {
+app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
+  const registrationEnabled = (await getSetting("public_registration_enabled", "true")) === "true";
+  if (!registrationEnabled) {
+    return res.status(403).json({ error: "O cadastro público está desativado. Procure o administrador." });
+  }
+
   const name = String(req.body.name || "").trim();
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -245,17 +335,17 @@ app.post("/api/register", asyncRoute(async (req, res) => {
   if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
     return res.status(400).json({ error: "Usuário deve ter 3 a 30 caracteres: letras, números, ponto, hífen ou underline." });
   }
-  if (password.length < 6) return res.status(400).json({ error: "A senha deve ter pelo menos 6 caracteres." });
+  if (password.length < 8) return res.status(400).json({ error: "A senha deve ter pelo menos 8 caracteres." });
 
   try {
     const result = await pool.query(
-      `INSERT INTO users(name,username,password_hash,role,approval_status,active)
-       VALUES($1,$2,$3,'courier','PENDING',true)
+      `INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password)
+       VALUES($1,$2,$3,'courier','PENDING',true,false)
        RETURNING id,name,username,role,active,approval_status`,
       [name, username, await bcrypt.hash(password, 12)]
     );
     const user = result.rows[0];
-    await audit(user.id, "PUBLIC_REGISTRATION_PENDING", "user", user.id, {});
+    await audit(user.id, "PUBLIC_REGISTRATION_PENDING", "user", user.id, requestMeta(req));
     io.emit("courier:changed");
     res.status(201).json({
       user,
@@ -268,13 +358,55 @@ app.post("/api/register", asyncRoute(async (req, res) => {
 }));
 
 app.post("/api/logout", auth, asyncRoute(async (req, res) => {
-  await audit(req.session.user.id, "LOGOUT", "user", req.session.user.id, {});
+  await audit(req.session.user.id, "LOGOUT", "user", req.session.user.id, requestMeta(req));
   req.session.destroy(() => res.json({ ok: true }));
 }));
 
-app.get("/api/me", auth, (req, res) => res.json({ user: req.session.user, server_now: new Date().toISOString() }));
+app.get("/api/me", auth, asyncRoute(async (req, res) => {
+  const user = await currentUser(req.session.user.id);
+  if (!user || !user.active) return res.status(401).json({ error: "Sessão inválida." });
+
+  res.json({
+    user: {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      mustChangePassword: !!user.must_change_password
+    },
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/account/password", auth, asyncRoute(async (req, res) => {
+  const currentPassword = String(req.body.current_password || "");
+  const newPassword = String(req.body.new_password || "");
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "A nova senha deve ter pelo menos 8 caracteres." });
+  }
+
+  const user = await currentUser(req.session.user.id);
+  if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+    await audit(req.session.user.id, "PASSWORD_CHANGE_FAILED", "security", req.session.user.id, requestMeta(req));
+    return res.status(400).json({ error: "Senha atual incorreta." });
+  }
+  if (await bcrypt.compare(newPassword, user.password_hash)) {
+    return res.status(400).json({ error: "A nova senha deve ser diferente da senha atual." });
+  }
+
+  await pool.query(
+    "UPDATE users SET password_hash=$1,must_change_password=false WHERE id=$2",
+    [await bcrypt.hash(newPassword, 12), user.id]
+  );
+
+  await audit(user.id, "PASSWORD_CHANGED", "user", user.id, requestMeta(req));
+  res.json({ ok: true, message: "Senha alterada com sucesso." });
+}));
 
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
+  const user = await currentUser(req.session.user.id);
+
   const active = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,${orderArraySql("d")}
     FROM dispatches d
@@ -305,10 +437,21 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     ORDER BY d.id DESC LIMIT 30
   `, [req.session.user.id])).rows;
 
-  res.json({ active, stats, recent, server_now: new Date().toISOString() });
+  res.json({
+    active,
+    stats,
+    recent,
+    mustChangePassword: !!user?.must_change_password,
+    server_now: new Date().toISOString()
+  });
 }));
 
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
+  const user = await currentUser(req.session.user.id);
+  if (user?.must_change_password) {
+    return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
+  }
+
   const orders = normalizeOrders(req.body);
 
   const existing = await pool.query(`
@@ -341,7 +484,9 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
 
     dispatch.order_numbers = orders;
     await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", dispatch.id, {
-      order_numbers: orders, order_count: orders.length, departed_at: dispatch.departed_at
+      order_numbers: orders,
+      order_count: orders.length,
+      departed_at: dispatch.departed_at
     });
 
     io.emit("dispatch:changed");
@@ -387,7 +532,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
   `)).rows;
 
   const couriers = (await pool.query(`
-    SELECT u.id,u.name,u.username,u.active,u.approval_status,
+    SELECT u.id,u.name,u.username,u.active,u.approval_status,u.must_change_password,
       (
         SELECT COUNT(o.id)
         FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
@@ -402,8 +547,6 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       u.name
   `)).rows;
 
-  const alerts = await getAlertSettings();
-
   res.json({
     metrics: {
       activeCouriers: metrics.active_couriers,
@@ -413,7 +556,10 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       todayOrders: metrics.today_orders,
       activeOrders: metrics.active_orders
     },
-    active, recent, couriers, alerts,
+    active,
+    recent,
+    couriers,
+    alerts: await getAlertSettings(),
     server_now: new Date().toISOString()
   });
 }));
@@ -423,15 +569,15 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
-  if (name.length < 3 || username.length < 3 || password.length < 6) {
-    return res.status(400).json({ error: "Preencha nome, usuário e senha de pelo menos 6 caracteres." });
+  if (name.length < 3 || username.length < 3 || password.length < 8) {
+    return res.status(400).json({ error: "Preencha nome, usuário e senha de pelo menos 8 caracteres." });
   }
 
   try {
     const q = await pool.query(`
-      INSERT INTO users(name,username,password_hash,role,approval_status,active)
-      VALUES($1,$2,$3,'courier','APPROVED',true)
-      RETURNING id,name,username,active,approval_status
+      INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password)
+      VALUES($1,$2,$3,'courier','APPROVED',true,false)
+      RETURNING id,name,username,active,approval_status,must_change_password
     `, [name, username, await bcrypt.hash(password, 12)]);
 
     await audit(req.session.user.id, "COURIER_CREATED_APPROVED", "user", q.rows[0].id, { username });
@@ -448,7 +594,7 @@ app.patch("/api/admin/couriers/:id", auth, adminOnly, asyncRoute(async (req, res
   const q = await pool.query(`
     UPDATE users SET active=$1
     WHERE id=$2 AND role='courier'
-    RETURNING id,name,username,active,approval_status
+    RETURNING id,name,username,active,approval_status,must_change_password
   `, [active, req.params.id]);
 
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
@@ -460,10 +606,11 @@ app.patch("/api/admin/couriers/:id", auth, adminOnly, asyncRoute(async (req, res
 
 app.post("/api/admin/couriers/:id/approve", auth, adminOnly, asyncRoute(async (req, res) => {
   const q = await pool.query(`
-    UPDATE users SET approval_status='APPROVED', active=true
+    UPDATE users SET approval_status='APPROVED',active=true
     WHERE id=$1 AND role='courier'
-    RETURNING id,name,username,active,approval_status
+    RETURNING id,name,username,active,approval_status,must_change_password
   `, [req.params.id]);
+
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   await audit(req.session.user.id, "COURIER_APPROVED", "user", q.rows[0].id, {});
@@ -473,10 +620,11 @@ app.post("/api/admin/couriers/:id/approve", auth, adminOnly, asyncRoute(async (r
 
 app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (req, res) => {
   const q = await pool.query(`
-    UPDATE users SET approval_status='REJECTED', active=false
+    UPDATE users SET approval_status='REJECTED',active=false
     WHERE id=$1 AND role='courier'
-    RETURNING id,name,username,active,approval_status
+    RETURNING id,name,username,active,approval_status,must_change_password
   `, [req.params.id]);
+
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   await audit(req.session.user.id, "COURIER_REJECTED", "user", q.rows[0].id, {});
@@ -484,9 +632,35 @@ app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (re
   res.json({ user: q.rows[0] });
 }));
 
+app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(async (req, res) => {
+  const newPassword = String(req.body.new_password || "");
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "A senha temporária deve ter pelo menos 8 caracteres." });
+  }
+
+  const q = await pool.query(`
+    UPDATE users
+    SET password_hash=$1,must_change_password=true
+    WHERE id=$2 AND role='courier'
+    RETURNING id,name,username,must_change_password
+  `, [await bcrypt.hash(newPassword, 12), req.params.id]);
+
+  if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  await audit(req.session.user.id, "PASSWORD_RESET_BY_ADMIN", "user", q.rows[0].id, {
+    target_username: q.rows[0].username,
+    ...requestMeta(req)
+  });
+
+  res.json({
+    user: q.rows[0],
+    message: "Senha redefinida. O motoboy deverá alterá-la no próximo acesso."
+  });
+}));
+
 app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {
   const q = await pool.query(`
-    UPDATE dispatches SET status='RELEASED', released_at=NOW(), released_by=$1
+    UPDATE dispatches SET status='RELEASED',released_at=NOW(),released_by=$1
     WHERE id=$2 AND status='ON_ROAD'
     RETURNING *
   `, [req.session.user.id, req.params.id]);
@@ -501,6 +675,93 @@ app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async 
   res.json({ dispatch: q.rows[0], server_now: new Date().toISOString() });
 }));
 
+app.get("/api/admin/security", auth, adminOnly, asyncRoute(async (req, res) => {
+  const adminUser = await currentUser(req.session.user.id);
+  const defaultAdminPassword = adminUser?.role === "admin"
+    ? await bcrypt.compare("admin123", adminUser.password_hash)
+    : false;
+
+  res.json({
+    registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
+    adminPasswordLooksDefault: defaultAdminPassword,
+    version: VERSION
+  });
+}));
+
+app.put("/api/admin/security/registration", auth, adminOnly, asyncRoute(async (req, res) => {
+  const enabled = !!req.body.enabled;
+  await setSetting("public_registration_enabled", enabled ? "true" : "false");
+  await audit(req.session.user.id, "PUBLIC_REGISTRATION_SETTING_CHANGED", "settings", null, { enabled });
+  io.emit("security:changed");
+  res.json({ registrationEnabled: enabled });
+}));
+
+app.get("/api/admin/system-health", auth, adminOnly, asyncRoute(async (req, res) => {
+  const started = Date.now();
+  const dbResult = await pool.query("SELECT NOW() AS db_now");
+  const dbLatencyMs = Date.now() - started;
+
+  let sessionCount = null;
+  try {
+    const s = await pool.query("SELECT COUNT(*)::int AS c FROM user_sessions");
+    sessionCount = s.rows[0].c;
+  } catch {}
+
+  res.json({
+    version: VERSION,
+    server: "online",
+    database: "connected",
+    dbLatencyMs,
+    databaseTime: dbResult.rows[0].db_now,
+    serverTime: new Date().toISOString(),
+    activeSessions: sessionCount,
+    nodeEnv: process.env.NODE_ENV || "development"
+  });
+}));
+
+app.get("/api/admin/backup/dispatches.csv", auth, adminOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT
+      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY') AS date_br,
+      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS time_br,
+      u.name AS courier_name,
+      u.username,
+      o.order_number,
+      d.dispatch_code,
+      CASE d.status WHEN 'ON_ROAD' THEN 'NA RUA' ELSE 'LIBERADO' END AS status,
+      CASE WHEN d.released_at IS NULL THEN '' ELSE
+        to_char(d.released_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS released_br
+    FROM dispatches d
+    JOIN users u ON u.id=d.courier_id
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    ORDER BY d.departed_at,o.id
+  `)).rows;
+
+  const header = [
+    "Data","Horário da saída","Motoboy","Usuário","Pedido",
+    "Código da saída","Status","Liberado em"
+  ];
+  const lines = [header.map(csvCell).join(";")];
+
+  for (const r of rows) {
+    lines.push([
+      r.date_br,r.time_br,r.courier_name,r.username,r.order_number,
+      r.dispatch_code,r.status,r.released_br
+    ].map(csvCell).join(";"));
+  }
+
+  const stamp = new Date().toISOString().slice(0,10);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="despachamoto-backup-${stamp}.csv"`);
+  res.send("\uFEFF" + lines.join("\r\n"));
+
+  await audit(req.session.user.id, "FULL_HISTORY_EXPORTED", "backup", null, {
+    rows: rows.length,
+    ...requestMeta(req)
+  });
+}));
+
 app.get("/api/admin/settings/alerts", auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ alerts: await getAlertSettings() });
 }));
@@ -512,34 +773,21 @@ app.put("/api/admin/settings/alerts", auth, adminOnly, asyncRoute(async (req, re
 
   if (![attention, delayed, critical].every(Number.isInteger) ||
       attention < 1 || critical > 720 || !(attention < delayed && delayed < critical)) {
-    return res.status(400).json({
-      error: "Use minutos inteiros e mantenha Atenção < Demorado < Crítico."
-    });
+    return res.status(400).json({ error: "Use minutos inteiros e mantenha Atenção < Demorado < Crítico." });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    for (const [key, value] of [
-      ["alert_attention_minutes", attention],
-      ["alert_delayed_minutes", delayed],
-      ["alert_critical_minutes", critical]
-    ]) {
-      await client.query(`
-        INSERT INTO app_settings(setting_key,setting_value,updated_at)
-        VALUES($1,$2,NOW())
-        ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()
-      `, [key, String(value)]);
-    }
-    await client.query("COMMIT");
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
+  for (const [key, value] of [
+    ["alert_attention_minutes", attention],
+    ["alert_delayed_minutes", delayed],
+    ["alert_critical_minutes", critical]
+  ]) {
+    await setSetting(key, value);
   }
 
-  await audit(req.session.user.id, "ALERT_SETTINGS_UPDATED", "settings", null, { attention, delayed, critical });
+  await audit(req.session.user.id, "ALERT_SETTINGS_UPDATED", "settings", null, {
+    attention, delayed, critical
+  });
+
   io.emit("settings:changed");
   res.json({ alerts: { attention, delayed, critical } });
 }));
@@ -599,8 +847,11 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
 
   const header = ["Data","Horário da saída","Motoboy","Pedido","Código da saída","Status"];
   const lines = [header.map(csvCell).join(";")];
+
   for (const r of rows) {
-    lines.push([r.date_br,r.time_br,r.courier_name,r.order_number,r.dispatch_code,r.status].map(csvCell).join(";"));
+    lines.push([
+      r.date_br,r.time_br,r.courier_name,r.order_number,r.dispatch_code,r.status
+    ].map(csvCell).join(";"));
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -611,14 +862,18 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
 app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
   const rows = (await pool.query(`
     SELECT a.id,a.action,a.entity,a.entity_id,a.details,a.created_at,u.name AS user_name
-    FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id
+    FROM audit_logs a
+    LEFT JOIN users u ON u.id=a.user_id
     ORDER BY a.id DESC LIMIT 300
   `)).rows;
+
   res.json({ rows, server_now: new Date().toISOString() });
 }));
 
 app.get("/api/health", (req, res) => res.json({
-  ok: true, time: new Date().toISOString(), version: "1.2.0"
+  ok: true,
+  time: new Date().toISOString(),
+  version: VERSION
 }));
 
 app.get("/{*splat}", (req, res) => {
@@ -637,4 +892,4 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 3000);
-server.listen(port, () => console.log(`DespachaMoto 1.2 rodando na porta ${port}`));
+server.listen(port, () => console.log(`DespachaMoto ${VERSION} rodando na porta ${port}`));

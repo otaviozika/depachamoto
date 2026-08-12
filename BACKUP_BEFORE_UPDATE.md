@@ -1,13 +1,7 @@
-# Backup antes da v1.2
+# Antes da atualização v1.3
 
-Antes de enviar os arquivos novos:
-
-1. Abra o repositório no GitHub.
-2. Anote o SHA do commit atualmente online (v1.1).
-3. Opcionalmente crie uma tag/release chamada `v1.1-stable`.
-4. Não apague o banco PostgreSQL.
-5. Não altere as variáveis do Render.
-
-Se precisar voltar:
-- Render > Deploys > Manual Deploy > Deploy a specific commit
-- selecione o commit da v1.1.
+1. No GitHub, anote o commit atual da v1.2.
+2. No painel administrativo v1.2, exporte o relatório atual se desejar.
+3. Não exclua nem recrie o PostgreSQL.
+4. Não altere DATABASE_URL ou SESSION_SECRET.
+5. Depois da v1.3, use `Segurança > Baixar backup CSV` periodicamente.
