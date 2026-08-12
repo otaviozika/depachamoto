@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.3</title>
+<title>DespachaMoto 1.4</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -22,8 +22,16 @@
 .badge{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#ffedd5;color:#9a3412}.badge.yellow{background:#fef9c3;color:#854d0e}.badge.gray{background:#eef2f7;color:#475569}.badge.red{background:#fee2e2;color:#991b1b}.badge.blue{background:#dbeafe;color:#1d4ed8}
 .hero{background:linear-gradient(135deg,#111827,#1f2937);color:#fff;padding:24px;border-radius:17px;margin-bottom:18px}.hero h2{margin:0 0 7px}.big{font-size:40px;font-weight:900}.mobile-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;padding:20px;z-index:30}.modal-box{width:min(480px,100%);background:#fff;border-radius:17px;padding:24px}.empty{text-align:center;padding:26px;color:var(--muted)}.status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.search{display:flex;gap:8px;padding:15px}.search input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
 .order-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.orders-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.order-chip{background:#fef3c7;color:#92400e;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:800}.live{font-variant-numeric:tabular-nums}.actions{display:flex;gap:7px;flex-wrap:wrap}.settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.settings-grid input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px}.security-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.health-list{display:grid;gap:10px}.health-line{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--line)}
-@media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid{grid-template-columns:1fr}}
-@media(max-width:720px){.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+
+.analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.chart-box{padding:18px}.bar-chart{display:flex;align-items:flex-end;gap:8px;height:230px;padding:16px 4px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.bar-item{min-width:42px;flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:6px}.bar{width:70%;min-width:18px;background:#f59e0b;border-radius:7px 7px 0 0;min-height:2px}.bar-label{font-size:10px;color:var(--muted);white-space:nowrap}.bar-value{font-size:10px;font-weight:800}
+.rank{display:grid;gap:10px;padding:16px}.rank-row{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:10px;border-bottom:1px solid var(--line)}.rank-pos{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#f3f4f6;font-weight:900}.rank-name{font-weight:800}
+.comparison-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.comparison-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.trend-up{color:#166534}.trend-down{color:#991b1b}.trend-flat{color:#475569}
+.filters{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;padding:15px}.filters input,.filters select{padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff;width:100%}.pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:15px;flex-wrap:wrap}.preset-buttons{display:flex;gap:7px;flex-wrap:wrap}.kpi-wide{grid-column:span 2}
+
+@media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:720px){.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -62,6 +70,7 @@
       <button data-page="road">◷ Quem está na rua</button>
       <button data-page="history">▤ Histórico</button>
       <button data-page="report">▥ Relatório diário</button>
+      <button data-page="management">📊 Gestão</button>
       <button data-page="couriers">♙ Motoboys</button>
       <button data-page="alerts">⚙ Alertas</button>
       <button data-page="security">🔒 Segurança</button>
@@ -99,7 +108,37 @@
 
       <section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
-      <section id="history" class="page"><h1 class="title">Histórico de saídas</h1><div class="section" style="margin-top:18px"><div class="search"><input id="historySearch" placeholder="Pesquisar pedido ou motoboy..." oninput="renderHistory()"></div><div class="table-wrap"><table class="table"><thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div></section>
+      <section id="history" class="page">
+        <h1 class="title">Histórico completo</h1>
+        <p class="muted">Pesquise e filtre todo o histórico do sistema.</p>
+        <div class="section" style="margin-top:18px">
+          <div class="filters">
+            <input id="histSearch" placeholder="Pedido, motoboy ou código">
+            <select id="histCourier"><option value="">Todos os motoboys</option></select>
+            <select id="histStatus">
+              <option value="">Todos os status</option>
+              <option value="ON_ROAD">Na rua</option>
+              <option value="RELEASED">Liberado</option>
+            </select>
+            <input id="histFrom" type="date">
+            <input id="histTo" type="date">
+            <button class="btn primary" onclick="applyHistoryFilters()">Filtrar</button>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th><th>Status</th></tr></thead>
+              <tbody id="historyTable"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <div id="historyPageInfo" class="muted">Página 1</div>
+            <div class="actions">
+              <button id="historyPrev" class="btn outline" onclick="changeHistoryPage(-1)">← Anterior</button>
+              <button id="historyNext" class="btn outline" onclick="changeHistoryPage(1)">Próxima →</button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section id="report" class="page">
         <h1 class="title">Relatório diário</h1>
@@ -113,7 +152,71 @@
         <div class="section"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedidos</th><th>Saídas</th><th>Primeira saída</th><th>Última saída</th></tr></thead><tbody id="reportTable"></tbody></table></div></div>
       </section>
 
-      <section id="couriers" class="page">
+      
+      <section id="management" class="page">
+        <h1 class="title">Gestão e relatórios</h1>
+        <p class="muted">Analise pedidos, saídas, ranking e horários de maior movimento.</p>
+
+        <div class="section" style="margin-top:18px">
+          <div style="padding:16px">
+            <div class="preset-buttons">
+              <button class="btn outline" onclick="setPeriodPreset('today')">Hoje</button>
+              <button class="btn outline" onclick="setPeriodPreset('yesterday')">Ontem</button>
+              <button class="btn outline" onclick="setPeriodPreset('7d')">Últimos 7 dias</button>
+              <button class="btn outline" onclick="setPeriodPreset('month')">Este mês</button>
+              <button class="btn outline" onclick="setPeriodPreset('prevmonth')">Mês anterior</button>
+            </div>
+            <div class="actions" style="margin-top:12px;align-items:end">
+              <label class="small"><b>De</b><input id="periodFrom" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
+              <label class="small"><b>Até</b><input id="periodTo" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
+              <button class="btn primary" onclick="loadManagement()">Atualizar análise</button>
+              <button class="btn outline" onclick="exportPeriod()">Exportar CSV</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="cards">
+          <div class="card"><div class="label">Pedidos no período</div><div id="gOrders" class="metric">0</div></div>
+          <div class="card"><div class="label">Saídas</div><div id="gDispatches" class="metric">0</div></div>
+          <div class="card"><div class="label">Motoboys</div><div id="gCouriers" class="metric">0</div></div>
+          <div class="card"><div class="label">Média pedidos/saída</div><div id="gAvg" class="metric">0</div></div>
+          <div class="card"><div class="label">Máx. pedidos/saída</div><div id="gMax" class="metric">0</div></div>
+          <div class="card"><div class="label">Horário de pico</div><div id="gPeak" class="metric">—</div></div>
+        </div>
+
+        <div class="comparison-grid">
+          <div class="comparison-card"><div class="label">Pedidos hoje × ontem</div><div id="cmpDayOrders" class="metric">—</div><div id="cmpDayOrdersTrend" class="small"></div></div>
+          <div class="comparison-card"><div class="label">Saídas hoje × ontem</div><div id="cmpDayDispatches" class="metric">—</div><div id="cmpDayDispatchesTrend" class="small"></div></div>
+          <div class="comparison-card"><div class="label">Pedidos mês × anterior</div><div id="cmpMonthOrders" class="metric">—</div><div id="cmpMonthOrdersTrend" class="small"></div></div>
+          <div class="comparison-card"><div class="label">Saídas mês × anterior</div><div id="cmpMonthDispatches" class="metric">—</div><div id="cmpMonthDispatchesTrend" class="small"></div></div>
+        </div>
+
+        <div class="analytics-grid">
+          <div class="section">
+            <div class="section-head"><b>Pedidos por dia</b></div>
+            <div id="dailyChart" class="chart-box"></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><b>Pedidos por horário</b></div>
+            <div id="hourChart" class="chart-box"></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><b>Ranking de motoboys</b></div>
+            <div id="rankingBox" class="rank"></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><b>Detalhamento por motoboy</b></div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Motoboy</th><th>Pedidos</th><th>Saídas</th><th>Média/saída</th></tr></thead>
+                <tbody id="managementCourierTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+<section id="couriers" class="page">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><h1 class="title">Motoboys</h1><p class="muted">Aprovação, bloqueio e redefinição de senha.</p></div>
           <button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button>
@@ -147,7 +250,7 @@
       <section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
     </div>
   </main>
-  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="couriers">♙<br>Equipe</button><button data-page="security">🔒<br>Segurança</button></div>
+  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
 </div>
 
 <div id="courierApp" class="hidden">
@@ -187,6 +290,7 @@
 let me=null,dashboard=null,serverOffsetMs=0,deferredInstallPrompt=null;
 let alertSettings={attention:40,delayed:50,critical:60};
 let securityState={registrationEnabled:true,adminPasswordLooksDefault:false};
+let historyState={page:1,pageSize:25,pages:1,total:0};
 const $=id=>document.getElementById(id);
 
 async function api(url,opt={}){
@@ -209,6 +313,11 @@ function ordersOf(x){return Array.isArray(x?.order_numbers)&&x.order_numbers.len
 function ordersText(x){return ordersOf(x).join(', ')}
 function ordersHtml(x){return `<div class="orders-list">${ordersOf(x).map(o=>`<span class="order-chip">${escapeHtml(o)}</span>`).join('')}</div>`}
 function spToday(){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const o=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${o.year}-${o.month}-${o.day}`}
+function isoDateLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
+function addDaysIso(iso,days){const [y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+days);return isoDateLocal(dt)}
+function firstDayMonthIso(iso){const [y,m]=iso.split('-').map(Number);return `${y}-${String(m).padStart(2,'0')}-01`}
+function prevMonthRange(iso){const [y,m]=iso.split('-').map(Number);const first=new Date(y,m-2,1);const last=new Date(y,m-1,0);return [isoDateLocal(first),isoDateLocal(last)]}
+
 
 async function loadPublicConfig(){
   try{
@@ -233,7 +342,7 @@ async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}loca
 function showApp(){
   $('loginScreen').classList.add('hidden');
   if(me.role==='admin'){
-    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();loadAdmin();loadSecurity();
+    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();loadAdmin();loadSecurity();
   }else{
     $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();loadCourier();
   }
@@ -246,7 +355,7 @@ async function loadAdmin(){
   const m=dashboard.metrics;
   $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
   $('alertAttention').value=alertSettings.attention;$('alertDelayed').value=alertSettings.delayed;$('alertCritical').value=alertSettings.critical;
-  renderRoad();renderRecent();renderHistory();renderCouriers();
+  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();
 }
 function renderRoad(){
   const a=dashboard.active;
@@ -254,7 +363,38 @@ function renderRoad(){
   $('roadTable').innerHTML=a.map(x=>`<tr><td><b>${escapeHtml(x.courier_name)}</b></td><td>${ordersHtml(x)}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('')||empty(5);
 }
 function renderRecent(){$('recentTable').innerHTML=dashboard.recent.slice(0,8).map(x=>`<tr><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localTime(x.departed_at)}</td></tr>`).join('')||empty(3)}
-function renderHistory(){if(!dashboard)return;const q=($('historySearch')?.value||'').toLowerCase();const rows=dashboard.recent.filter(x=>(ordersText(x)+' '+x.courier_name+' '+x.dispatch_code).toLowerCase().includes(q));$('historyTable').innerHTML=rows.map(x=>`<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(5)}
+async function loadHistory(){
+  if(!me || me.role!=='admin')return;
+  const p=new URLSearchParams();
+  p.set('page',historyState.page);
+  p.set('page_size',historyState.pageSize);
+  const search=$('histSearch')?.value.trim();
+  const courier=$('histCourier')?.value;
+  const status=$('histStatus')?.value;
+  const from=$('histFrom')?.value;
+  const to=$('histTo')?.value;
+  if(search)p.set('search',search);
+  if(courier)p.set('courier_id',courier);
+  if(status)p.set('status',status);
+  if(from)p.set('from',from);
+  if(to)p.set('to',to);
+  try{
+    const d=await api('/api/admin/history?'+p.toString());
+    historyState={...historyState,...d.pagination};
+    $('historyTable').innerHTML=d.rows.map(x=>`<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(5);
+    $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
+    $('historyPrev').disabled=historyState.page<=1;
+    $('historyNext').disabled=historyState.page>=historyState.pages;
+  }catch(err){$('historyTable').innerHTML=`<tr><td colspan="5"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}
+}
+function applyHistoryFilters(){historyState.page=1;loadHistory()}
+function changeHistoryPage(delta){const next=historyState.page+delta;if(next<1||next>historyState.pages)return;historyState.page=next;loadHistory()}
+function populateHistoryCouriers(){
+  if(!dashboard||!$('histCourier'))return;
+  const current=$('histCourier').value;
+  $('histCourier').innerHTML='<option value="">Todos os motoboys</option>'+dashboard.couriers.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+  $('histCourier').value=current;
+}
 function approvalBadge(s){if(s==='PENDING')return'<span class="badge yellow">AGUARDANDO</span>';if(s==='REJECTED')return'<span class="badge red">RECUSADO</span>';return'<span class="badge green">APROVADO</span>'}
 function renderCouriers(){
   $('courierTable').innerHTML=dashboard.couriers.map(x=>{
@@ -291,6 +431,71 @@ async function loadCourier(){
   if(d.active){$('departureCard').classList.add('hidden');$('activeDispatch').innerHTML=`<div class="hero"><h2>🟠 Você está na rua</h2>${ordersHtml(d.active)}<div style="margin-top:14px">Saiu às <b>${localTime(d.active.departed_at)}</b></div><div style="margin-top:8px">Tempo na rua<div class="big live" data-start-ms="${Date.parse(d.active.departed_at)}">${elapsedFromMs(Date.parse(d.active.departed_at))}</div></div></div>`}else{$('departureCard').classList.remove('hidden');$('activeDispatch').innerHTML='';if(!$('orderFields').querySelector('.order-row'))resetOrderFields()}
 }
 async function depart(e){e.preventDefault();message('departureMsg','','');const orders=getOrderValues();if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');try{await api('/api/courier/depart',{method:'POST',body:JSON.stringify({order_numbers:orders})});resetOrderFields();message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');await loadCourier()}catch(err){message('departureMsg',err.message,'err')}}
+
+
+function setPeriodPreset(type){
+  const today=spToday();
+  let from=today,to=today;
+  if(type==='yesterday'){from=to=addDaysIso(today,-1)}
+  else if(type==='7d'){from=addDaysIso(today,-6)}
+  else if(type==='month'){from=firstDayMonthIso(today)}
+  else if(type==='prevmonth'){[from,to]=prevMonthRange(today)}
+  $('periodFrom').value=from;$('periodTo').value=to;
+  loadManagement();
+}
+function trendHtml(change){
+  const cls=change>0?'trend-up':change<0?'trend-down':'trend-flat';
+  const symbol=change>0?'▲':change<0?'▼':'•';
+  return `<span class="${cls}">${symbol} ${Math.abs(change)}%</span>`;
+}
+function renderBarChart(target,rows,labelFn,valueKey){
+  if(!rows.length){$(target).innerHTML='<div class="empty">Sem dados para o período.</div>';return}
+  const max=Math.max(...rows.map(r=>Number(r[valueKey])||0),1);
+  $(target).innerHTML=`<div class="bar-chart">${rows.map(r=>{
+    const v=Number(r[valueKey])||0;
+    const h=Math.max(2,Math.round((v/max)*170));
+    return `<div class="bar-item"><div class="bar-value">${v}</div><div class="bar" style="height:${h}px"></div><div class="bar-label">${escapeHtml(labelFn(r))}</div></div>`;
+  }).join('')}</div>`;
+}
+async function loadComparisons(){
+  try{
+    const d=await api('/api/admin/reports/comparison');
+    $('cmpDayOrders').textContent=`${d.todayVsYesterday.orders.current} / ${d.todayVsYesterday.orders.previous}`;
+    $('cmpDayOrdersTrend').innerHTML=trendHtml(d.todayVsYesterday.orders.changePct);
+    $('cmpDayDispatches').textContent=`${d.todayVsYesterday.dispatches.current} / ${d.todayVsYesterday.dispatches.previous}`;
+    $('cmpDayDispatchesTrend').innerHTML=trendHtml(d.todayVsYesterday.dispatches.changePct);
+    $('cmpMonthOrders').textContent=`${d.monthVsPrevious.orders.current} / ${d.monthVsPrevious.orders.previous}`;
+    $('cmpMonthOrdersTrend').innerHTML=trendHtml(d.monthVsPrevious.orders.changePct);
+    $('cmpMonthDispatches').textContent=`${d.monthVsPrevious.dispatches.current} / ${d.monthVsPrevious.dispatches.previous}`;
+    $('cmpMonthDispatchesTrend').innerHTML=trendHtml(d.monthVsPrevious.dispatches.changePct);
+  }catch{}
+}
+async function loadManagement(){
+  const from=$('periodFrom').value||firstDayMonthIso(spToday());
+  const to=$('periodTo').value||spToday();
+  try{
+    const d=await api(`/api/admin/reports/period?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    $('gOrders').textContent=d.metrics.orders;
+    $('gDispatches').textContent=d.metrics.dispatches;
+    $('gCouriers').textContent=d.metrics.couriers;
+    $('gAvg').textContent=Number(d.metrics.avgOrdersPerDispatch||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    $('gMax').textContent=d.metrics.maxOrdersPerDispatch;
+    $('gPeak').textContent=d.metrics.busiestHour===null?'—':`${String(d.metrics.busiestHour).padStart(2,'0')}h`;
+
+    renderBarChart('dailyChart',d.byDay,r=>r.day.slice(5).split('-').reverse().join('/'),'orders');
+    renderBarChart('hourChart',d.byHour,r=>`${String(r.hour).padStart(2,'0')}h`,'orders');
+
+    $('rankingBox').innerHTML=d.byCourier.slice(0,10).map((x,i)=>`<div class="rank-row"><div class="rank-pos">${i+1}</div><div><div class="rank-name">${escapeHtml(x.name)}</div><div class="small muted">${x.dispatches} saída(s)</div></div><b>${x.orders} pedidos</b></div>`).join('')||'<div class="empty">Sem dados para o período.</div>';
+
+    $('managementCourierTable').innerHTML=d.byCourier.map(x=>`<tr><td><b>${escapeHtml(x.name)}</b></td><td>${x.orders}</td><td>${x.dispatches}</td><td>${Number(x.avg_orders_per_dispatch||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`).join('')||empty(4);
+    await loadComparisons();
+  }catch(err){alert(err.message)}
+}
+function exportPeriod(){
+  const from=$('periodFrom').value||firstDayMonthIso(spToday());
+  const to=$('periodTo').value||spToday();
+  window.location.href=`/api/admin/reports/period.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+}
 
 async function loadReport(){
   const date=$('reportDate').value||spToday();
@@ -376,7 +581,8 @@ const auditNames={
   COURIER_RELEASED:'Motoboy liberado para nova saída',
   ALERT_SETTINGS_UPDATED:'Configuração de alertas alterada',
   PUBLIC_REGISTRATION_SETTING_CHANGED:'Configuração de cadastro público alterada',
-  FULL_HISTORY_EXPORTED:'Backup completo exportado'
+  FULL_HISTORY_EXPORTED:'Backup completo exportado',
+  PERIOD_REPORT_EXPORTED:'Relatório por período exportado'
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
@@ -399,9 +605,11 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',report:'Relatório diário',couriers:'Motoboys',alerts:'Alertas',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
   else if(b.dataset.page==='report')loadReport();
+  else if(b.dataset.page==='management')loadManagement();
+  else if(b.dataset.page==='history')loadHistory();
   else if(b.dataset.page==='security')loadSecurity();
   else loadAdmin();
 });

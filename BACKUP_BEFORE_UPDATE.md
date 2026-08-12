@@ -1,7 +1,7 @@
-# Antes da atualização v1.3
+# Backup antes da v1.4
 
-1. No GitHub, anote o commit atual da v1.2.
-2. No painel administrativo v1.2, exporte o relatório atual se desejar.
-3. Não exclua nem recrie o PostgreSQL.
-4. Não altere DATABASE_URL ou SESSION_SECRET.
-5. Depois da v1.3, use `Segurança > Baixar backup CSV` periodicamente.
+1. Anote o commit da v1.3 atualmente online.
+2. Em Segurança, baixe o backup CSV completo.
+3. Não apague nem recrie o PostgreSQL.
+4. Não altere as variáveis do Render.
+5. Depois da atualização, teste Gestão e Histórico antes de liberar o uso normal.

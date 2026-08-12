@@ -16,7 +16,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -497,6 +497,336 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   } finally {
     client.release();
   }
+}));
+
+
+function normalizePeriodQuery(query) {
+  const from = validDate(query.from) ? String(query.from) : null;
+  const to = validDate(query.to) ? String(query.to) : null;
+  if (!from || !to) {
+    const err = new Error("Informe as datas inicial e final.");
+    err.status = 400;
+    throw err;
+  }
+  if (from > to) {
+    const err = new Error("A data inicial não pode ser maior que a data final.");
+    err.status = 400;
+    throw err;
+  }
+  return { from, to };
+}
+
+function parsePositiveInt(v, fallback, max = 500) {
+  const n = Number.parseInt(String(v ?? ""), 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(n, max);
+}
+
+function parseHistoryFilters(query) {
+  const page = parsePositiveInt(query.page, 1, 100000);
+  const pageSize = parsePositiveInt(query.page_size, 25, 100);
+  const courierId = query.courier_id && /^\d+$/.test(String(query.courier_id))
+    ? Number(query.courier_id)
+    : null;
+  const status = ["ON_ROAD", "RELEASED"].includes(String(query.status || "").toUpperCase())
+    ? String(query.status).toUpperCase()
+    : null;
+  const from = validDate(query.from) ? String(query.from) : null;
+  const to = validDate(query.to) ? String(query.to) : null;
+  const search = String(query.search || "").trim().slice(0, 100);
+
+  if (from && to && from > to) {
+    const err = new Error("A data inicial não pode ser maior que a data final.");
+    err.status = 400;
+    throw err;
+  }
+  return { page, pageSize, courierId, status, from, to, search };
+}
+
+app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
+  const f = parseHistoryFilters(req.query);
+  const params = [];
+  const where = [];
+
+  if (f.courierId) {
+    params.push(f.courierId);
+    where.push(`d.courier_id=$${params.length}`);
+  }
+  if (f.status) {
+    params.push(f.status);
+    where.push(`d.status=$${params.length}`);
+  }
+  if (f.from) {
+    params.push(f.from);
+    where.push(`(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date >= $${params.length}::date`);
+  }
+  if (f.to) {
+    params.push(f.to);
+    where.push(`(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date <= $${params.length}::date`);
+  }
+  if (f.search) {
+    params.push(`%${f.search}%`);
+    const p = params.length;
+    where.push(`(
+      u.name ILIKE $${p}
+      OR u.username ILIKE $${p}
+      OR d.dispatch_code ILIKE $${p}
+      OR d.order_number ILIKE $${p}
+      OR EXISTS (
+        SELECT 1 FROM dispatch_orders so
+        WHERE so.dispatch_id=d.id AND so.order_number ILIKE $${p}
+      )
+    )`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const countQ = await pool.query(`
+    SELECT COUNT(*)::int AS total
+    FROM dispatches d
+    JOIN users u ON u.id=d.courier_id
+    ${whereSql}
+  `, params);
+
+  const total = countQ.rows[0].total;
+  const offset = (f.page - 1) * f.pageSize;
+  params.push(f.pageSize);
+  const limitParam = params.length;
+  params.push(offset);
+  const offsetParam = params.length;
+
+  const rows = (await pool.query(`
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.released_at,d.status,
+           u.id AS courier_id,u.name AS courier_name,u.username,
+           ${orderArraySql("d")}
+    FROM dispatches d
+    JOIN users u ON u.id=d.courier_id
+    ${whereSql}
+    ORDER BY d.departed_at DESC,d.id DESC
+    LIMIT $${limitParam} OFFSET $${offsetParam}
+  `, params)).rows;
+
+  res.json({
+    rows,
+    pagination: {
+      page: f.page,
+      pageSize: f.pageSize,
+      total,
+      pages: Math.max(1, Math.ceil(total / f.pageSize))
+    },
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/reports/period", auth, adminOnly, asyncRoute(async (req, res) => {
+  const { from, to } = normalizePeriodQuery(req.query);
+
+  const metrics = (await pool.query(`
+    WITH dispatch_counts AS (
+      SELECT d.id,d.courier_id,d.departed_at,COUNT(o.id)::int AS order_count
+      FROM dispatches d
+      JOIN dispatch_orders o ON o.dispatch_id=d.id
+      WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+            BETWEEN $1::date AND $2::date
+      GROUP BY d.id,d.courier_id,d.departed_at
+    )
+    SELECT
+      COUNT(*)::int AS dispatches,
+      COALESCE(SUM(order_count),0)::int AS orders,
+      COUNT(DISTINCT courier_id)::int AS couriers,
+      ROUND(COALESCE(AVG(order_count),0)::numeric,2) AS avg_orders_per_dispatch,
+      COALESCE(MAX(order_count),0)::int AS max_orders_per_dispatch
+    FROM dispatch_counts
+  `, [from, to])).rows[0];
+
+  const byCourier = (await pool.query(`
+    SELECT
+      u.id,u.name,u.username,
+      COUNT(DISTINCT d.id)::int AS dispatches,
+      COUNT(o.id)::int AS orders,
+      ROUND((COUNT(o.id)::numeric / NULLIF(COUNT(DISTINCT d.id),0)),2) AS avg_orders_per_dispatch,
+      MIN(d.departed_at) AS first_departure,
+      MAX(d.departed_at) AS last_departure
+    FROM dispatches d
+    JOIN users u ON u.id=d.courier_id
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+          BETWEEN $1::date AND $2::date
+    GROUP BY u.id,u.name,u.username
+    ORDER BY orders DESC,dispatches DESC,u.name
+  `, [from, to])).rows;
+
+  const byDay = (await pool.query(`
+    SELECT
+      to_char((d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date,'YYYY-MM-DD') AS day,
+      COUNT(DISTINCT d.id)::int AS dispatches,
+      COUNT(o.id)::int AS orders
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+          BETWEEN $1::date AND $2::date
+    GROUP BY 1
+    ORDER BY 1
+  `, [from, to])).rows;
+
+  const byHour = (await pool.query(`
+    SELECT
+      EXTRACT(HOUR FROM (d.departed_at AT TIME ZONE 'America/Sao_Paulo'))::int AS hour,
+      COUNT(DISTINCT d.id)::int AS dispatches,
+      COUNT(o.id)::int AS orders
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+          BETWEEN $1::date AND $2::date
+    GROUP BY 1
+    ORDER BY 1
+  `, [from, to])).rows;
+
+  const busiestHour = byHour.reduce(
+    (best, row) => !best || row.orders > best.orders ? row : best,
+    null
+  );
+
+  res.json({
+    from,
+    to,
+    metrics: {
+      orders: metrics.orders,
+      dispatches: metrics.dispatches,
+      couriers: metrics.couriers,
+      avgOrdersPerDispatch: Number(metrics.avg_orders_per_dispatch || 0),
+      maxOrdersPerDispatch: metrics.max_orders_per_dispatch,
+      busiestHour: busiestHour ? busiestHour.hour : null,
+      busiestHourOrders: busiestHour ? busiestHour.orders : 0
+    },
+    byCourier,
+    byDay,
+    byHour,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/reports/comparison", auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = await pool.query(`
+    WITH base AS (
+      SELECT
+        (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date AS day,
+        date_trunc('month', d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date AS month_start,
+        o.id AS order_id,
+        d.id AS dispatch_id
+      FROM dispatches d
+      JOIN dispatch_orders o ON o.dispatch_id=d.id
+    )
+    SELECT
+      COUNT(order_id) FILTER (
+        WHERE day=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS today_orders,
+      COUNT(order_id) FILTER (
+        WHERE day=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date-1
+      )::int AS yesterday_orders,
+      COUNT(DISTINCT dispatch_id) FILTER (
+        WHERE day=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS today_dispatches,
+      COUNT(DISTINCT dispatch_id) FILTER (
+        WHERE day=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date-1
+      )::int AS yesterday_dispatches,
+      COUNT(order_id) FILTER (
+        WHERE month_start=date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS current_month_orders,
+      COUNT(order_id) FILTER (
+        WHERE month_start=(date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')-INTERVAL '1 month')::date
+      )::int AS previous_month_orders,
+      COUNT(DISTINCT dispatch_id) FILTER (
+        WHERE month_start=date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS current_month_dispatches,
+      COUNT(DISTINCT dispatch_id) FILTER (
+        WHERE month_start=(date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')-INTERVAL '1 month')::date
+      )::int AS previous_month_dispatches
+    FROM base
+  `);
+
+  const r = q.rows[0];
+  const pct = (current, previous) => {
+    if (!previous) return current ? 100 : 0;
+    return Number((((current - previous) / previous) * 100).toFixed(1));
+  };
+
+  res.json({
+    todayVsYesterday: {
+      orders: {
+        current: r.today_orders,
+        previous: r.yesterday_orders,
+        changePct: pct(r.today_orders, r.yesterday_orders)
+      },
+      dispatches: {
+        current: r.today_dispatches,
+        previous: r.yesterday_dispatches,
+        changePct: pct(r.today_dispatches, r.yesterday_dispatches)
+      }
+    },
+    monthVsPrevious: {
+      orders: {
+        current: r.current_month_orders,
+        previous: r.previous_month_orders,
+        changePct: pct(r.current_month_orders, r.previous_month_orders)
+      },
+      dispatches: {
+        current: r.current_month_dispatches,
+        previous: r.previous_month_dispatches,
+        changePct: pct(r.current_month_dispatches, r.previous_month_dispatches)
+      }
+    },
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/reports/period.csv", auth, adminOnly, asyncRoute(async (req, res) => {
+  const { from, to } = normalizePeriodQuery(req.query);
+
+  const rows = (await pool.query(`
+    SELECT
+      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY') AS date_br,
+      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS time_br,
+      u.name AS courier_name,
+      u.username,
+      o.order_number,
+      d.dispatch_code,
+      CASE d.status WHEN 'ON_ROAD' THEN 'NA RUA' ELSE 'LIBERADO' END AS status,
+      CASE WHEN d.released_at IS NULL THEN '' ELSE
+        to_char(d.released_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS released_br
+    FROM dispatches d
+    JOIN users u ON u.id=d.courier_id
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+          BETWEEN $1::date AND $2::date
+    ORDER BY d.departed_at,o.id
+  `, [from, to])).rows;
+
+  const header = [
+    "Data","Horário da saída","Motoboy","Usuário","Pedido",
+    "Código da saída","Status","Liberado em"
+  ];
+  const lines = [header.map(csvCell).join(";")];
+
+  for (const r of rows) {
+    lines.push([
+      r.date_br,r.time_br,r.courier_name,r.username,r.order_number,
+      r.dispatch_code,r.status,r.released_br
+    ].map(csvCell).join(";"));
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="despachamoto-${from}-a-${to}.csv"`
+  );
+  res.send("\uFEFF" + lines.join("\r\n"));
+
+  await audit(req.session.user.id, "PERIOD_REPORT_EXPORTED", "report", null, {
+    from,
+    to,
+    rows: rows.length
+  });
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
