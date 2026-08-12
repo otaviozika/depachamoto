@@ -16,7 +16,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -98,6 +98,44 @@ ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
+
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS registered_by INTEGER REFERENCES users(id);
+
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS registration_source TEXT NOT NULL DEFAULT 'COURIER';
+
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS admin_reason TEXT;
+
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS closed_reason TEXT;
+
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS client_token TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS dispatches_client_token_unique_idx
+ON dispatches(client_token) WHERE client_token IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  courier_id INTEGER REFERENCES users(id),
+  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE CASCADE,
+  unique_key TEXT UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS notifications_unread_idx
+ON notifications(read_at, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS notifications_dispatch_idx
+ON notifications(dispatch_id);
+
 CREATE TABLE IF NOT EXISTS dispatches (
   id BIGSERIAL PRIMARY KEY,
   dispatch_code TEXT UNIQUE NOT NULL,
@@ -152,7 +190,12 @@ INSERT INTO app_settings(setting_key,setting_value) VALUES
   ('alert_attention_minutes','40'),
   ('alert_delayed_minutes','50'),
   ('alert_critical_minutes','60'),
-  ('public_registration_enabled','true')
+  ('public_registration_enabled','true'),
+  ('notify_attention','true'),
+  ('notify_delayed','true'),
+  ('notify_critical','true'),
+  ('notify_registration','true'),
+  ('notification_sound','true')
 ON CONFLICT (setting_key) DO NOTHING;
 `);
 
@@ -254,6 +297,204 @@ async function setSetting(key, value) {
     ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()
   `, [key, String(value)]);
 }
+
+async function notificationEnabled(key, fallback = "true") {
+  return (await getSetting(key, fallback)) === "true";
+}
+
+async function createNotification({
+  type,
+  severity = "info",
+  title,
+  message,
+  courierId = null,
+  dispatchId = null,
+  uniqueKey = null
+}) {
+  if (type === "TIME_ATTENTION" && !(await notificationEnabled("notify_attention"))) return null;
+  if (type === "TIME_DELAYED" && !(await notificationEnabled("notify_delayed"))) return null;
+  if (type === "TIME_CRITICAL" && !(await notificationEnabled("notify_critical"))) return null;
+  if (type === "REGISTRATION_PENDING" && !(await notificationEnabled("notify_registration"))) return null;
+
+  const q = await pool.query(`
+    INSERT INTO notifications(type,severity,title,message,courier_id,dispatch_id,unique_key)
+    VALUES($1,$2,$3,$4,$5,$6,$7)
+    ON CONFLICT(unique_key) DO NOTHING
+    RETURNING id,type,severity,title,message,courier_id,dispatch_id,created_at,read_at
+  `, [type,severity,title,message,courierId,dispatchId,uniqueKey]);
+
+  const notification = q.rows[0] || null;
+  if (notification) io.emit("notification:new", notification);
+  return notification;
+}
+
+async function closeActiveDispatch(client, courierId, releasedBy, reason) {
+  const active = await client.query(`
+    SELECT id,dispatch_code,departed_at,status
+    FROM dispatches
+    WHERE courier_id=$1 AND status='ON_ROAD'
+    ORDER BY departed_at DESC,id DESC
+    LIMIT 1
+    FOR UPDATE
+  `, [courierId]);
+
+  if (!active.rowCount) return null;
+
+  const q = await client.query(`
+    UPDATE dispatches
+    SET status='RELEASED',
+        released_at=NOW(),
+        released_by=$1,
+        closed_reason=$2
+    WHERE id=$3 AND status='ON_ROAD'
+    RETURNING *
+  `, [releasedBy, reason, active.rows[0].id]);
+
+  return q.rows[0] || null;
+}
+
+async function createDispatchTransaction({
+  actorUserId,
+  courierId,
+  orders,
+  source,
+  adminReason = null,
+  clientToken = null
+}) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    if (clientToken) {
+      const existing = await client.query(`
+        SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+               ${orderArraySql("d")}
+        FROM dispatches d
+        WHERE d.client_token=$1
+        LIMIT 1
+      `, [clientToken]);
+      if (existing.rowCount) {
+        await client.query("ROLLBACK");
+        return { dispatch: existing.rows[0], closedPrevious: null, duplicate: true };
+      }
+    }
+
+    const closedPrevious = await closeActiveDispatch(
+      client,
+      courierId,
+      actorUserId,
+      source === "ADMIN" ? "NEW_DEPARTURE_BY_ADMIN" : "NEW_DEPARTURE_BY_COURIER"
+    );
+
+    const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
+      Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    const result = await client.query(`
+      INSERT INTO dispatches(
+        dispatch_code,order_number,courier_id,
+        registered_by,registration_source,admin_reason,client_token
+      )
+      VALUES($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id,dispatch_code,order_number,departed_at,status,
+                registered_by,registration_source,admin_reason
+    `, [
+      code,
+      orders[0],
+      courierId,
+      actorUserId,
+      source,
+      adminReason || null,
+      clientToken || null
+    ]);
+
+    const dispatch = result.rows[0];
+
+    for (const order of orders) {
+      await client.query(
+        "INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)",
+        [dispatch.id, order]
+      );
+    }
+
+    await client.query("COMMIT");
+    dispatch.order_numbers = orders;
+
+    return { dispatch, closedPrevious, duplicate: false };
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    if (e.code === "23505" && clientToken) {
+      const existing = await pool.query(`
+        SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+               ${orderArraySql("d")}
+        FROM dispatches d
+        WHERE d.client_token=$1
+        LIMIT 1
+      `, [clientToken]);
+      if (existing.rowCount) {
+        return { dispatch: existing.rows[0], closedPrevious: null, duplicate: true };
+      }
+    }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function checkTimeNotifications() {
+  try {
+    const alerts = await getAlertSettings();
+    const rows = (await pool.query(`
+      SELECT d.id,d.departed_at,u.id AS courier_id,u.name AS courier_name,
+             EXTRACT(EPOCH FROM (NOW()-d.departed_at))/60 AS minutes,
+             ${orderArraySql("d")}
+      FROM dispatches d
+      JOIN users u ON u.id=d.courier_id
+      WHERE d.status='ON_ROAD'
+    `)).rows;
+
+    for (const row of rows) {
+      const minutes = Number(row.minutes || 0);
+      const orders = Array.isArray(row.order_numbers) ? row.order_numbers.join(", ") : row.order_number;
+
+      if (minutes >= alerts.attention) {
+        await createNotification({
+          type: "TIME_ATTENTION",
+          severity: "warning",
+          title: "Motoboy em atenção",
+          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
+          courierId: row.courier_id,
+          dispatchId: row.id,
+          uniqueKey: `time:${row.id}:attention`
+        });
+      }
+      if (minutes >= alerts.delayed) {
+        await createNotification({
+          type: "TIME_DELAYED",
+          severity: "delayed",
+          title: "Saída demorada",
+          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
+          courierId: row.courier_id,
+          dispatchId: row.id,
+          uniqueKey: `time:${row.id}:delayed`
+        });
+      }
+      if (minutes >= alerts.critical) {
+        await createNotification({
+          type: "TIME_CRITICAL",
+          severity: "critical",
+          title: "Tempo crítico",
+          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
+          courierId: row.courier_id,
+          dispatchId: row.id,
+          uniqueKey: `time:${row.id}:critical`
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Falha ao verificar alertas de tempo:", e.message);
+  }
+}
+
 async function getAlertSettings() {
   const q = await pool.query(`
     SELECT setting_key,setting_value FROM app_settings
@@ -346,6 +587,14 @@ app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
     );
     const user = result.rows[0];
     await audit(user.id, "PUBLIC_REGISTRATION_PENDING", "user", user.id, requestMeta(req));
+    await createNotification({
+      type: "REGISTRATION_PENDING",
+      severity: "info",
+      title: "Novo cadastro aguardando aprovação",
+      message: `${user.name} (@${user.username}) solicitou acesso ao DespachaMoto.`,
+      courierId: user.id,
+      uniqueKey: `registration:${user.id}`
+    });
     io.emit("courier:changed");
     res.status(201).json({
       user,
@@ -453,95 +702,51 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   }
 
   const orders = normalizeOrders(req.body);
+  const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
-  const existing = await pool.query(`
-    SELECT d.id,d.order_number,${orderArraySql("d")}
-    FROM dispatches d WHERE d.courier_id=$1 AND d.status='ON_ROAD' LIMIT 1
+  const activeQ = await pool.query(`
+    SELECT d.id,d.departed_at,d.order_number,${orderArraySql("d")}
+    FROM dispatches d
+    WHERE d.courier_id=$1 AND d.status='ON_ROAD'
+    ORDER BY d.departed_at DESC,d.id DESC
+    LIMIT 1
   `, [req.session.user.id]);
 
-  if (existing.rowCount) {
-    const current = existing.rows[0].order_numbers || [existing.rows[0].order_number];
+  if (activeQ.rowCount && req.body.confirm_new_departure !== true) {
     return res.status(409).json({
-      error: `Você já está na rua com ${current.length} pedido(s): ${current.join(", ")}. O administrador precisa liberar seu status antes de uma nova saída.`
+      error: "Você possui uma saída ativa. Confirme para encerrar a saída anterior e iniciar a nova.",
+      code: "ACTIVE_DISPATCH_CONFIRMATION",
+      active: activeQ.rows[0],
+      server_now: new Date().toISOString()
     });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
-    const result = await client.query(`
-      INSERT INTO dispatches(dispatch_code,order_number,courier_id)
-      VALUES($1,$2,$3)
-      RETURNING id,dispatch_code,order_number,departed_at,status
-    `, [code, orders[0], req.session.user.id]);
+  const result = await createDispatchTransaction({
+    actorUserId: req.session.user.id,
+    courierId: req.session.user.id,
+    orders,
+    source: "COURIER",
+    clientToken
+  });
 
-    const dispatch = result.rows[0];
-    for (const order of orders) {
-      await client.query("INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)", [dispatch.id, order]);
-    }
-    await client.query("COMMIT");
-
-    dispatch.order_numbers = orders;
-    await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", dispatch.id, {
+  if (!result.duplicate) {
+    await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
       order_numbers: orders,
       order_count: orders.length,
-      departed_at: dispatch.departed_at
+      departed_at: result.dispatch.departed_at,
+      source: "COURIER",
+      previous_dispatch_closed: result.closedPrevious?.id || null
     });
-
-    io.emit("dispatch:changed");
-    res.status(201).json({ dispatch, server_now: new Date().toISOString() });
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
   }
+
+  io.emit("dispatch:changed");
+  res.status(result.duplicate ? 200 : 201).json({
+    dispatch: result.dispatch,
+    closed_previous: result.closedPrevious,
+    duplicate: result.duplicate,
+    server_now: new Date().toISOString()
+  });
 }));
-
-
-function normalizePeriodQuery(query) {
-  const from = validDate(query.from) ? String(query.from) : null;
-  const to = validDate(query.to) ? String(query.to) : null;
-  if (!from || !to) {
-    const err = new Error("Informe as datas inicial e final.");
-    err.status = 400;
-    throw err;
-  }
-  if (from > to) {
-    const err = new Error("A data inicial não pode ser maior que a data final.");
-    err.status = 400;
-    throw err;
-  }
-  return { from, to };
-}
-
-function parsePositiveInt(v, fallback, max = 500) {
-  const n = Number.parseInt(String(v ?? ""), 10);
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.min(n, max);
-}
-
-function parseHistoryFilters(query) {
-  const page = parsePositiveInt(query.page, 1, 100000);
-  const pageSize = parsePositiveInt(query.page_size, 25, 100);
-  const courierId = query.courier_id && /^\d+$/.test(String(query.courier_id))
-    ? Number(query.courier_id)
-    : null;
-  const status = ["ON_ROAD", "RELEASED"].includes(String(query.status || "").toUpperCase())
-    ? String(query.status).toUpperCase()
-    : null;
-  const from = validDate(query.from) ? String(query.from) : null;
-  const to = validDate(query.to) ? String(query.to) : null;
-  const search = String(query.search || "").trim().slice(0, 100);
-
-  if (from && to && from > to) {
-    const err = new Error("A data inicial não pode ser maior que a data final.");
-    err.status = 400;
-    throw err;
-  }
-  return { page, pageSize, courierId, status, from, to, search };
-}
 
 app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
   const f = parseHistoryFilters(req.query);
@@ -596,10 +801,13 @@ app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
 
   const rows = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.released_at,d.status,
+           d.registration_source,d.admin_reason,d.registered_by,
            u.id AS courier_id,u.name AS courier_name,u.username,
+           ru.name AS registered_by_name,
            ${orderArraySql("d")}
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
+    LEFT JOIN users ru ON ru.id=d.registered_by
     ${whereSql}
     ORDER BY d.departed_at DESC,d.id DESC
     LIMIT $${limitParam} OFFSET $${offsetParam}
@@ -827,6 +1035,158 @@ app.get("/api/admin/reports/period.csv", auth, adminOnly, asyncRoute(async (req,
     to,
     rows: rows.length
   });
+}));
+
+
+app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req, res) => {
+  const courierId = Number(req.body.courier_id);
+  if (!Number.isInteger(courierId) || courierId < 1) {
+    return res.status(400).json({ error: "Selecione um motoboy." });
+  }
+
+  const courierQ = await pool.query(`
+    SELECT id,name,username,active,approval_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [courierId]);
+
+  const courier = courierQ.rows[0];
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+  if (!courier.active || courier.approval_status !== "APPROVED") {
+    return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
+  }
+
+  const orders = normalizeOrders(req.body);
+  const reason = String(req.body.reason || "").trim().slice(0, 250);
+  const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
+
+  const result = await createDispatchTransaction({
+    actorUserId: req.session.user.id,
+    courierId,
+    orders,
+    source: "ADMIN",
+    adminReason: reason || "Registro manual pelo administrador",
+    clientToken
+  });
+
+  if (!result.duplicate) {
+    await audit(req.session.user.id, "MANUAL_DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
+      courier_id: courierId,
+      courier_name: courier.name,
+      order_numbers: orders,
+      order_count: orders.length,
+      reason: reason || "Não informado",
+      previous_dispatch_closed: result.closedPrevious?.id || null
+    });
+
+    await createNotification({
+      type: "MANUAL_DEPARTURE",
+      severity: "info",
+      title: "Saída manual registrada",
+      message: `${courier.name}: ${orders.join(", ")}. Motivo: ${reason || "não informado"}`,
+      courierId,
+      dispatchId: result.dispatch.id,
+      uniqueKey: `manual:${result.dispatch.id}`
+    });
+  }
+
+  io.emit("dispatch:changed");
+  res.status(result.duplicate ? 200 : 201).json({
+    dispatch: result.dispatch,
+    closed_previous: result.closedPrevious,
+    duplicate: result.duplicate,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/notifications", auth, adminOnly, asyncRoute(async (req, res) => {
+  const limit = parsePositiveInt(req.query.limit, 50, 150);
+  const unreadOnly = String(req.query.unread_only || "") === "true";
+
+  const params = [limit];
+  const where = unreadOnly ? "WHERE n.read_at IS NULL" : "";
+
+  const rows = (await pool.query(`
+    SELECT n.id,n.type,n.severity,n.title,n.message,n.courier_id,n.dispatch_id,
+           n.created_at,n.read_at,u.name AS courier_name
+    FROM notifications n
+    LEFT JOIN users u ON u.id=n.courier_id
+    ${where}
+    ORDER BY n.created_at DESC,n.id DESC
+    LIMIT $1
+  `, params)).rows;
+
+  const countQ = await pool.query(
+    "SELECT COUNT(*)::int AS unread FROM notifications WHERE read_at IS NULL"
+  );
+
+  res.json({
+    rows,
+    unread: countQ.rows[0].unread,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/notifications/:id/read", auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = await pool.query(`
+    UPDATE notifications
+    SET read_at=COALESCE(read_at,NOW())
+    WHERE id=$1
+    RETURNING id,read_at
+  `, [req.params.id]);
+
+  if (!q.rowCount) return res.status(404).json({ error: "Notificação não encontrada." });
+
+  io.emit("notification:changed");
+  res.json({ notification: q.rows[0] });
+}));
+
+app.post("/api/admin/notifications/read-all", auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = await pool.query(`
+    UPDATE notifications
+    SET read_at=NOW()
+    WHERE read_at IS NULL
+  `);
+
+  await audit(req.session.user.id, "NOTIFICATIONS_MARKED_READ", "notification", null, {
+    count: q.rowCount
+  });
+
+  io.emit("notification:changed");
+  res.json({ ok: true, count: q.rowCount });
+}));
+
+app.get("/api/admin/settings/notifications", auth, adminOnly, asyncRoute(async (req, res) => {
+  res.json({
+    settings: {
+      attention: await notificationEnabled("notify_attention"),
+      delayed: await notificationEnabled("notify_delayed"),
+      critical: await notificationEnabled("notify_critical"),
+      registration: await notificationEnabled("notify_registration"),
+      sound: await notificationEnabled("notification_sound")
+    }
+  });
+}));
+
+app.put("/api/admin/settings/notifications", auth, adminOnly, asyncRoute(async (req, res) => {
+  const settings = {
+    attention: !!req.body.attention,
+    delayed: !!req.body.delayed,
+    critical: !!req.body.critical,
+    registration: !!req.body.registration,
+    sound: !!req.body.sound
+  };
+
+  await setSetting("notify_attention", settings.attention ? "true" : "false");
+  await setSetting("notify_delayed", settings.delayed ? "true" : "false");
+  await setSetting("notify_critical", settings.critical ? "true" : "false");
+  await setSetting("notify_registration", settings.registration ? "true" : "false");
+  await setSetting("notification_sound", settings.sound ? "true" : "false");
+
+  await audit(req.session.user.id, "NOTIFICATION_SETTINGS_UPDATED", "settings", null, settings);
+
+  io.emit("notification:settings-changed");
+  res.json({ settings });
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1215,6 +1575,20 @@ io.on("connection", socket => {
 });
 
 setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 1000);
+
+setInterval(checkTimeNotifications, 30 * 1000);
+setTimeout(checkTimeNotifications, 5000);
+
+setTimeout(() => {
+  createNotification({
+    type: "SYSTEM_STARTED",
+    severity: "info",
+    title: "DespachaMoto online",
+    message: `Servidor v${VERSION} iniciado e conectado.`,
+    uniqueKey: `system-start:${Date.now()}`
+  }).catch(() => {});
+}, 2500);
+
 
 app.use((err, req, res, next) => {
   console.error(err);

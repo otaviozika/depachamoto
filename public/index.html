@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.4</title>
+<title>DespachaMoto 1.5</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -30,8 +30,15 @@
 .comparison-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.comparison-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.trend-up{color:#166534}.trend-down{color:#991b1b}.trend-flat{color:#475569}
 .filters{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;padding:15px}.filters input,.filters select{padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff;width:100%}.pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:15px;flex-wrap:wrap}.preset-buttons{display:flex;gap:7px;flex-wrap:wrap}.kpi-wide{grid-column:span 2}
 
+
+.bell-wrap{position:relative}.bell-btn{position:relative}.bell-count{position:absolute;right:-5px;top:-7px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:#dc2626;color:#fff;display:grid;place-items:center;font-size:10px;font-weight:900;border:2px solid #fff}
+.notification-panel{position:fixed;right:18px;top:76px;width:min(430px,calc(100vw - 28px));max-height:72vh;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 25px 70px rgba(15,23,42,.25);z-index:40;overflow:hidden}.notification-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}.notification-list{overflow:auto;max-height:60vh}.notification-item{padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer}.notification-item.unread{background:#fffbeb}.notification-item:hover{background:#f8fafc}.notification-title{font-weight:900}.notification-message{font-size:13px;margin-top:4px}.notification-meta{font-size:11px;color:var(--muted);margin-top:7px}
+.switch-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.switch{width:48px;height:28px;border-radius:999px;background:#cbd5e1;position:relative;cursor:pointer;border:0}.switch:after{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.15s}.switch.on{background:#16a34a}.switch.on:after{left:23px}
+.manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.manual-orders{display:grid;gap:8px}.origin-admin{background:#dbeafe;color:#1d4ed8}.origin-courier{background:#eef2f7;color:#475569}
+.current-active-note{padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;margin-bottom:12px}
+
 @media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:720px){.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -73,6 +80,7 @@
       <button data-page="management">📊 Gestão</button>
       <button data-page="couriers">♙ Motoboys</button>
       <button data-page="alerts">⚙ Alertas</button>
+      <button data-page="notifications">🔔 Notificações</button>
       <button data-page="security">🔒 Segurança</button>
       <button data-page="audit">◉ Auditoria</button>
     </nav>
@@ -81,6 +89,10 @@
     <div class="top">
       <b id="pageTitle">Dashboard</b>
       <div class="actions">
+        <button class="btn primary" onclick="openManualDispatchModal()">+ Saída manual</button>
+        <div class="bell-wrap">
+          <button class="btn outline bell-btn" onclick="toggleNotificationPanel()">🔔<span id="notificationCount" class="bell-count hidden">0</span></button>
+        </div>
         <button id="installBtnAdmin" class="btn outline hidden" onclick="installApp()">Instalar app</button>
         <button class="btn outline" onclick="openPasswordModal()">Minha senha</button>
         <span id="adminName"></span>
@@ -126,7 +138,7 @@
           </div>
           <div class="table-wrap">
             <table class="table">
-              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th><th>Status</th></tr></thead>
+              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Origem</th><th>Saída</th><th>Status</th></tr></thead>
               <tbody id="historyTable"></tbody>
             </table>
           </div>
@@ -237,7 +249,38 @@
         </div></div>
       </section>
 
-      <section id="security" class="page">
+      
+      <section id="notifications" class="page">
+        <h1 class="title">Notificações</h1>
+        <p class="muted">Escolha quais eventos devem gerar alerta para o administrador.</p>
+        <div class="security-grid" style="margin-top:18px">
+          <div class="section">
+            <div class="section-head"><b>Tipos de alerta</b></div>
+            <div style="padding:20px">
+              <div class="switch-row"><div><b>🟡 Atenção</b><div class="small muted">Quando atingir o primeiro limite de tempo.</div></div><button id="notifyAttention" class="switch" onclick="toggleNotifySetting('attention')"></button></div>
+              <div class="switch-row"><div><b>🟠 Demorado</b><div class="small muted">Quando atingir o segundo limite.</div></div><button id="notifyDelayed" class="switch" onclick="toggleNotifySetting('delayed')"></button></div>
+              <div class="switch-row"><div><b>🔴 Crítico</b><div class="small muted">Quando atingir o limite crítico.</div></div><button id="notifyCritical" class="switch" onclick="toggleNotifySetting('critical')"></button></div>
+              <div class="switch-row"><div><b>👤 Novo cadastro</b><div class="small muted">Motoboy aguardando aprovação.</div></div><button id="notifyRegistration" class="switch" onclick="toggleNotifySetting('registration')"></button></div>
+              <div class="switch-row"><div><b>🔊 Som</b><div class="small muted">Emite som quando um novo alerta chegar com o sistema aberto.</div></div><button id="notifySound" class="switch" onclick="toggleNotifySetting('sound')"></button></div>
+              <div id="notifySettingsMsg"></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-head"><b>Notificações no aparelho</b></div>
+            <div style="padding:20px">
+              <p class="muted">Com o DespachaMoto aberto ou instalado, o navegador pode exibir alertas do sistema.</p>
+              <button class="btn primary" onclick="requestBrowserNotifications()">Permitir notificações</button>
+              <p id="browserNotificationStatus" class="small muted" style="margin-top:12px"></p>
+            </div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:18px">
+          <div class="section-head"><b>Histórico recente</b><button class="btn outline" onclick="loadNotifications()">Atualizar</button></div>
+          <div id="notificationsPageList"></div>
+        </div>
+      </section>
+
+<section id="security" class="page">
         <h1 class="title">Segurança e backup</h1><p class="muted">Controles importantes para uso diário.</p>
         <div class="security-grid" style="margin-top:18px">
           <div class="section"><div class="section-head"><b>Cadastro público</b></div><div style="padding:20px"><p id="registrationStatusText"></p><button id="registrationToggleBtn" class="btn outline" onclick="togglePublicRegistration()">Carregando...</button></div></div>
@@ -251,6 +294,15 @@
     </div>
   </main>
   <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
+</div>
+
+
+<div id="notificationPanel" class="notification-panel hidden">
+  <div class="notification-head">
+    <div><b>🔔 Notificações</b><div id="notificationSubtitle" class="small muted">0 não lidas</div></div>
+    <div class="actions"><button class="btn outline" onclick="markAllNotificationsRead()">Marcar todas</button><button class="btn outline" onclick="toggleNotificationPanel()">×</button></div>
+  </div>
+  <div id="notificationList" class="notification-list"></div>
 </div>
 
 <div id="courierApp" class="hidden">
@@ -283,6 +335,38 @@
 
 <div id="courierModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
 
+
+<div id="manualDispatchModal" class="modal">
+  <div class="modal-box" style="width:min(620px,100%)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h2 style="margin:0">Registrar saída manual</h2><div class="small muted">Use quando o motoboy não conseguir registrar pelo próprio celular.</div></div>
+      <button class="btn outline" onclick="closeManualDispatchModal()">×</button>
+    </div>
+    <div id="manualMsg"></div>
+    <form id="manualDispatchForm" class="form" style="margin-top:16px">
+      <label>Motoboy
+        <select id="manualCourier" required style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;background:#fff">
+          <option value="">Selecione...</option>
+        </select>
+      </label>
+      <div id="manualActiveInfo"></div>
+      <div>
+        <b style="font-size:13px">Pedidos</b>
+        <div id="manualOrderFields" class="manual-orders" style="margin-top:8px"></div>
+        <div class="actions" style="margin-top:8px">
+          <button id="manualAddOrderBtn" type="button" class="btn outline" onclick="addManualOrderField()">+ Adicionar pedido</button>
+          <span id="manualOrderCounter" class="small muted">1 de 5</span>
+        </div>
+      </div>
+      <label>Motivo / observação (opcional)
+        <input id="manualReason" maxlength="250" placeholder="Ex.: celular sem bateria">
+      </label>
+      <div class="warning"><b>Importante:</b> se este motoboy já estiver na rua, a saída anterior será encerrada automaticamente e esta nova saída será iniciada.</div>
+      <button id="manualSubmit" class="btn primary">Confirmar saída manual</button>
+    </form>
+  </div>
+</div>
+
 <div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<input id="currentPassword" type="password" required></label><label>Nova senha<input id="newPassword" type="password" minlength="8" required></label><label>Confirmar nova senha<input id="newPassword2" type="password" minlength="8" required></label><button class="btn primary">Alterar senha</button></form></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -290,6 +374,8 @@
 let me=null,dashboard=null,serverOffsetMs=0,deferredInstallPrompt=null;
 let alertSettings={attention:40,delayed:50,critical:60};
 let securityState={registrationEnabled:true,adminPasswordLooksDefault:false};
+let notificationSettings={attention:true,delayed:true,critical:true,registration:true,sound:true};
+let notificationState={rows:[],unread:0};
 let historyState={page:1,pageSize:25,pages:1,total:0};
 const $=id=>document.getElementById(id);
 
@@ -342,7 +428,7 @@ async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}loca
 function showApp(){
   $('loginScreen').classList.add('hidden');
   if(me.role==='admin'){
-    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();loadAdmin();loadSecurity();
+    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
     $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();loadCourier();
   }
@@ -355,7 +441,7 @@ async function loadAdmin(){
   const m=dashboard.metrics;
   $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
   $('alertAttention').value=alertSettings.attention;$('alertDelayed').value=alertSettings.delayed;$('alertCritical').value=alertSettings.critical;
-  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();
+  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();
 }
 function renderRoad(){
   const a=dashboard.active;
@@ -381,11 +467,11 @@ async function loadHistory(){
   try{
     const d=await api('/api/admin/history?'+p.toString());
     historyState={...historyState,...d.pagination};
-    $('historyTable').innerHTML=d.rows.map(x=>`<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(5);
+    $('historyTable').innerHTML=d.rows.map(x=>`<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(6);
     $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
     $('historyPrev').disabled=historyState.page<=1;
     $('historyNext').disabled=historyState.page>=historyState.pages;
-  }catch(err){$('historyTable').innerHTML=`<tr><td colspan="5"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}
+  }catch(err){$('historyTable').innerHTML=`<tr><td colspan="6"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}
 }
 function applyHistoryFilters(){historyState.page=1;loadHistory()}
 function changeHistoryPage(delta){const next=historyState.page+delta;if(next<1||next>historyState.pages)return;historyState.page=next;loadHistory()}
@@ -421,27 +507,78 @@ async function resetCourierPassword(id,name){
   }catch(err){alert(err.message)}
 }
 
+let courierActiveDispatch=null;
 async function loadCourier(){
   const d=await api('/api/courier/dashboard');
   me.mustChangePassword=!!d.mustChangePassword;
+  courierActiveDispatch=d.active||null;
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
   $('departureSubmit').disabled=!!d.mustChangePassword;
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
   $('myHistory').innerHTML=d.recent.map(x=>`<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(3);
-  if(d.active){$('departureCard').classList.add('hidden');$('activeDispatch').innerHTML=`<div class="hero"><h2>🟠 Você está na rua</h2>${ordersHtml(d.active)}<div style="margin-top:14px">Saiu às <b>${localTime(d.active.departed_at)}</b></div><div style="margin-top:8px">Tempo na rua<div class="big live" data-start-ms="${Date.parse(d.active.departed_at)}">${elapsedFromMs(Date.parse(d.active.departed_at))}</div></div></div>`}else{$('departureCard').classList.remove('hidden');$('activeDispatch').innerHTML='';if(!$('orderFields').querySelector('.order-row'))resetOrderFields()}
+
+  $('departureCard').classList.remove('hidden');
+  if(!$('orderFields').querySelector('.order-row'))resetOrderFields();
+
+  if(d.active){
+    $('activeDispatch').innerHTML=`<div class="hero"><h2>🟠 Você está na rua</h2>${ordersHtml(d.active)}<div style="margin-top:14px">Saiu às <b>${localTime(d.active.departed_at)}</b></div><div style="margin-top:8px">Tempo na rua<div class="big live" data-start-ms="${Date.parse(d.active.departed_at)}">${elapsedFromMs(Date.parse(d.active.departed_at))}</div></div></div>`;
+    if(!$('currentDepartureNote')){
+      const note=document.createElement('div');
+      note.id='currentDepartureNote';
+      note.className='current-active-note';
+      note.innerHTML='<b>Nova saída:</b> você pode registrar os próximos pedidos. Ao confirmar, a saída atual será encerrada automaticamente e o cronômetro recomeçará.';
+      $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
+    }
+  }else{
+    $('activeDispatch').innerHTML='';
+    $('currentDepartureNote')?.remove();
+  }
 }
-async function depart(e){e.preventDefault();message('departureMsg','','');const orders=getOrderValues();if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');try{await api('/api/courier/depart',{method:'POST',body:JSON.stringify({order_numbers:orders})});resetOrderFields();message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');await loadCourier()}catch(err){message('departureMsg',err.message,'err')}}
+async function depart(e){
+  e.preventDefault();
+  message('departureMsg','','');
+  const orders=getOrderValues();
+  if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');
 
+  let confirmNew=false;
+  if(courierActiveDispatch){
+    confirmNew=confirm('Você possui uma saída ativa. Ao continuar, a saída anterior será encerrada automaticamente e estes pedidos iniciarão uma nova saída. Confirmar?');
+    if(!confirmNew)return;
+  }
 
-function setPeriodPreset(type){
-  const today=spToday();
-  let from=today,to=today;
-  if(type==='yesterday'){from=to=addDaysIso(today,-1)}
-  else if(type==='7d'){from=addDaysIso(today,-6)}
-  else if(type==='month'){from=firstDayMonthIso(today)}
-  else if(type==='prevmonth'){[from,to]=prevMonthRange(today)}
-  $('periodFrom').value=from;$('periodTo').value=to;
-  loadManagement();
+  const btn=$('departureSubmit');
+  btn.disabled=true;
+  const token=(crypto?.randomUUID?.()||('web-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
+  try{
+    const r=await fetch('/api/courier/depart',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({order_numbers:orders,confirm_new_departure:confirmNew,client_token:token})
+    });
+    let d={};try{d=await r.json()}catch{}
+    if(!r.ok){
+      if(r.status===409&&d.code==='ACTIVE_DISPATCH_CONFIRMATION'){
+        const ok=confirm('Existe uma saída ativa. Deseja encerrá-la e iniciar a nova saída?');
+        if(!ok)return;
+        const r2=await fetch('/api/courier/depart',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({order_numbers:orders,confirm_new_departure:true,client_token:token})
+        });
+        let d2={};try{d2=await r2.json()}catch{}
+        if(!r2.ok)throw new Error(d2.error||'Erro ao registrar saída.');
+      }else{
+        throw new Error(d.error||'Erro ao registrar saída.');
+      }
+    }
+    resetOrderFields();
+    message('departureMsg',`Nova saída registrada com ${orders.length} pedido(s).`,'ok');
+    await loadCourier();
+  }catch(err){
+    message('departureMsg',err.message,'err');
+  }finally{
+    btn.disabled=!!me.mustChangePassword;
+  }
 }
 function trendHtml(change){
   const cls=change>0?'trend-up':change<0?'trend-down':'trend-flat';
@@ -495,6 +632,179 @@ function exportPeriod(){
   const from=$('periodFrom').value||firstDayMonthIso(spToday());
   const to=$('periodTo').value||spToday();
   window.location.href=`/api/admin/reports/period.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+}
+
+
+function resetManualOrderFields(){$('manualOrderFields').innerHTML='';addManualOrderField()}
+function addManualOrderField(){
+  const n=$('manualOrderFields').querySelectorAll('.manual-order-input').length;
+  if(n>=5)return;
+  const row=document.createElement('div');
+  row.className='order-row';
+  row.innerHTML=`<input class="manual-order-input" placeholder="Pedido ${n+1}" maxlength="50" required style="padding:11px;border:1px solid var(--line);border-radius:9px;width:100%">${n>0?'<button type="button" class="btn danger" onclick="this.parentElement.remove();updateManualOrderUi()">×</button>':'<span></span>'}`;
+  $('manualOrderFields').appendChild(row);
+  updateManualOrderUi();
+  row.querySelector('input').focus();
+}
+function updateManualOrderUi(){
+  const n=$('manualOrderFields').querySelectorAll('.manual-order-input').length;
+  $('manualOrderCounter').textContent=`${n} de 5`;
+  $('manualAddOrderBtn').disabled=n>=5;
+}
+function manualOrders(){return[...document.querySelectorAll('.manual-order-input')].map(x=>x.value.trim()).filter(Boolean)}
+function populateManualCouriers(){
+  if(!dashboard)return;
+  const activeApproved=dashboard.couriers.filter(x=>x.active&&x.approval_status==='APPROVED');
+  $('manualCourier').innerHTML='<option value="">Selecione...</option>'+activeApproved.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+}
+function updateManualActiveInfo(){
+  const id=Number($('manualCourier').value);
+  const active=dashboard?.active?.find(x=>Number(x.courier_id)===id);
+  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} já está na rua</b>${ordersHtml(active)}<div class="small">Esta saída será encerrada automaticamente ao confirmar a nova.</div></div>`:'';
+}
+function openManualDispatchModal(){
+  if(!dashboard)return;
+  populateManualCouriers();
+  resetManualOrderFields();
+  $('manualReason').value='';
+  $('manualActiveInfo').innerHTML='';
+  $('manualMsg').innerHTML='';
+  $('manualDispatchModal').style.display='grid';
+}
+function closeManualDispatchModal(){$('manualDispatchModal').style.display='none'}
+async function submitManualDispatch(e){
+  e.preventDefault();
+  const courierId=Number($('manualCourier').value);
+  const orders=manualOrders();
+  if(!courierId)return message('manualMsg','Selecione o motoboy.','err');
+  if(!orders.length)return message('manualMsg','Informe pelo menos um pedido.','err');
+
+  const active=dashboard?.active?.find(x=>Number(x.courier_id)===courierId);
+  if(active&&!confirm('Este motoboy já possui uma saída ativa. Encerrar a anterior e iniciar esta nova saída?'))return;
+
+  const btn=$('manualSubmit');btn.disabled=true;
+  const token=(crypto?.randomUUID?.()||('admin-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
+  try{
+    const d=await api('/api/admin/dispatches/manual',{
+      method:'POST',
+      body:JSON.stringify({
+        courier_id:courierId,
+        order_numbers:orders,
+        reason:$('manualReason').value.trim(),
+        client_token:token
+      })
+    });
+    message('manualMsg','Saída manual registrada com sucesso.','ok');
+    await loadAdmin();
+    setTimeout(closeManualDispatchModal,700);
+  }catch(err){message('manualMsg',err.message,'err')}
+  finally{btn.disabled=false}
+}
+
+function notificationSeverityBadge(s){
+  if(s==='critical')return'<span class="badge red">CRÍTICO</span>';
+  if(s==='delayed')return'<span class="badge orange">DEMORADO</span>';
+  if(s==='warning')return'<span class="badge yellow">ATENÇÃO</span>';
+  return'<span class="badge blue">INFO</span>';
+}
+function renderNotificationCount(){
+  $('notificationCount').textContent=notificationState.unread;
+  $('notificationCount').classList.toggle('hidden',notificationState.unread<1);
+  $('notificationSubtitle').textContent=`${notificationState.unread} não lida(s)`;
+}
+function notificationItemHtml(n){
+  return `<div class="notification-item ${n.read_at?'':'unread'}" onclick="markNotificationRead(${n.id})">
+    <div style="display:flex;justify-content:space-between;gap:10px"><div class="notification-title">${escapeHtml(n.title)}</div>${notificationSeverityBadge(n.severity)}</div>
+    <div class="notification-message">${escapeHtml(n.message)}</div>
+    <div class="notification-meta">${localDate(n.created_at)}${n.read_at?' • lida':''}</div>
+  </div>`;
+}
+function renderNotifications(){
+  renderNotificationCount();
+  const content=notificationState.rows.map(notificationItemHtml).join('')||'<div class="empty">Nenhuma notificação.</div>';
+  $('notificationList').innerHTML=content;
+  $('notificationsPageList').innerHTML=content;
+}
+async function loadNotifications(){
+  if(me?.role!=='admin')return;
+  try{
+    const d=await api('/api/admin/notifications?limit=80');
+    notificationState={rows:d.rows,unread:d.unread};
+    renderNotifications();
+  }catch{}
+}
+function toggleNotificationPanel(){
+  $('notificationPanel').classList.toggle('hidden');
+  if(!$('notificationPanel').classList.contains('hidden'))loadNotifications();
+}
+async function markNotificationRead(id){
+  const n=notificationState.rows.find(x=>Number(x.id)===Number(id));
+  if(n&&!n.read_at){
+    try{await api('/api/admin/notifications/'+id+'/read',{method:'POST'});await loadNotifications()}catch{}
+  }
+}
+async function markAllNotificationsRead(){
+  try{await api('/api/admin/notifications/read-all',{method:'POST'});await loadNotifications()}catch{}
+}
+async function loadNotificationSettings(){
+  if(me?.role!=='admin')return;
+  try{
+    const d=await api('/api/admin/settings/notifications');
+    notificationSettings=d.settings;
+    renderNotificationSettings();
+  }catch{}
+  updateBrowserNotificationStatus();
+}
+function renderNotificationSettings(){
+  for(const key of ['attention','delayed','critical','registration','sound']){
+    const id='notify'+key[0].toUpperCase()+key.slice(1);
+    $(id)?.classList.toggle('on',!!notificationSettings[key]);
+  }
+}
+async function toggleNotifySetting(key){
+  notificationSettings[key]=!notificationSettings[key];
+  renderNotificationSettings();
+  try{
+    const d=await api('/api/admin/settings/notifications',{method:'PUT',body:JSON.stringify(notificationSettings)});
+    notificationSettings=d.settings;
+    renderNotificationSettings();
+    message('notifySettingsMsg','Configurações salvas.','ok');
+  }catch(err){
+    notificationSettings[key]=!notificationSettings[key];
+    renderNotificationSettings();
+    message('notifySettingsMsg',err.message,'err');
+  }
+}
+function beep(){
+  if(!notificationSettings.sound)return;
+  try{
+    const C=window.AudioContext||window.webkitAudioContext;
+    const ctx=new C();
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=880;gain.gain.value=.05;osc.start();
+    setTimeout(()=>{osc.stop();ctx.close()},180);
+  }catch{}
+}
+function updateBrowserNotificationStatus(){
+  if(!('Notification'in window))return $('browserNotificationStatus').textContent='Este navegador não suporta notificações.';
+  $('browserNotificationStatus').textContent=`Permissão atual: ${Notification.permission}`;
+}
+async function requestBrowserNotifications(){
+  if(!('Notification'in window))return alert('Este navegador não suporta notificações.');
+  const result=await Notification.requestPermission();
+  updateBrowserNotificationStatus();
+  if(result==='granted')new Notification('DespachaMoto',{body:'Notificações do sistema autorizadas.'});
+}
+function showBrowserNotification(n){
+  if(!('Notification'in window)||Notification.permission!=='granted')return;
+  try{
+    if(navigator.serviceWorker?.controller){
+      navigator.serviceWorker.ready.then(reg=>reg.showNotification(n.title,{body:n.message,icon:'/icon.svg',tag:`despachamoto-${n.id}`}));
+    }else{
+      new Notification(n.title,{body:n.message,icon:'/icon.svg',tag:`despachamoto-${n.id}`});
+    }
+  }catch{}
 }
 
 async function loadReport(){
@@ -582,7 +892,10 @@ const auditNames={
   ALERT_SETTINGS_UPDATED:'Configuração de alertas alterada',
   PUBLIC_REGISTRATION_SETTING_CHANGED:'Configuração de cadastro público alterada',
   FULL_HISTORY_EXPORTED:'Backup completo exportado',
-  PERIOD_REPORT_EXPORTED:'Relatório por período exportado'
+  PERIOD_REPORT_EXPORTED:'Relatório por período exportado',
+  MANUAL_DEPARTURE_REGISTERED:'Saída manual registrada pelo administrador',
+  NOTIFICATIONS_MARKED_READ:'Notificações marcadas como lidas',
+  NOTIFICATION_SETTINGS_UPDATED:'Configurações de notificações alteradas'
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
@@ -590,6 +903,7 @@ function friendlyAuditDetails(x){
   if(x.action==='PUBLIC_REGISTRATION_SETTING_CHANGED')return d.enabled?'Cadastro público ativado':'Cadastro público desativado';
   if(x.action==='FULL_HISTORY_EXPORTED')return `${d.rows||0} registros exportados`;
   if(x.action==='PASSWORD_RESET_BY_ADMIN')return `Usuário: ${d.target_username||'—'}`;
+  if(x.action==='MANUAL_DEPARTURE_REGISTERED')return `${d.courier_name||'Motoboy'} • ${(d.order_numbers||[]).join(', ')} • ${d.reason||''}`;
   return '';
 }
 async function loadAudit(){
@@ -605,10 +919,11 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
   else if(b.dataset.page==='report')loadReport();
   else if(b.dataset.page==='management')loadManagement();
+  else if(b.dataset.page==='notifications'){loadNotifications();loadNotificationSettings();}
   else if(b.dataset.page==='history')loadHistory();
   else if(b.dataset.page==='security')loadSecurity();
   else loadAdmin();
@@ -619,6 +934,8 @@ $('registerForm').onsubmit=register;
 $('departureForm').onsubmit=depart;
 $('courierForm').onsubmit=createCourier;
 $('passwordForm').onsubmit=changePassword;
+$('manualDispatchForm').onsubmit=submitManualDispatch;
+$('manualCourier').onchange=updateManualActiveInfo;
 
 const socket=io();
 socket.on('server:time',d=>syncServerTime(d.now));
@@ -626,6 +943,17 @@ socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
+socket.on('notification:new',n=>{
+  if(me?.role!=='admin')return;
+  notificationState.rows.unshift(n);
+  notificationState.unread++;
+  renderNotifications();
+  beep();
+  showBrowserNotification(n);
+});
+socket.on('notification:changed',()=>{if(me?.role==='admin')loadNotifications()});
+socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotificationSettings()});
+
 setInterval(()=>document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs)),1000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));

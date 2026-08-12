@@ -1,7 +1,8 @@
-# Backup antes da v1.4
+# Backup antes da v1.5
 
-1. Anote o commit da v1.3 atualmente online.
-2. Em Segurança, baixe o backup CSV completo.
-3. Não apague nem recrie o PostgreSQL.
-4. Não altere as variáveis do Render.
-5. Depois da atualização, teste Gestão e Histórico antes de liberar o uso normal.
+1. No GitHub, anote o commit da v1.4 atualmente online.
+2. No DespachaMoto, abra `Segurança`.
+3. Clique em `Baixar backup CSV`.
+4. Não apague nem recrie o PostgreSQL.
+5. Não altere as variáveis do Render.
+6. Depois do deploy, teste uma nova saída automática com uma conta de teste antes do horário de pico.
