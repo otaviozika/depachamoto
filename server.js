@@ -32,9 +32,7 @@ const io = new Server(server);
 
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -82,6 +80,16 @@ CREATE INDEX IF NOT EXISTS dispatches_courier_idx ON dispatches(courier_id);
 CREATE INDEX IF NOT EXISTS dispatches_departed_idx ON dispatches(departed_at);
 CREATE INDEX IF NOT EXISTS dispatches_status_idx ON dispatches(status);
 
+CREATE TABLE IF NOT EXISTS dispatch_orders (
+  id BIGSERIAL PRIMARY KEY,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  order_number TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(dispatch_id, order_number)
+);
+
+CREATE INDEX IF NOT EXISTS dispatch_orders_dispatch_idx ON dispatch_orders(dispatch_id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id),
@@ -91,6 +99,19 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   details JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+`);
+
+
+// Migração automática: todas as saídas antigas passam a ter pelo menos um item em dispatch_orders.
+// Isso preserva os dados da versão 1.0.
+await pool.query(`
+INSERT INTO dispatch_orders(dispatch_id, order_number)
+SELECT d.id, d.order_number
+FROM dispatches d
+WHERE NOT EXISTS (
+  SELECT 1 FROM dispatch_orders o WHERE o.dispatch_id=d.id
+)
+ON CONFLICT DO NOTHING;
 `);
 
 async function seedAdmin() {
@@ -131,6 +152,41 @@ async function audit(userId, action, entity, entityId, details = {}) {
     [userId || null, action, entity, entityId || null, JSON.stringify(details)]
   );
 }
+function normalizeOrders(body) {
+  let raw = Array.isArray(body.order_numbers)
+    ? body.order_numbers
+    : body.order_number != null ? [body.order_number] : [];
+
+  const orders = [];
+  const seen = new Set();
+
+  for (const item of raw) {
+    let order = String(item ?? "").trim();
+    if (!order) continue;
+    if (order.length > 50) throw Object.assign(new Error("Número de pedido muito longo."), { status: 400 });
+    if (!order.startsWith("#")) order = "#" + order;
+    const key = order.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      orders.push(order);
+    }
+  }
+
+  if (orders.length < 1) throw Object.assign(new Error("Informe pelo menos um número de pedido."), { status: 400 });
+  if (orders.length > 5) throw Object.assign(new Error("É permitido registrar no máximo 5 pedidos por saída."), { status: 400 });
+  return orders;
+}
+
+const orderArraySql = alias => `
+COALESCE(
+  (
+    SELECT json_agg(o.order_number ORDER BY o.id)
+    FROM dispatch_orders o
+    WHERE o.dispatch_id=${alias}.id
+  ),
+  json_build_array(${alias}.order_number)
+) AS order_numbers
+`;
 
 app.post("/api/login", asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
@@ -142,15 +198,9 @@ app.post("/api/login", asyncRoute(async (req, res) => {
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
   }
 
-  req.session.user = {
-    id: user.id,
-    name: user.name,
-    username: user.username,
-    role: user.role
-  };
-
+  req.session.user = { id: user.id, name: user.name, username: user.username, role: user.role };
   await audit(user.id, "LOGIN", "user", user.id, {});
-  res.json({ user: req.session.user });
+  res.json({ user: req.session.user, server_now: new Date().toISOString() });
 }));
 
 app.post("/api/register", asyncRoute(async (req, res) => {
@@ -184,67 +234,97 @@ app.post("/api/logout", auth, asyncRoute(async (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 }));
 
-app.get("/api/me", auth, (req, res) => res.json({ user: req.session.user }));
+app.get("/api/me", auth, (req, res) => res.json({ user: req.session.user, server_now: new Date().toISOString() }));
 
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
   const active = (await pool.query(`
-    SELECT id,dispatch_code,order_number,departed_at,status
-    FROM dispatches
-    WHERE courier_id=$1 AND status='ON_ROAD'
-    ORDER BY id DESC LIMIT 1
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
+           ${orderArraySql("d")}
+    FROM dispatches d
+    WHERE d.courier_id=$1 AND d.status='ON_ROAD'
+    ORDER BY d.id DESC LIMIT 1
   `, [req.session.user.id])).rows[0] || null;
 
+  // As estatísticas agora contam PEDIDOS, não apenas saídas.
   const stats = (await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE departed_at >= date_trunc('day', NOW() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo') AS today,
-      COUNT(*) FILTER (WHERE departed_at >= NOW()-INTERVAL '6 days') AS week,
-      COUNT(*) FILTER (
-        WHERE (departed_at AT TIME ZONE 'America/Sao_Paulo') >= date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-      ) AS month
-    FROM dispatches WHERE courier_id=$1
+      COUNT(o.id) FILTER (
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS today,
+      COUNT(o.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '6 days')::int AS week,
+      COUNT(o.id) FILTER (
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo') >=
+              date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
+      )::int AS month
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE d.courier_id=$1
   `, [req.session.user.id])).rows[0];
 
   const recent = (await pool.query(`
-    SELECT id,dispatch_code,order_number,departed_at,status,released_at
-    FROM dispatches
-    WHERE courier_id=$1
-    ORDER BY id DESC LIMIT 30
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.released_at,
+           ${orderArraySql("d")}
+    FROM dispatches d
+    WHERE d.courier_id=$1
+    ORDER BY d.id DESC LIMIT 30
   `, [req.session.user.id])).rows;
 
-  res.json({ active, stats, recent });
+  res.json({ active, stats, recent, server_now: new Date().toISOString() });
 }));
 
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
-  let order = String(req.body.order_number || "").trim();
-  if (!order) return res.status(400).json({ error: "Informe o número do pedido." });
-  if (order.length > 50) return res.status(400).json({ error: "Número de pedido muito longo." });
-  if (!order.startsWith("#")) order = "#" + order;
+  const orders = normalizeOrders(req.body);
 
-  const existing = await pool.query(
-    "SELECT id,order_number FROM dispatches WHERE courier_id=$1 AND status='ON_ROAD' LIMIT 1",
-    [req.session.user.id]
-  );
+  const existing = await pool.query(`
+    SELECT d.id,d.order_number,${orderArraySql("d")}
+    FROM dispatches d
+    WHERE d.courier_id=$1 AND d.status='ON_ROAD'
+    LIMIT 1
+  `, [req.session.user.id]);
+
   if (existing.rowCount) {
+    const current = existing.rows[0].order_numbers || [existing.rows[0].order_number];
     return res.status(409).json({
-      error: `Você já está na rua com o pedido ${existing.rows[0].order_number}. O administrador precisa liberar seu status antes de uma nova saída.`
+      error: `Você já está na rua com ${current.length} pedido(s): ${current.join(", ")}. O administrador precisa liberar seu status antes de uma nova saída.`
     });
   }
 
-  const code = "DSP-" + Date.now().toString(36).toUpperCase();
-  const result = await pool.query(`
-    INSERT INTO dispatches(dispatch_code,order_number,courier_id)
-    VALUES($1,$2,$3)
-    RETURNING id,dispatch_code,order_number,departed_at,status
-  `, [code, order, req.session.user.id]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const result = await client.query(`
+      INSERT INTO dispatches(dispatch_code,order_number,courier_id)
+      VALUES($1,$2,$3)
+      RETURNING id,dispatch_code,order_number,departed_at,status
+    `, [code, orders[0], req.session.user.id]);
 
-  const dispatch = result.rows[0];
-  await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", dispatch.id, {
-    order_number: order,
-    departed_at: dispatch.departed_at
-  });
+    const dispatch = result.rows[0];
 
-  io.emit("dispatch:changed");
-  res.status(201).json({ dispatch });
+    for (const order of orders) {
+      await client.query(
+        "INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)",
+        [dispatch.id, order]
+      );
+    }
+    await client.query("COMMIT");
+
+    dispatch.order_numbers = orders;
+    await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", dispatch.id, {
+      order_numbers: orders,
+      order_count: orders.length,
+      departed_at: dispatch.departed_at
+    });
+
+    io.emit("dispatch:changed");
+    res.status(201).json({ dispatch, server_now: new Date().toISOString() });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -252,14 +332,25 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
     SELECT
       (SELECT COUNT(*) FROM users WHERE role='courier' AND active=true)::int AS active_couriers,
       (SELECT COUNT(*) FROM dispatches WHERE status='ON_ROAD')::int AS on_road,
-      (SELECT COUNT(*) FROM dispatches
-       WHERE (departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
-             (NOW() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS today
+      (
+        SELECT COUNT(o.id)
+        FROM dispatch_orders o
+        JOIN dispatches d ON d.id=o.dispatch_id
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )::int AS today_orders,
+      (
+        SELECT COUNT(o.id)
+        FROM dispatch_orders o
+        JOIN dispatches d ON d.id=o.dispatch_id
+        WHERE d.status='ON_ROAD'
+      )::int AS active_orders
   `)).rows[0];
 
   const active = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
-           u.id AS courier_id,u.name AS courier_name,u.username
+           u.id AS courier_id,u.name AS courier_name,u.username,
+           ${orderArraySql("d")}
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     WHERE d.status='ON_ROAD'
@@ -268,7 +359,8 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
 
   const recent = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.released_at,d.status,
-           u.name AS courier_name
+           u.name AS courier_name,
+           ${orderArraySql("d")}
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     ORDER BY d.id DESC LIMIT 150
@@ -277,7 +369,9 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
   const couriers = (await pool.query(`
     SELECT u.id,u.name,u.username,u.active,
       (
-        SELECT COUNT(*) FROM dispatches d
+        SELECT COUNT(o.id)
+        FROM dispatches d
+        JOIN dispatch_orders o ON o.dispatch_id=d.id
         WHERE d.courier_id=u.id
         AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
             (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
@@ -295,11 +389,13 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       activeCouriers: metrics.active_couriers,
       onRoad: metrics.on_road,
       available: Math.max(0, metrics.active_couriers - metrics.on_road),
-      today: metrics.today
+      todayOrders: metrics.today_orders,
+      activeOrders: metrics.active_orders
     },
     active,
     recent,
-    couriers
+    couriers,
+    server_now: new Date().toISOString()
   });
 }));
 
@@ -358,7 +454,7 @@ app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async 
   });
 
   io.emit("dispatch:changed");
-  res.json({ dispatch: q.rows[0] });
+  res.json({ dispatch: q.rows[0], server_now: new Date().toISOString() });
 }));
 
 app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -368,10 +464,10 @@ app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
     LEFT JOIN users u ON u.id=a.user_id
     ORDER BY a.id DESC LIMIT 300
   `)).rows;
-  res.json({ rows });
+  res.json({ rows, server_now: new Date().toISOString() });
 }));
 
-app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString(), version: "1.1.0" }));
 
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -385,8 +481,8 @@ setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 100
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: "Erro interno do servidor." });
+  res.status(err.status || 500).json({ error: err.message || "Erro interno do servidor." });
 });
 
 const port = Number(process.env.PORT || 3000);
-server.listen(port, () => console.log(`DespachaMoto 1.0 rodando na porta ${port}`));
+server.listen(port, () => console.log(`DespachaMoto 1.1 rodando na porta ${port}`));

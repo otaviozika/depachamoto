@@ -1,105 +1,52 @@
-# DespachaMoto 1.0 Online
+# DespachaMoto 1.1 Online
 
-Sistema real de despacho de motoboys.
+Atualização da versão 1.0 já publicada.
+
+## Novidades da v1.1
+
+- cronômetro de **tempo na rua** sincronizado com o horário do servidor;
+- atualização do cronômetro a cada segundo;
+- motoboy pode registrar **de 1 a 5 pedidos na mesma saída**;
+- todos os pedidos da mesma saída recebem o mesmo horário;
+- painel mostra todos os números dos pedidos;
+- contadores de hoje / 7 dias / mês agora contam **pedidos**, e não apenas saídas;
+- migração automática dos registros antigos da versão 1.0;
+- nenhuma conta existente é apagada;
+- histórico anterior é preservado.
+
+## Como atualizar o site que já está no Render
+
+Você NÃO precisa criar outro banco e NÃO precisa mudar as Environment Variables.
+
+No GitHub do projeto:
+
+1. substitua `server.js` pelo arquivo desta versão;
+2. substitua `public/index.html` pelo arquivo desta versão;
+3. substitua `package.json`;
+4. faça o Commit.
+
+O Render deve iniciar Auto-Deploy. Se não iniciar:
+
+`Render > despachamoto > Deploys > Manual Deploy > Deploy latest commit`
+
+A primeira inicialização da v1.1 cria automaticamente a tabela `dispatch_orders` e copia para ela os pedidos antigos.
 
 ## Regra operacional
 
-O motoboy **não dá baixa de entrega** e **não registra retorno**.
+O motoboy não registra entrega nem retorno.
 
-Fluxo:
-1. faz login;
-2. informa o número do pedido;
-3. toca em **Registrar saída**;
-4. o servidor grava o horário;
-5. o administrador vê a saída instantaneamente;
-6. o contador mostra há quanto tempo o motoboy está na rua;
-7. quando houver uma nova saída, o administrador pode liberar o motoboy anterior manualmente.
+Ao sair:
+- informa 1 a 5 pedidos;
+- clica em Registrar saída;
+- o horário é gravado pelo servidor;
+- o administrador vê o motoboy NA RUA;
+- o tempo continua contando;
+- quando for necessária uma nova saída, o administrador usa `Liberar para nova saída`.
 
-> Como você pediu para não registrar entrega/retorno, a liberação para a próxima saída é uma ação administrativa. Isso evita o sistema ficar bloqueado para sempre.
+## Banco
 
-## Recursos
+A versão 1.1 mantém as tabelas existentes e adiciona:
 
-- login real;
-- cadastro público de motoboys;
-- senha criptografada;
-- PostgreSQL;
-- sessão persistida no banco;
-- dashboard administrativo;
-- motoboys disponíveis / na rua;
-- registro de pedido e saída;
-- horário gerado pelo servidor;
-- contador em tempo real;
-- Socket.IO;
-- histórico de saídas;
-- total de saídas hoje / 7 dias / mês;
-- ativar/desativar motoboy;
-- liberar motoboy para uma nova saída;
-- auditoria;
-- mobile-first;
-- pronto para deploy.
+- `dispatch_orders`
 
-## Executar localmente
-
-1. Instale Node.js 20+.
-2. Crie um banco PostgreSQL.
-3. Copie `.env.example` para `.env`.
-4. Preencha `DATABASE_URL`.
-5. Rode:
-
-```bash
-npm install
-npm start
-```
-
-Abra:
-
-```text
-http://localhost:3000
-```
-
-## Conta administrativa
-
-Na primeira inicialização a conta é criada com as variáveis:
-
-- `ADMIN_USERNAME`
-- `ADMIN_PASSWORD`
-- `ADMIN_NAME`
-
-Padrão do `.env.example`:
-
-- usuário: `admin`
-- senha: `admin123`
-
-**Troque a senha antes de usar em produção.**
-
-## Publicar no Render
-
-1. Crie um repositório GitHub e envie estes arquivos.
-2. No Render, crie um PostgreSQL.
-3. Copie a `Internal Database URL` ou `External Database URL`.
-4. Crie um Web Service usando o repositório.
-5. Build Command: `npm install`
-6. Start Command: `npm start`
-7. Variáveis:
-   - `NODE_ENV=production`
-   - `DATABASE_URL=<sua url do postgres>`
-   - `SESSION_SECRET=<valor longo e aleatório>`
-   - `ADMIN_USERNAME=admin`
-   - `ADMIN_PASSWORD=<senha forte>`
-   - `ADMIN_NAME=Administrador`
-8. Faça o deploy.
-9. O Render fornecerá uma URL pública HTTPS.
-
-## Observação importante
-
-O sistema usa o horário do servidor. O frontend exibe as datas em `America/Sao_Paulo`.
-
-## Produção
-
-Recomendado:
-- domínio próprio;
-- PostgreSQL com backup;
-- senha administrativa forte;
-- políticas de privacidade/LGPD;
-- monitoramento do serviço;
-- plano de hospedagem sem suspensão por inatividade para uso operacional.
+Cada saída pode possuir até cinco pedidos.
