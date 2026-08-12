@@ -16,7 +16,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -747,6 +747,51 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     server_now: new Date().toISOString()
   });
 }));
+
+
+function normalizePeriodQuery(query) {
+  const from = validDate(query.from) ? String(query.from) : null;
+  const to = validDate(query.to) ? String(query.to) : null;
+  if (!from || !to) {
+    const err = new Error("Informe as datas inicial e final.");
+    err.status = 400;
+    throw err;
+  }
+  if (from > to) {
+    const err = new Error("A data inicial não pode ser maior que a data final.");
+    err.status = 400;
+    throw err;
+  }
+  return { from, to };
+}
+
+function parsePositiveInt(v, fallback, max = 500) {
+  const n = Number.parseInt(String(v ?? ""), 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(n, max);
+}
+
+function parseHistoryFilters(query) {
+  const page = parsePositiveInt(query.page, 1, 100000);
+  const pageSize = parsePositiveInt(query.page_size, 25, 100);
+  const courierId = query.courier_id && /^\d+$/.test(String(query.courier_id))
+    ? Number(query.courier_id)
+    : null;
+  const status = ["ON_ROAD", "RELEASED"].includes(String(query.status || "").toUpperCase())
+    ? String(query.status).toUpperCase()
+    : null;
+  const from = validDate(query.from) ? String(query.from) : null;
+  const to = validDate(query.to) ? String(query.to) : null;
+  const search = String(query.search || "").trim().slice(0, 100);
+
+  if (from && to && from > to) {
+    const err = new Error("A data inicial não pode ser maior que a data final.");
+    err.status = 400;
+    throw err;
+  }
+
+  return { page, pageSize, courierId, status, from, to, search };
+}
 
 app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
   const f = parseHistoryFilters(req.query);
