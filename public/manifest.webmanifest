@@ -1,0 +1,19 @@
+{
+  "name": "DespachaMoto",
+  "short_name": "DespachaMoto",
+  "description": "Sistema de despacho e acompanhamento de motoboys.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,52 +1,67 @@
-# DespachaMoto 1.1 Online
+# DespachaMoto 1.2 Online
 
-Atualização da versão 1.0 já publicada.
+Atualização segura da v1.1. O banco e os usuários existentes são preservados.
 
-## Novidades da v1.1
+## Novidades
 
-- cronômetro de **tempo na rua** sincronizado com o horário do servidor;
-- atualização do cronômetro a cada segundo;
-- motoboy pode registrar **de 1 a 5 pedidos na mesma saída**;
-- todos os pedidos da mesma saída recebem o mesmo horário;
-- painel mostra todos os números dos pedidos;
-- contadores de hoje / 7 dias / mês agora contam **pedidos**, e não apenas saídas;
-- migração automática dos registros antigos da versão 1.0;
-- nenhuma conta existente é apagada;
-- histórico anterior é preservado.
+### Aprovação de cadastro
+- novos cadastros públicos entram como **AGUARDANDO APROVAÇÃO**;
+- o administrador pode **Aprovar** ou **Recusar**;
+- usuários antigos são mantidos como aprovados;
+- cadastros feitos pelo próprio administrador já entram aprovados.
 
-## Como atualizar o site que já está no Render
+### Alertas de tempo
+Padrão:
+- até 40 min: Normal;
+- 40+ min: Atenção;
+- 50+ min: Demorado;
+- 60+ min: Crítico.
 
-Você NÃO precisa criar outro banco e NÃO precisa mudar as Environment Variables.
+Os três tempos podem ser alterados em **Alertas** no painel administrativo.
 
-No GitHub do projeto:
+### Relatório diário
+Nova tela **Relatório diário**:
+- pedidos do dia;
+- número de saídas;
+- motoboys utilizados;
+- maior número de pedidos em uma saída;
+- pedidos e saídas por motoboy;
+- primeira e última saída;
+- exportação CSV.
 
-1. substitua `server.js` pelo arquivo desta versão;
-2. substitua `public/index.html` pelo arquivo desta versão;
-3. substitua `package.json`;
-4. faça o Commit.
+### PWA
+O site inclui:
+- `manifest.webmanifest`;
+- `service-worker.js`;
+- ícone do app;
+- botão **Instalar app** quando o navegador oferecer instalação.
 
-O Render deve iniciar Auto-Deploy. Se não iniciar:
+## Atualizar a versão que já está online
 
+Não crie outro banco. Não altere `DATABASE_URL`.
+
+Use preferencialmente o pacote `despachamoto-v1.2-update-only.zip`.
+
+No GitHub, substitua/adicone:
+- `server.js`
+- `package.json`
+- `README.md`
+- `public/index.html`
+- `public/manifest.webmanifest`
+- `public/service-worker.js`
+- `public/icon.svg`
+
+Faça Commit. O Render deve iniciar Auto-Deploy. Se não iniciar:
 `Render > despachamoto > Deploys > Manual Deploy > Deploy latest commit`
 
-A primeira inicialização da v1.1 cria automaticamente a tabela `dispatch_orders` e copia para ela os pedidos antigos.
+## Backup recomendado antes do update
 
-## Regra operacional
+No GitHub, registre o commit atual da v1.1 (anote o SHA ou crie uma tag/release `v1.1-stable`) antes de enviar a v1.2. Assim você consegue voltar rapidamente à versão anterior se necessário.
 
-O motoboy não registra entrega nem retorno.
+## Migração de banco
 
-Ao sair:
-- informa 1 a 5 pedidos;
-- clica em Registrar saída;
-- o horário é gravado pelo servidor;
-- o administrador vê o motoboy NA RUA;
-- o tempo continua contando;
-- quando for necessária uma nova saída, o administrador usa `Liberar para nova saída`.
+A v1.2 cria automaticamente:
+- coluna `users.approval_status`;
+- tabela `app_settings`.
 
-## Banco
-
-A versão 1.1 mantém as tabelas existentes e adiciona:
-
-- `dispatch_orders`
-
-Cada saída pode possuir até cinco pedidos.
+Não remove tabelas nem registros anteriores.
