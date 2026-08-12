@@ -10,13 +10,15 @@ import pg from "pg";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
+import crypto from "crypto";
+import webpush from "web-push";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -29,7 +31,14 @@ if (process.env.NODE_ENV === "production" && (!process.env.SESSION_SECRET || pro
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  max: Number(process.env.DB_POOL_MAX || 20),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000
+});
+
+pool.on("error", err => {
+  console.error("PostgreSQL pool error:", err);
 });
 
 const app = express();
@@ -41,6 +50,13 @@ if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
 
 app.use(session({
   store: new PgSession({
@@ -98,6 +114,17 @@ ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
+CREATE TABLE IF NOT EXISTS dispatches (
+  id BIGSERIAL PRIMARY KEY,
+  dispatch_code TEXT UNIQUE NOT NULL,
+  order_number TEXT NOT NULL,
+  courier_id INTEGER NOT NULL REFERENCES users(id),
+  departed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  released_at TIMESTAMPTZ,
+  released_by INTEGER REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'ON_ROAD' CHECK (status IN ('ON_ROAD','RELEASED')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS registered_by INTEGER REFERENCES users(id);
@@ -114,44 +141,6 @@ ADD COLUMN IF NOT EXISTS closed_reason TEXT;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS client_token TEXT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS dispatches_client_token_unique_idx
-ON dispatches(client_token) WHERE client_token IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id BIGSERIAL PRIMARY KEY,
-  type TEXT NOT NULL,
-  severity TEXT NOT NULL DEFAULT 'info',
-  title TEXT NOT NULL,
-  message TEXT NOT NULL,
-  courier_id INTEGER REFERENCES users(id),
-  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE CASCADE,
-  unique_key TEXT UNIQUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  read_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS notifications_unread_idx
-ON notifications(read_at, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS notifications_dispatch_idx
-ON notifications(dispatch_id);
-
-CREATE TABLE IF NOT EXISTS dispatches (
-  id BIGSERIAL PRIMARY KEY,
-  dispatch_code TEXT UNIQUE NOT NULL,
-  order_number TEXT NOT NULL,
-  courier_id INTEGER NOT NULL REFERENCES users(id),
-  departed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  released_at TIMESTAMPTZ,
-  released_by INTEGER REFERENCES users(id),
-  status TEXT NOT NULL DEFAULT 'ON_ROAD' CHECK (status IN ('ON_ROAD','RELEASED')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS dispatches_courier_idx ON dispatches(courier_id);
-CREATE INDEX IF NOT EXISTS dispatches_departed_idx ON dispatches(departed_at);
-CREATE INDEX IF NOT EXISTS dispatches_status_idx ON dispatches(status);
-
 CREATE TABLE IF NOT EXISTS dispatch_orders (
   id BIGSERIAL PRIMARY KEY,
   dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
@@ -159,8 +148,6 @@ CREATE TABLE IF NOT EXISTS dispatch_orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(dispatch_id, order_number)
 );
-
-CREATE INDEX IF NOT EXISTS dispatch_orders_dispatch_idx ON dispatch_orders(dispatch_id);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
@@ -177,6 +164,62 @@ CREATE TABLE IF NOT EXISTS app_settings (
   setting_value TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  courier_id INTEGER REFERENCES users(id),
+  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE CASCADE,
+  unique_key TEXT UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS system_errors (
+  id BIGSERIAL PRIMARY KEY,
+  request_id TEXT,
+  method TEXT,
+  path TEXT,
+  status_code INTEGER,
+  message TEXT NOT NULL,
+  stack_preview TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS dispatches_client_token_unique_idx
+ON dispatches(client_token) WHERE client_token IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS dispatches_courier_idx ON dispatches(courier_id);
+CREATE INDEX IF NOT EXISTS dispatches_departed_idx ON dispatches(departed_at DESC);
+CREATE INDEX IF NOT EXISTS dispatches_status_idx ON dispatches(status);
+CREATE INDEX IF NOT EXISTS dispatches_active_courier_idx
+ON dispatches(courier_id,departed_at DESC) WHERE status='ON_ROAD';
+CREATE INDEX IF NOT EXISTS dispatch_orders_dispatch_idx ON dispatch_orders(dispatch_id);
+CREATE INDEX IF NOT EXISTS dispatch_orders_number_idx ON dispatch_orders(order_number);
+CREATE INDEX IF NOT EXISTS users_courier_status_idx
+ON users(role,approval_status,active);
+CREATE INDEX IF NOT EXISTS notifications_unread_idx
+ON notifications(read_at,created_at DESC);
+CREATE INDEX IF NOT EXISTS notifications_dispatch_idx
+ON notifications(dispatch_id);
+CREATE INDEX IF NOT EXISTS audit_logs_created_idx
+ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS system_errors_created_idx
+ON system_errors(created_at DESC);
 `);
 
 await pool.query(`
@@ -195,7 +238,10 @@ INSERT INTO app_settings(setting_key,setting_value) VALUES
   ('notify_delayed','true'),
   ('notify_critical','true'),
   ('notify_registration','true'),
-  ('notification_sound','true')
+  ('notification_sound','true'),
+  ('vapid_public_key',''),
+  ('vapid_private_key_enc',''),
+  ('vapid_subject','')
 ON CONFLICT (setting_key) DO NOTHING;
 `);
 
@@ -298,6 +344,123 @@ async function setSetting(key, value) {
   `, [key, String(value)]);
 }
 
+function secretCipherKey() {
+  return crypto.createHash("sha256")
+    .update(process.env.SESSION_SECRET || "despachamoto-dev-secret")
+    .digest();
+}
+
+function encryptSecret(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", secretCipherKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv.toString("base64url"), tag.toString("base64url"), encrypted.toString("base64url")].join(".");
+}
+
+function decryptSecret(value) {
+  const [ivB64, tagB64, dataB64] = String(value || "").split(".");
+  if (!ivB64 || !tagB64 || !dataB64) return "";
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    secretCipherKey(),
+    Buffer.from(ivB64, "base64url")
+  );
+  decipher.setAuthTag(Buffer.from(tagB64, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(dataB64, "base64url")),
+    decipher.final()
+  ]).toString("utf8");
+}
+
+async function getVapidConfig() {
+  const publicKey = await getSetting("vapid_public_key", "");
+  const encryptedPrivate = await getSetting("vapid_private_key_enc", "");
+  const subject = await getSetting("vapid_subject", "");
+  if (!publicKey || !encryptedPrivate || !subject) return null;
+  try {
+    return { publicKey, privateKey: decryptSecret(encryptedPrivate), subject };
+  } catch {
+    return null;
+  }
+}
+
+async function ensureVapidConfig(subject) {
+  let config = await getVapidConfig();
+  if (config) return config;
+
+  const keys = webpush.generateVAPIDKeys();
+  await setSetting("vapid_public_key", keys.publicKey);
+  await setSetting("vapid_private_key_enc", encryptSecret(keys.privateKey));
+  await setSetting("vapid_subject", subject);
+  config = { publicKey: keys.publicKey, privateKey: keys.privateKey, subject };
+  return config;
+}
+
+async function sendPushToAdmins(notification) {
+  const config = await getVapidConfig();
+  if (!config) return;
+
+  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+
+  const subs = (await pool.query(`
+    SELECT id,endpoint,p256dh,auth
+    FROM push_subscriptions
+    ORDER BY id
+  `)).rows;
+
+  if (!subs.length) return;
+
+  const payload = JSON.stringify({
+    id: notification.id,
+    title: notification.title,
+    message: notification.message,
+    severity: notification.severity,
+    type: notification.type
+  });
+
+  await Promise.allSettled(subs.map(async sub => {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth }
+      }, payload, { TTL: 120 });
+    } catch (err) {
+      if (err?.statusCode === 404 || err?.statusCode === 410) {
+        await pool.query("DELETE FROM push_subscriptions WHERE id=$1", [sub.id]);
+      } else {
+        throw err;
+      }
+    }
+  }));
+}
+
+function normalizeQueuedDepartureTime(value) {
+  const parsed = Date.parse(String(value || ""));
+  if (!Number.isFinite(parsed)) return null;
+  const now = Date.now();
+  if (parsed < now - (2 * 60 * 60 * 1000)) return null;
+  if (parsed > now + (2 * 60 * 1000)) return null;
+  return new Date(parsed).toISOString();
+}
+
+async function recordSystemError(req, statusCode, err) {
+  try {
+    await pool.query(`
+      INSERT INTO system_errors(request_id,method,path,status_code,message,stack_preview)
+      VALUES($1,$2,$3,$4,$5,$6)
+    `, [
+      req?.requestId || null,
+      req?.method || null,
+      String(req?.originalUrl || req?.url || "").slice(0, 500),
+      statusCode || 500,
+      String(err?.message || "Erro interno").slice(0, 1000),
+      String(err?.stack || "").slice(0, 3000)
+    ]);
+  } catch {}
+}
+
+
 async function notificationEnabled(key, fallback = "true") {
   return (await getSetting(key, fallback)) === "true";
 }
@@ -324,11 +487,16 @@ async function createNotification({
   `, [type,severity,title,message,courierId,dispatchId,uniqueKey]);
 
   const notification = q.rows[0] || null;
-  if (notification) io.emit("notification:new", notification);
+  if (notification) {
+    io.emit("notification:new", notification);
+    sendPushToAdmins(notification).catch(err => {
+      console.error("Web Push error:", err?.message || err);
+    });
+  }
   return notification;
 }
 
-async function closeActiveDispatch(client, courierId, releasedBy, reason) {
+async function closeActiveDispatch(client, courierId, releasedBy, reason, closedAt = null) {
   const active = await client.query(`
     SELECT id,dispatch_code,departed_at,status
     FROM dispatches
@@ -340,15 +508,21 @@ async function closeActiveDispatch(client, courierId, releasedBy, reason) {
 
   if (!active.rowCount) return null;
 
+  const requested = closedAt ? new Date(closedAt) : null;
+  const previousStart = new Date(active.rows[0].departed_at);
+  const effectiveClose = requested && requested >= previousStart
+    ? requested.toISOString()
+    : new Date().toISOString();
+
   const q = await client.query(`
     UPDATE dispatches
     SET status='RELEASED',
-        released_at=NOW(),
-        released_by=$1,
-        closed_reason=$2
-    WHERE id=$3 AND status='ON_ROAD'
+        released_at=$1::timestamptz,
+        released_by=$2,
+        closed_reason=$3
+    WHERE id=$4 AND status='ON_ROAD'
     RETURNING *
-  `, [releasedBy, reason, active.rows[0].id]);
+  `, [effectiveClose, releasedBy, reason, active.rows[0].id]);
 
   return q.rows[0] || null;
 }
@@ -359,7 +533,8 @@ async function createDispatchTransaction({
   orders,
   source,
   adminReason = null,
-  clientToken = null
+  clientToken = null,
+  departedAt = null
 }) {
   const client = await pool.connect();
   try {
@@ -379,11 +554,14 @@ async function createDispatchTransaction({
       }
     }
 
+    const effectiveDeparture = departedAt || new Date().toISOString();
+
     const closedPrevious = await closeActiveDispatch(
       client,
       courierId,
       actorUserId,
-      source === "ADMIN" ? "NEW_DEPARTURE_BY_ADMIN" : "NEW_DEPARTURE_BY_COURIER"
+      source === "ADMIN" ? "NEW_DEPARTURE_BY_ADMIN" : "NEW_DEPARTURE_BY_COURIER",
+      effectiveDeparture
     );
 
     const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
@@ -392,9 +570,9 @@ async function createDispatchTransaction({
     const result = await client.query(`
       INSERT INTO dispatches(
         dispatch_code,order_number,courier_id,
-        registered_by,registration_source,admin_reason,client_token
+        registered_by,registration_source,admin_reason,client_token,departed_at
       )
-      VALUES($1,$2,$3,$4,$5,$6,$7)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz)
       RETURNING id,dispatch_code,order_number,departed_at,status,
                 registered_by,registration_source,admin_reason
     `, [
@@ -404,7 +582,8 @@ async function createDispatchTransaction({
       actorUserId,
       source,
       adminReason || null,
-      clientToken || null
+      clientToken || null,
+      effectiveDeparture
     ]);
 
     const dispatch = result.rows[0];
@@ -721,12 +900,17 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
   }
 
+  const queuedDeparture = req.body.offline_queued === true
+    ? normalizeQueuedDepartureTime(req.body.estimated_departed_at)
+    : null;
+
   const result = await createDispatchTransaction({
     actorUserId: req.session.user.id,
     courierId: req.session.user.id,
     orders,
     source: "COURIER",
-    clientToken
+    clientToken,
+    departedAt: queuedDeparture
   });
 
   if (!result.duplicate) {
@@ -1234,6 +1418,102 @@ app.put("/api/admin/settings/notifications", auth, adminOnly, asyncRoute(async (
   res.json({ settings });
 }));
 
+
+app.post("/api/admin/push/configure", auth, adminOnly, asyncRoute(async (req, res) => {
+  const subject = `${req.protocol}://${req.get("host")}`;
+  const config = await ensureVapidConfig(subject);
+  res.json({ publicKey: config.publicKey, subject: config.subject });
+}));
+
+app.get("/api/admin/push/status", auth, adminOnly, asyncRoute(async (req, res) => {
+  const config = await getVapidConfig();
+  const countQ = await pool.query("SELECT COUNT(*)::int AS count FROM push_subscriptions");
+  res.json({
+    configured: !!config,
+    publicKey: config?.publicKey || null,
+    subscriptions: countQ.rows[0].count
+  });
+}));
+
+app.post("/api/admin/push/subscribe", auth, adminOnly, asyncRoute(async (req, res) => {
+  const sub = req.body.subscription || {};
+  const endpoint = String(sub.endpoint || "");
+  const p256dh = String(sub.keys?.p256dh || "");
+  const authKey = String(sub.keys?.auth || "");
+
+  if (!endpoint || !p256dh || !authKey) {
+    return res.status(400).json({ error: "Assinatura push inválida." });
+  }
+
+  await pool.query(`
+    INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth,user_agent,last_seen_at)
+    VALUES($1,$2,$3,$4,$5,NOW())
+    ON CONFLICT(endpoint) DO UPDATE SET
+      user_id=EXCLUDED.user_id,
+      p256dh=EXCLUDED.p256dh,
+      auth=EXCLUDED.auth,
+      user_agent=EXCLUDED.user_agent,
+      last_seen_at=NOW()
+  `, [
+    req.session.user.id,
+    endpoint,
+    p256dh,
+    authKey,
+    String(req.get("user-agent") || "").slice(0, 300)
+  ]);
+
+  await audit(req.session.user.id, "PUSH_SUBSCRIBED", "push", null, {});
+  res.json({ ok: true });
+}));
+
+app.delete("/api/admin/push/subscribe", auth, adminOnly, asyncRoute(async (req, res) => {
+  const endpoint = String(req.body.endpoint || "");
+  if (endpoint) await pool.query("DELETE FROM push_subscriptions WHERE endpoint=$1", [endpoint]);
+  res.json({ ok: true });
+}));
+
+app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) => {
+  const dbStart = Date.now();
+  await pool.query("SELECT 1");
+  const dbLatencyMs = Date.now() - dbStart;
+
+  const errorQ = await pool.query(`
+    SELECT id,request_id,method,path,status_code,message,created_at
+    FROM system_errors
+    ORDER BY created_at DESC,id DESC
+    LIMIT 50
+  `);
+
+  const countsQ = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '1 hour')::int AS errors_hour,
+      COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS errors_day
+    FROM system_errors
+  `);
+
+  const dispatchQ = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '1 hour')::int AS dispatches_hour,
+      COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS dispatches_day
+    FROM dispatches
+  `);
+
+  res.json({
+    version: VERSION,
+    dbLatencyMs,
+    pool: {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+      max: Number(process.env.DB_POOL_MAX || 20)
+    },
+    activity: dispatchQ.rows[0],
+    errors: countsQ.rows[0],
+    recentErrors: errorQ.rows,
+    server_now: new Date().toISOString()
+  });
+}));
+
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
   const metrics = (await pool.query(`
     SELECT
@@ -1605,11 +1885,30 @@ app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ rows, server_now: new Date().toISOString() });
 }));
 
-app.get("/api/health", (req, res) => res.json({
-  ok: true,
-  time: new Date().toISOString(),
-  version: VERSION
-}));
+app.get("/api/live", (req, res) => {
+  res.json({ ok: true, version: VERSION, time: new Date().toISOString() });
+});
+
+app.get("/api/health", async (req, res) => {
+  try {
+    const started = Date.now();
+    await pool.query("SELECT 1");
+    res.json({
+      ok: true,
+      database: "connected",
+      dbLatencyMs: Date.now() - started,
+      time: new Date().toISOString(),
+      version: VERSION
+    });
+  } catch (err) {
+    res.status(503).json({
+      ok: false,
+      database: "unavailable",
+      time: new Date().toISOString(),
+      version: VERSION
+    });
+  }
+});
 
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -1636,9 +1935,40 @@ setTimeout(() => {
 
 
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ error: err.message || "Erro interno do servidor." });
+  const status = err.status || 500;
+  console.error(`[${req.requestId || "-"}]`, err);
+  recordSystemError(req, status, err).catch(() => {});
+  res.status(status).json({
+    error: err.message || "Erro interno do servidor.",
+    request_id: req.requestId || null
+  });
 });
 
 const port = Number(process.env.PORT || 3000);
 server.listen(port, () => console.log(`DespachaMoto ${VERSION} rodando na porta ${port}`));
+
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal}: encerrando DespachaMoto com segurança...`);
+
+  const force = setTimeout(() => {
+    console.error("Shutdown forçado após timeout.");
+    process.exit(1);
+  }, 10000);
+  force.unref();
+
+  server.close(async () => {
+    try {
+      await pool.end();
+    } finally {
+      clearTimeout(force);
+      process.exit(0);
+    }
+  });
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+

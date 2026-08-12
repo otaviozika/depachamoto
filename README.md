@@ -1,111 +1,90 @@
-# DespachaMoto 1.5 — Operação Rápida + Notificações
+# DespachaMoto 1.6 — Produção Profissional
 
-Atualização sobre a v1.4. Mantém PostgreSQL, usuários, segurança, gestão, relatórios, PWA e histórico.
+A v1.6 foi preparada para operação de pico, mantendo tudo das versões anteriores.
 
-## 1. Nova saída sem autorização do administrador
+## Foco desta versão
 
-O motoboy pode registrar uma nova saída mesmo quando já existe uma saída ativa.
+### 1. Mais capacidade e estabilidade
+- pool PostgreSQL configurável (`DB_POOL_MAX`, padrão 20);
+- timeout de conexão;
+- índices para saída ativa, pedidos, usuários e auditoria;
+- desligamento seguro com SIGTERM/SIGINT;
+- `request_id` por requisição;
+- registro interno de erros;
+- health check consulta o PostgreSQL.
 
-Fluxo:
-1. a saída anterior é encerrada automaticamente;
-2. o histórico anterior é preservado;
-3. a nova saída recebe o horário atual;
-4. o cronômetro recomeça;
-5. os novos pedidos passam a ser a saída ativa.
+### 2. Proteção contra internet ruim
+No celular do motoboy:
+- indicador `Online / Sem conexão / Sincronizando`;
+- se a internet cair no registro, a saída fica em uma fila local;
+- o horário estimado da saída é preservado usando o relógio já sincronizado com o servidor;
+- ao voltar a conexão, a fila é enviada automaticamente;
+- cada item usa `client_token`, impedindo duplicação no servidor;
+- é possível acumular mais de uma saída enquanto estiver offline;
+- a sincronização ocorre na ordem.
 
-Antes de confirmar, a interface avisa que a saída anterior será encerrada.
+O servidor aceita horário offline somente dentro de uma janela segura de até 2 horas.
 
-O botão de liberação do administrador continua disponível para correções.
+### 3. Web Push em segundo plano
+Na página `Notificações`:
+- clique `Ativar push em segundo plano`;
+- o servidor cria o par VAPID uma única vez;
+- a chave privada VAPID é criptografada com AES-256-GCM usando `SESSION_SECRET`;
+- o navegador registra a assinatura Push;
+- notificações operacionais podem chegar mesmo com o DespachaMoto fechado em navegadores/PWAs compatíveis.
 
-## 2. Proteção contra toque duplo
+Tabela nova:
+`push_subscriptions`.
 
-Cada tentativa de registro envia um `client_token`.
+### 4. Modo telão
+Nova opção `Modo telão`:
+- quem está na rua;
+- pedidos;
+- cronômetro;
+- totais da operação;
+- botão de tela cheia.
 
-O servidor possui índice único para esse token. Se o mesmo clique/requisição chegar novamente, o sistema reaproveita a saída já criada em vez de duplicá-la.
+### 5. Monitoramento
+Em `Segurança`:
+- latência do PostgreSQL;
+- conexões do pool;
+- requisições aguardando conexão;
+- saídas em 24h;
+- erros em 24h;
+- últimos erros e request ID.
 
-## 3. Saída manual pelo administrador
+Tabela nova:
+`system_errors`.
 
-Novo botão:
-`+ Saída manual`
+### 6. Health check do Render
+`render.yaml` agora inclui:
+`healthCheckPath: /api/health`
 
-O administrador pode:
-- selecionar o motoboy;
-- informar de 1 a 5 pedidos;
-- informar um motivo opcional;
-- confirmar a saída.
+O endpoint só retorna sucesso se a aplicação conseguir consultar o PostgreSQL.
 
-Exemplo de motivo:
-`Celular sem bateria`
+### 7. Teste de carga
+Foi incluído:
+`scripts/loadtest-health.js`
 
-Se o motoboy já estiver na rua, a saída ativa anterior é encerrada automaticamente.
+Uso em ambiente de teste/staging:
+`TARGET_URL=https://seu-endereco REQUESTS=2000 CONCURRENCY=25 npm run loadtest:health`
 
-A saída fica identificada como origem `ADMIN` no histórico e é registrada na auditoria.
+Este teste não cria pedidos; ele testa web service + consulta PostgreSQL.
 
-## 4. Central de notificações
+## Atualização
 
-Novo sino `🔔` no painel:
-- contador de não lidas;
-- histórico recente;
-- marcar uma notificação como lida;
-- marcar todas como lidas.
+Use `despachamoto-v1.6-update-only.zip`.
 
-Eventos:
-- novo cadastro aguardando aprovação;
-- saída em Atenção;
-- saída Demorada;
-- saída Crítica;
-- saída manual pelo administrador;
-- servidor iniciado/retomado.
-
-Alertas de tempo usam `unique_key`, portanto cada nível é gerado apenas uma vez por saída.
-
-## 5. Configurações de notificação
-
-Nova página `Notificações`:
-- Atenção ligado/desligado;
-- Demorado ligado/desligado;
-- Crítico ligado/desligado;
-- novo cadastro ligado/desligado;
-- som ligado/desligado.
-
-## 6. Notificação no navegador/PWA
-
-É possível solicitar permissão de notificação do navegador.
-
-Quando o DespachaMoto estiver aberto/conectado, novos alertas recebidos por Socket.IO podem:
-- aparecer na central;
-- emitir som;
-- gerar notificação do navegador/PWA.
-
-Importante: esta versão não implementa push remoto com o aplicativo totalmente fechado. Push em segundo plano exige infraestrutura adicional (por exemplo VAPID/Web Push) e pode ser feito numa próxima etapa.
-
-## 7. Migração automática do banco
-
-A v1.5 adiciona:
-- `dispatches.registered_by`
-- `dispatches.registration_source`
-- `dispatches.admin_reason`
-- `dispatches.closed_reason`
-- `dispatches.client_token`
-- tabela `notifications`
-- configurações de notificações
-
-Nenhum usuário, pedido ou histórico anterior é apagado.
-
-## Como atualizar
-
-Use:
-`despachamoto-v1.5-update-only.zip`
-
-Substitua no GitHub:
+Substitua:
 - `server.js`
 - `package.json`
+- `render.yaml`
 - `README.md`
 - `public/index.html`
 - `public/service-worker.js`
 
-Também pode substituir:
-- `BACKUP_BEFORE_UPDATE.md`
+Adicione:
+- `scripts/loadtest-health.js`
 
 Não altere:
 - DATABASE_URL
@@ -113,22 +92,29 @@ Não altere:
 - ADMIN_USERNAME
 - ADMIN_PASSWORD
 - NODE_ENV
-- PostgreSQL
 
-Depois faça Commit.
+Opcional:
+- `DB_POOL_MAX=20`
 
-Se o Render não iniciar sozinho:
-`Render > DespachaMoto > Deploys > Manual Deploy > Deploy latest commit`
+## Banco
+A migração é automática e não apaga histórico.
 
-## Teste recomendado
+Novas estruturas:
+- `push_subscriptions`
+- `system_errors`
+- índices de performance
 
-1. Entre com um motoboy e registre uma saída.
-2. Sem o admin liberar, registre outra saída.
-3. Confirme que a anterior virou LIBERADO e a nova ficou NA RUA.
-4. Teste rapidamente dois cliques no botão e confirme que não duplicou.
-5. Como admin, clique `+ Saída manual`.
-6. Escolha um motoboy e registre pedidos com motivo.
-7. Confira `Histórico > Origem = ADMIN`.
-8. Abra o sino de notificações.
-9. Teste marcar como lida.
-10. Abra `Notificações` e teste as configurações.
+## Testes depois do deploy
+1. `/api/health` deve retornar `ok: true` e `database: connected`.
+2. Admin > Segurança > Monitoramento.
+3. Admin > Modo telão.
+4. Admin > Notificações > Ativar push em segundo plano.
+5. Testar um alerta.
+6. No celular do motoboy, desligar Wi-Fi/dados.
+7. Registrar uma saída.
+8. Ver `saída aguardando sincronização`.
+9. Ligar internet.
+10. Confirmar sincronização sem pedido duplicado.
+
+## Backup de banco
+O CSV continua disponível no sistema. Para recuperação real do PostgreSQL, use também o mecanismo de backup/PITR do provedor da base de dados. Backup dentro do mesmo banco não substitui uma cópia externa.

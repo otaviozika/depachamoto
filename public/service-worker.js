@@ -1,4 +1,4 @@
-const CACHE = "despachamoto-v1.5-static";
+const CACHE = "despachamoto-v1.6-static";
 const STATIC = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", event => {
@@ -43,4 +43,20 @@ self.addEventListener("notificationclick", event => {
       if (clients.openWindow) return clients.openWindow("/");
     })
   );
+});
+
+
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch {}
+  const title = data.title || "DespachaMoto";
+  const options = {
+    body: data.message || "Novo alerta operacional.",
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    tag: data.id ? `despachamoto-${data.id}` : "despachamoto-alert",
+    renotify: true,
+    data: { url: "/" }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
 });

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.5</title>
+<title>DespachaMoto 1.6</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -37,8 +37,12 @@
 .manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.manual-orders{display:grid;gap:8px}.origin-admin{background:#dbeafe;color:#1d4ed8}.origin-courier{background:#eef2f7;color:#475569}
 .current-active-note{padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;margin-bottom:12px}
 
+
+.connection-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:900}.connection-pill.online{background:#dcfce7;color:#166534}.connection-pill.offline{background:#fee2e2;color:#991b1b}.connection-pill.syncing{background:#fef3c7;color:#92400e}
+.queue-box{padding:12px 14px;border-radius:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;margin-bottom:14px}.success-confirm{padding:14px;border-radius:12px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;margin:12px 0}.wall-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}.wall-card{background:#111827;color:#fff;border-radius:18px;padding:22px;box-shadow:var(--shadow)}.wall-card .wall-time{font-size:42px;font-weight:900;font-variant-numeric:tabular-nums}.wall-orders{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.wall-order{background:#f59e0b;color:#111827;padding:7px 10px;border-radius:9px;font-weight:900}.wall-name{font-size:24px;font-weight:900}.monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
+
 @media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:720px){.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -75,6 +79,7 @@
     <nav class="nav">
       <button data-page="dashboard" class="active">▦ Dashboard</button>
       <button data-page="road">◷ Quem está na rua</button>
+      <button data-page="wallboard">🖥️ Modo telão</button>
       <button data-page="history">▤ Histórico</button>
       <button data-page="report">▥ Relatório diário</button>
       <button data-page="management">📊 Gestão</button>
@@ -89,6 +94,7 @@
     <div class="top">
       <b id="pageTitle">Dashboard</b>
       <div class="actions">
+        <span class="connection-pill online connectionStatus">🟢 Online</span>
         <button class="btn primary" onclick="openManualDispatchModal()">+ Saída manual</button>
         <div class="bell-wrap">
           <button class="btn outline bell-btn" onclick="toggleNotificationPanel()">🔔<span id="notificationCount" class="bell-count hidden">0</span></button>
@@ -120,7 +126,17 @@
 
       <section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
-      <section id="history" class="page">
+      
+      <section id="wallboard" class="page">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div><h1 class="title">Modo telão</h1><p class="muted">Visão limpa para deixar aberta em um monitor da operação.</p></div>
+          <button class="btn primary" onclick="enterWallFullscreen()">⛶ Tela cheia</button>
+        </div>
+        <div id="wallSummary" class="cards" style="grid-template-columns:repeat(3,1fr)"></div>
+        <div id="wallGrid" class="wall-grid"></div>
+      </section>
+
+<section id="history" class="page">
         <h1 class="title">Histórico completo</h1>
         <p class="muted">Pesquise e filtre todo o histórico do sistema.</p>
         <div class="section" style="margin-top:18px">
@@ -268,8 +284,9 @@
           <div class="section">
             <div class="section-head"><b>Notificações no aparelho</b></div>
             <div style="padding:20px">
-              <p class="muted">Com o DespachaMoto aberto ou instalado, o navegador pode exibir alertas do sistema.</p>
-              <button class="btn primary" onclick="requestBrowserNotifications()">Permitir notificações</button>
+              <p class="muted">Ative Web Push para receber alertas compatíveis mesmo com o DespachaMoto fechado. A permissão depende do navegador/aparelho.</p>
+              <button class="btn primary" onclick="enableBackgroundPush()">Ativar push em segundo plano</button>
+              <button class="btn outline" style="margin-left:6px" onclick="disableBackgroundPush()">Desativar neste aparelho</button>
               <p id="browserNotificationStatus" class="small muted" style="margin-top:12px"></p>
             </div>
           </div>
@@ -286,6 +303,16 @@
           <div class="section"><div class="section-head"><b>Cadastro público</b></div><div style="padding:20px"><p id="registrationStatusText"></p><button id="registrationToggleBtn" class="btn outline" onclick="togglePublicRegistration()">Carregando...</button></div></div>
           <div class="section"><div class="section-head"><b>Backup operacional</b></div><div style="padding:20px"><p class="muted">Baixe todo o histórico de pedidos e saídas em CSV.</p><button class="btn primary" onclick="downloadFullBackup()">Baixar backup CSV</button></div></div>
           <div class="section"><div class="section-head"><b>Saúde do sistema</b></div><div style="padding:20px"><div id="healthBox" class="health-list"><span class="muted">Carregando...</span></div><button class="btn outline" style="margin-top:15px" onclick="loadSystemHealth()">Atualizar</button></div></div>
+          <div class="section" style="grid-column:1/-1">
+            <div class="section-head"><b>Monitoramento de produção</b><button class="btn outline" onclick="loadMonitoring()">Atualizar</button></div>
+            <div style="padding:20px">
+              <div id="monitorBoxes" class="monitor-grid"></div>
+              <div style="margin-top:18px"><b>Erros recentes</b></div>
+              <div class="table-wrap" style="margin-top:8px">
+                <table class="table"><thead><tr><th>Horário</th><th>Rota</th><th>Status</th><th>Erro</th><th>ID</th></tr></thead><tbody id="monitorErrors"></tbody></table>
+              </div>
+            </div>
+          </div>
           <div class="section"><div class="section-head"><b>Recomendações</b></div><div style="padding:20px"><p>• Use senha administrativa única e forte.</p><p>• Deixe cadastro público desligado quando não estiver contratando motoboys.</p><p>• Baixe um backup regularmente.</p><p>• Não compartilhe DATABASE_URL ou SESSION_SECRET.</p></div></div>
         </div>
       </section>
@@ -306,9 +333,10 @@
 </div>
 
 <div id="courierApp" class="hidden">
-  <div class="top"><b>🛵 DespachaMoto</b><div class="actions"><button id="installBtnCourier" class="btn outline hidden" onclick="installApp()">Instalar app</button><button class="btn outline" onclick="openPasswordModal()">Minha senha</button><span id="courierName"></span><button class="btn outline" onclick="logout()">Sair</button></div></div>
+  <div class="top"><b>🛵 DespachaMoto</b><div class="actions"><span class="connection-pill online connectionStatus">🟢 Online</span><button id="installBtnCourier" class="btn outline hidden" onclick="installApp()">Instalar app</button><button class="btn outline" onclick="openPasswordModal()">Minha senha</button><span id="courierName"></span><button class="btn outline" onclick="logout()">Sair</button></div></div>
   <main class="content" style="max-width:760px">
     <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
+    <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
     <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre os pedidos que está levando.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
     <div id="departureCard" class="card">
@@ -376,6 +404,8 @@ let alertSettings={attention:40,delayed:50,critical:60};
 let securityState={registrationEnabled:true,adminPasswordLooksDefault:false};
 let notificationSettings={attention:true,delayed:true,critical:true,registration:true,sound:true};
 let notificationState={rows:[],unread:0};
+let isFlushingQueue=false;
+const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v16_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
 const $=id=>document.getElementById(id);
 
@@ -415,6 +445,99 @@ async function loadPublicConfig(){
       : 'Cadastro público temporariamente fechado.';
   }catch{}
 }
+
+function queueKey(){return OFFLINE_QUEUE_PREFIX+(me?.id||'guest')}
+function getOfflineQueue(){
+  try{return JSON.parse(localStorage.getItem(queueKey())||'[]')}catch{return[]}
+}
+function saveOfflineQueue(rows){
+  localStorage.setItem(queueKey(),JSON.stringify(rows));
+  renderOfflineQueueStatus();
+}
+function renderOfflineQueueStatus(){
+  if(!$('offlineQueueStatus'))return;
+  const q=getOfflineQueue();
+  $('offlineQueueStatus').innerHTML=q.length
+    ? `<div class="queue-box"><b>📡 ${q.length} saída(s) aguardando sincronização.</b><div class="small">Não apague os dados do navegador. O envio será tentado automaticamente quando a conexão voltar.</div></div>`
+    : '';
+}
+function showDepartureConfirmation(orders,when,offline=false){
+  if(!$('lastDepartureConfirmation'))return;
+  $('lastDepartureConfirmation').innerHTML=`<div class="${offline?'queue-box':'success-confirm'}"><b>${offline?'📡 Saída salva no aparelho':'✅ Saída registrada'}</b><div>${orders.map(escapeHtml).join(', ')}</div><div class="small">${offline?'Será sincronizada automaticamente.':'Horário: '+localTime(when)}</div></div>`;
+}
+function setConnectionState(state){
+  document.querySelectorAll('.connectionStatus').forEach(el=>{
+    el.className='connection-pill connectionStatus '+state;
+    el.textContent=state==='online'?'🟢 Online':state==='syncing'?'🟡 Sincronizando':'🔴 Sem conexão';
+  });
+}
+function updateConnectionState(){
+  setConnectionState(navigator.onLine?'online':'offline');
+}
+function makeClientToken(){
+  return crypto?.randomUUID?.()||('dm-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+}
+function enqueueDeparture(orders){
+  const q=getOfflineQueue();
+  const payload={
+    order_numbers:orders,
+    confirm_new_departure:true,
+    client_token:makeClientToken(),
+    offline_queued:true,
+    estimated_departed_at:new Date(serverNowMs()).toISOString(),
+    queued_at:Date.now()
+  };
+  q.push(payload);
+  saveOfflineQueue(q);
+  showDepartureConfirmation(orders,payload.estimated_departed_at,true);
+  return payload;
+}
+async function sendQueuedPayload(payload){
+  const r=await fetch('/api/courier/depart',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  let d={};try{d=await r.json()}catch{}
+  if(!r.ok){
+    const err=new Error(d.error||'Falha ao sincronizar.');
+    err.status=r.status;
+    throw err;
+  }
+  if(d.server_now)syncServerTime(d.server_now);
+  return d;
+}
+async function flushOfflineQueue(){
+  if(isFlushingQueue||me?.role!=='courier'||!navigator.onLine)return;
+  let q=getOfflineQueue();
+  if(!q.length)return;
+  isFlushingQueue=true;
+  setConnectionState('syncing');
+  try{
+    while(q.length&&navigator.onLine){
+      try{
+        const d=await sendQueuedPayload(q[0]);
+        q.shift();
+        saveOfflineQueue(q);
+        showDepartureConfirmation(d.dispatch?.order_numbers||[],d.dispatch?.departed_at||new Date().toISOString(),false);
+      }catch(err){
+        if(err.status===401||err.status===403)break;
+        if(!navigator.onLine)break;
+        throw err;
+      }
+    }
+    await loadCourier();
+  }catch(err){
+    console.warn('Fila offline:',err);
+  }finally{
+    isFlushingQueue=false;
+    updateConnectionState();
+    renderOfflineQueueStatus();
+  }
+}
+window.addEventListener('online',()=>{updateConnectionState();flushOfflineQueue()});
+window.addEventListener('offline',updateConnectionState);
+
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
 function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
@@ -430,7 +553,7 @@ function showApp(){
   if(me.role==='admin'){
     $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
-    $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();loadCourier();
+    $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();renderOfflineQueueStatus();loadCourier().then(flushOfflineQueue);
   }
   if(me.mustChangePassword){setTimeout(()=>openPasswordModal(true),250)}
 }
@@ -441,7 +564,7 @@ async function loadAdmin(){
   const m=dashboard.metrics;
   $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
   $('alertAttention').value=alertSettings.attention;$('alertDelayed').value=alertSettings.delayed;$('alertCritical').value=alertSettings.critical;
-  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();
+  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();renderWallboard();
 }
 function renderRoad(){
   const a=dashboard.active;
@@ -541,43 +664,70 @@ async function depart(e){
   if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');
 
   let confirmNew=false;
-  if(courierActiveDispatch){
-    confirmNew=confirm('Você possui uma saída ativa. Ao continuar, a saída anterior será encerrada automaticamente e estes pedidos iniciarão uma nova saída. Confirmar?');
+  if(courierActiveDispatch||getOfflineQueue().length){
+    confirmNew=confirm('Ao continuar, a saída anterior será encerrada e estes pedidos iniciarão uma nova saída. Confirmar?');
     if(!confirmNew)return;
   }
 
   const btn=$('departureSubmit');
   btn.disabled=true;
-  const token=(crypto?.randomUUID?.()||('web-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
+
+  if(!navigator.onLine){
+    enqueueDeparture(orders);
+    resetOrderFields();
+    btn.disabled=!!me.mustChangePassword;
+    return;
+  }
+
+  const payload={
+    order_numbers:orders,
+    confirm_new_departure:confirmNew,
+    client_token:makeClientToken(),
+    offline_queued:false,
+    estimated_departed_at:new Date(serverNowMs()).toISOString()
+  };
+
   try{
     const r=await fetch('/api/courier/depart',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({order_numbers:orders,confirm_new_departure:confirmNew,client_token:token})
+      body:JSON.stringify(payload)
     });
     let d={};try{d=await r.json()}catch{}
+
     if(!r.ok){
       if(r.status===409&&d.code==='ACTIVE_DISPATCH_CONFIRMATION'){
         const ok=confirm('Existe uma saída ativa. Deseja encerrá-la e iniciar a nova saída?');
         if(!ok)return;
+        payload.confirm_new_departure=true;
         const r2=await fetch('/api/courier/depart',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({order_numbers:orders,confirm_new_departure:true,client_token:token})
+          body:JSON.stringify(payload)
         });
         let d2={};try{d2=await r2.json()}catch{}
-        if(!r2.ok)throw new Error(d2.error||'Erro ao registrar saída.');
+        if(!r2.ok)throw Object.assign(new Error(d2.error||'Erro ao registrar saída.'),{status:r2.status});
+        d=d2;
       }else{
-        throw new Error(d.error||'Erro ao registrar saída.');
+        throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
       }
     }
+
     resetOrderFields();
-    message('departureMsg',`Nova saída registrada com ${orders.length} pedido(s).`,'ok');
+    showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
+    message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');
     await loadCourier();
   }catch(err){
-    message('departureMsg',err.message,'err');
+    if(!navigator.onLine||err instanceof TypeError){
+      enqueueDeparture(orders);
+      resetOrderFields();
+      message('departureMsg','Sem conexão. A saída foi salva no aparelho para sincronizar depois.','ok');
+    }else{
+      message('departureMsg',err.message,'err');
+    }
   }finally{
     btn.disabled=!!me.mustChangePassword;
+    updateConnectionState();
   }
 }
 function trendHtml(change){
@@ -754,6 +904,7 @@ async function loadNotificationSettings(){
     renderNotificationSettings();
   }catch{}
   updateBrowserNotificationStatus();
+  loadPushStatus();
 }
 function renderNotificationSettings(){
   for(const key of ['attention','delayed','critical','registration','sound']){
@@ -807,6 +958,91 @@ function showBrowserNotification(n){
   }catch{}
 }
 
+
+function renderWallboard(){
+  if(!dashboard||!$('wallGrid'))return;
+  const active=dashboard.active||[];
+  $('wallSummary').innerHTML=`
+    <div class="card"><div class="label">Na rua</div><div class="metric">${dashboard.metrics.onRoad}</div></div>
+    <div class="card"><div class="label">Pedidos na rua</div><div class="metric">${dashboard.metrics.activeOrders}</div></div>
+    <div class="card"><div class="label">Pedidos hoje</div><div class="metric">${dashboard.metrics.todayOrders}</div></div>`;
+  $('wallGrid').innerHTML=active.map(x=>`<div class="wall-card">
+    <div class="wall-name">${escapeHtml(x.courier_name)}</div>
+    <div class="wall-orders">${ordersOf(x).map(o=>`<span class="wall-order">${escapeHtml(o)}</span>`).join('')}</div>
+    <div class="small" style="margin-top:16px;color:#cbd5e1">Tempo na rua</div>
+    <div class="wall-time live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</div>
+    <div class="small" style="color:#cbd5e1">Saída ${localTime(x.departed_at)}</div>
+  </div>`).join('')||'<div class="empty">Nenhum motoboy na rua.</div>';
+}
+async function enterWallFullscreen(){
+  const el=$('wallboard');
+  try{if(!document.fullscreenElement)await el.requestFullscreen();else await document.exitFullscreen()}catch{}
+}
+async function loadMonitoring(){
+  if(me?.role!=='admin')return;
+  try{
+    const d=await api('/api/admin/monitoring');
+    $('monitorBoxes').innerHTML=`
+      <div class="monitor-box"><div class="label">Latência PostgreSQL</div><div class="monitor-value">${d.dbLatencyMs} ms</div></div>
+      <div class="monitor-box"><div class="label">Conexões DB</div><div class="monitor-value">${d.pool.total}/${d.pool.max}</div><div class="small muted">${d.pool.waiting} aguardando</div></div>
+      <div class="monitor-box"><div class="label">Saídas últimas 24h</div><div class="monitor-value">${d.activity.dispatches_day}</div></div>
+      <div class="monitor-box"><div class="label">Erros últimas 24h</div><div class="monitor-value">${d.errors.errors_day}</div></div>`;
+    $('monitorErrors').innerHTML=d.recentErrors.map(x=>`<tr><td>${localDate(x.created_at)}</td><td>${escapeHtml((x.method||'')+' '+(x.path||''))}</td><td>${x.status_code||'—'}</td><td>${escapeHtml(x.message)}</td><td class="small">${escapeHtml(x.request_id||'—')}</td></tr>`).join('')||empty(5);
+  }catch(err){
+    $('monitorErrors').innerHTML=`<tr><td colspan="5"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`;
+  }
+}
+function urlBase64ToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64);
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+async function enableBackgroundPush(){
+  if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window)){
+    return alert('Este navegador não oferece suporte completo ao Web Push.');
+  }
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted')return updateBrowserNotificationStatus();
+
+    const cfg=await api('/api/admin/push/configure',{method:'POST'});
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(cfg.publicKey)
+      });
+    }
+    await api('/api/admin/push/subscribe',{
+      method:'POST',
+      body:JSON.stringify({subscription:sub.toJSON()})
+    });
+    updateBrowserNotificationStatus();
+    alert('Push em segundo plano ativado neste aparelho.');
+  }catch(err){alert('Não foi possível ativar o push: '+err.message)}
+}
+async function disableBackgroundPush(){
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(sub){
+      await api('/api/admin/push/subscribe',{method:'DELETE',body:JSON.stringify({endpoint:sub.endpoint})});
+      await sub.unsubscribe();
+    }
+    updateBrowserNotificationStatus();
+  }catch(err){alert(err.message)}
+}
+async function loadPushStatus(){
+  if(me?.role!=='admin')return;
+  try{
+    const d=await api('/api/admin/push/status');
+    const permission=('Notification'in window)?Notification.permission:'indisponível';
+    $('browserNotificationStatus').textContent=`Permissão: ${permission} • Push configurado: ${d.configured?'sim':'não'} • aparelhos inscritos: ${d.subscriptions}`;
+  }catch{}
+}
+
 async function loadReport(){
   const date=$('reportDate').value||spToday();
   try{
@@ -832,6 +1068,7 @@ async function loadSecurity(){
     $('adminPasswordWarning').classList.toggle('hidden',!d.adminPasswordLooksDefault);
     renderSecurity();
     await loadSystemHealth();
+    await loadMonitoring();
   }catch{}
 }
 function renderSecurity(){
@@ -919,9 +1156,10 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
   else if(b.dataset.page==='report')loadReport();
+  else if(b.dataset.page==='wallboard'){loadAdmin();renderWallboard();}
   else if(b.dataset.page==='management')loadManagement();
   else if(b.dataset.page==='notifications'){loadNotifications();loadNotificationSettings();}
   else if(b.dataset.page==='history')loadHistory();
@@ -938,6 +1176,8 @@ $('manualDispatchForm').onsubmit=submitManualDispatch;
 $('manualCourier').onchange=updateManualActiveInfo;
 
 const socket=io();
+socket.on('connect',()=>{updateConnectionState();if(me?.role==='courier')flushOfflineQueue()});
+socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')});
 socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
@@ -960,6 +1200,7 @@ if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.ser
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});
 async function installApp(){if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.add('hidden'))}
 
+updateConnectionState();
 loadPublicConfig();
 (async()=>{try{const d=await api('/api/me');me=d.user;showApp()}catch{}})();
 </script>
