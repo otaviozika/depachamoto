@@ -1,8 +1,8 @@
-# Backup antes da v1.6
+# Antes da v1.7
 
-1. Anote o commit da v1.5.1 atualmente online.
-2. Em Segurança, baixe o backup CSV completo.
-3. Não recrie nem apague o PostgreSQL.
-4. Não altere DATABASE_URL ou SESSION_SECRET.
-5. Faça o deploy fora do horário de pico.
-6. Depois do deploy, teste uma saída online e uma saída offline antes de liberar a operação.
+1. Anote o commit da v1.6.
+2. Baixe o backup CSV.
+3. Faça o deploy fora do pico.
+4. Após subir, teste um pedido duplicado com contas de teste.
+5. Confira Operação, Motoboys e Conflitos.
+6. Não rode o loadtest real no banco de produção.

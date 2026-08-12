@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.6</title>
+<title>DespachaMoto 1.7</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -41,8 +41,11 @@
 .connection-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:900}.connection-pill.online{background:#dcfce7;color:#166534}.connection-pill.offline{background:#fee2e2;color:#991b1b}.connection-pill.syncing{background:#fef3c7;color:#92400e}
 .queue-box{padding:12px 14px;border-radius:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;margin-bottom:14px}.success-confirm{padding:14px;border-radius:12px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;margin:12px 0}.wall-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}.wall-card{background:#111827;color:#fff;border-radius:18px;padding:22px;box-shadow:var(--shadow)}.wall-card .wall-time{font-size:42px;font-weight:900;font-variant-numeric:tabular-nums}.wall-orders{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.wall-order{background:#f59e0b;color:#111827;padding:7px 10px;border-radius:9px;font-weight:900}.wall-name{font-size:24px;font-weight:900}.monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
 
-@media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:720px){.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+
+.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
+
+@media(max-width:1100px){.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:720px){.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -78,6 +81,7 @@
     <div class="logo">🛵 Despacha<span>Moto</span></div>
     <nav class="nav">
       <button data-page="dashboard" class="active">▦ Dashboard</button>
+      <button data-page="operations">⚡ Operação</button>
       <button data-page="road">◷ Quem está na rua</button>
       <button data-page="wallboard">🖥️ Modo telão</button>
       <button data-page="history">▤ Histórico</button>
@@ -86,6 +90,7 @@
       <button data-page="couriers">♙ Motoboys</button>
       <button data-page="alerts">⚙ Alertas</button>
       <button data-page="notifications">🔔 Notificações</button>
+      <button data-page="conflicts">⚠ Conflitos</button>
       <button data-page="security">🔒 Segurança</button>
       <button data-page="audit">◉ Auditoria</button>
     </nav>
@@ -124,7 +129,25 @@
         </div>
       </section>
 
-      <section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
+      
+      <section id="operations" class="page">
+        <h1 class="title">Operação em tempo real</h1>
+        <p class="muted">Visão rápida para horários de pico com muitos motoboys.</p>
+        <div id="peakStrip" class="peak-strip" style="margin-top:18px"></div>
+        <div class="analytics-grid">
+          <div class="section">
+            <div class="section-head"><b>Equipe agora</b><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
+            <div id="teamNow" class="team-grid" style="padding:15px"></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><b>Busca instantânea de pedido</b></div>
+            <div class="search"><input id="quickOrderSearch" placeholder="#5821" onkeydown="if(event.key==='Enter')searchOrderNow()"><button class="btn primary" onclick="searchOrderNow()">Buscar</button></div>
+            <div id="quickOrderResults"></div>
+          </div>
+        </div>
+      </section>
+
+<section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
       
       <section id="wallboard" class="page">
@@ -249,7 +272,7 @@
           <div><h1 class="title">Motoboys</h1><p class="muted">Aprovação, bloqueio e redefinição de senha.</p></div>
           <button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button>
         </div>
-        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>Pedidos hoje</th><th>Aprovação</th><th>Situação</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
+        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>Pedidos hoje</th><th>Status operacional</th><th>Conexão</th><th>Última saída</th><th>Aprovação</th><th>Conta</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
       </section>
 
       <section id="alerts" class="page">
@@ -317,7 +340,22 @@
         </div>
       </section>
 
-      <section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
+      
+      <section id="conflicts" class="page">
+        <h1 class="title">Conflitos operacionais</h1>
+        <p class="muted">Duplicidades, reutilizações recentes, sincronizações atrasadas e reenvios evitados.</p>
+        <div class="ops-grid" style="margin-top:18px">
+          <div class="ops-card"><div class="label">Últimas 24h</div><div id="conflicts24" class="ops-value">0</div></div>
+          <div class="ops-card"><div class="label">Não resolvidos</div><div id="conflictsOpen" class="ops-value">0</div></div>
+          <div class="ops-card"><div class="label">Críticos 24h</div><div id="conflictsCritical" class="ops-value">0</div></div>
+        </div>
+        <div class="section" style="margin-top:18px">
+          <div class="section-head"><b>Eventos recentes</b><button class="btn outline" onclick="loadConflicts()">Atualizar</button></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>Horário</th><th>Tipo</th><th>Motoboy</th><th>Pedidos</th><th>Severidade</th><th>Ação</th></tr></thead><tbody id="conflictsTable"></tbody></table></div>
+        </div>
+      </section>
+
+<section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
     </div>
   </main>
   <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
@@ -343,6 +381,7 @@
       <h2 style="margin-top:0">Registrar saída</h2>
       <p class="muted">Informe de 1 a 5 pedidos.</p>
       <form id="departureForm" class="form">
+        <label>Colar vários pedidos (opcional)<textarea id="courierPasteOrders" class="quick-paste" placeholder="Ex.: 5821, 5822, 5823" oninput="applyCourierPaste()"></textarea></label>
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
           <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
@@ -380,6 +419,7 @@
       <div id="manualActiveInfo"></div>
       <div>
         <b style="font-size:13px">Pedidos</b>
+        <textarea id="manualPasteOrders" class="quick-paste" style="margin-top:8px" placeholder="Cole até 5 pedidos separados por vírgula, espaço ou linha" oninput="applyManualPaste()"></textarea>
         <div id="manualOrderFields" class="manual-orders" style="margin-top:8px"></div>
         <div class="actions" style="margin-top:8px">
           <button id="manualAddOrderBtn" type="button" class="btn outline" onclick="addManualOrderField()">+ Adicionar pedido</button>
@@ -405,7 +445,7 @@ let securityState={registrationEnabled:true,adminPasswordLooksDefault:false};
 let notificationSettings={attention:true,delayed:true,critical:true,registration:true,sound:true};
 let notificationState={rows:[],unread:0};
 let isFlushingQueue=false;
-const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v16_';
+const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v17_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
 const $=id=>document.getElementById(id);
 
@@ -501,7 +541,7 @@ async function sendQueuedPayload(payload){
   let d={};try{d=await r.json()}catch{}
   if(!r.ok){
     const err=new Error(d.error||'Falha ao sincronizar.');
-    err.status=r.status;
+    err.status=r.status;err.code=d.code;err.payload=d;
     throw err;
   }
   if(d.server_now)syncServerTime(d.server_now);
@@ -522,6 +562,17 @@ async function flushOfflineQueue(){
         showDepartureConfirmation(d.dispatch?.order_numbers||[],d.dispatch?.departed_at||new Date().toISOString(),false);
       }catch(err){
         if(err.status===401||err.status===403)break;
+        if(err.code==='RECENT_ORDER_CONFIRMATION'){
+          const names=(err.payload?.recent||[]).map(x=>`${x.order_number} (${x.courier_name})`).join(', ');
+          if(confirm(`Pedido(s) usado(s) recentemente: ${names}. Sincronizar mesmo assim?`)){
+            q[0].confirm_recent_orders=true;saveOfflineQueue(q);continue;
+          }
+          break;
+        }
+        if(err.code==='ORDER_ALREADY_ACTIVE'){
+          alert('Uma saída offline não pôde ser sincronizada porque um pedido já está ativo. O administrador deve conferir Conflitos.');
+          break;
+        }
         if(!navigator.onLine)break;
         throw err;
       }
@@ -538,7 +589,31 @@ async function flushOfflineQueue(){
 window.addEventListener('online',()=>{updateConnectionState();flushOfflineQueue()});
 window.addEventListener('offline',updateConnectionState);
 
-function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
+
+function parsePastedOrders(text){
+  const raw=String(text||'').split(/[\s,;|]+/).map(x=>x.trim()).filter(Boolean);
+  const out=[];const seen=new Set();
+  for(let x of raw){
+    if(!x.startsWith('#'))x='#'+x;
+    const k=x.toLowerCase();
+    if(!seen.has(k)){seen.add(k);out.push(x)}
+    if(out.length>=5)break;
+  }
+  return out;
+}
+function applyCourierPaste(){
+  const vals=parsePastedOrders($('courierPasteOrders').value);
+  if(!vals.length)return;
+  $('orderFields').innerHTML='';
+  vals.forEach(v=>{addOrderField();const inputs=$('orderFields').querySelectorAll('.order-input');inputs[inputs.length-1].value=v});
+}
+function applyManualPaste(){
+  const vals=parsePastedOrders($('manualPasteOrders').value);
+  if(!vals.length)return;
+  $('manualOrderFields').innerHTML='';
+  vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
+}
+function resetOrderFields(){$('orderFields').innerHTML='';if($('courierPasteOrders'))$('courierPasteOrders').value='';addOrderField()}
 function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;$('addOrderBtn').disabled=n>=5}
@@ -555,6 +630,7 @@ function showApp(){
   }else{
     $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();renderOfflineQueueStatus();loadCourier().then(flushOfflineQueue);
   }
+  heartbeat();
   if(me.mustChangePassword){setTimeout(()=>openPasswordModal(true),250)}
 }
 
@@ -611,8 +687,23 @@ function renderCouriers(){
     if(x.approval_status==='PENDING')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button><button class="btn danger" onclick="rejectCourier(${x.id})">Recusar</button>`;
     else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button>`;
     else accessActions=`<button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button>`;
-    return `<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.username)}</td><td>${x.today_count}</td><td>${approvalBadge(x.approval_status)}</td><td><div class="status-line"><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVO':'INATIVO'}</span>${x.on_road?'<span class="badge orange">NA RUA</span>':''}</div></td><td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td><td><div class="actions">${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button></div></td></tr>`;
-  }).join('')||empty(7)
+
+    const statusLabel={NA_RUA:'NA RUA',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+    const last=x.last_departure?localDate(x.last_departure):'Nunca';
+
+    return `<tr>
+      <td><b>${escapeHtml(x.name)}</b></td>
+      <td>${escapeHtml(x.username)}</td>
+      <td>${x.today_count}</td>
+      <td><span class="team-status ${x.operational_status}">${statusLabel}</span></td>
+      <td><span class="conn-dot">${x.is_online?'🟢 Online':'⚪ Offline'}</span></td>
+      <td>${last}</td>
+      <td>${approvalBadge(x.approval_status)}</td>
+      <td><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVA':'INATIVA'}</span></td>
+      <td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td>
+      <td><div class="actions">${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button></div></td>
+    </tr>`;
+  }).join('')||empty(10)
 }
 async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/approve',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
@@ -682,41 +773,51 @@ async function depart(e){
   const payload={
     order_numbers:orders,
     confirm_new_departure:confirmNew,
+    confirm_recent_orders:false,
     client_token:makeClientToken(),
     offline_queued:false,
     estimated_departed_at:new Date(serverNowMs()).toISOString()
   };
 
   try{
-    const r=await fetch('/api/courier/depart',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
-    });
-    let d={};try{d=await r.json()}catch{}
+    for(let attempt=0;attempt<3;attempt++){
+      const r=await fetch('/api/courier/depart',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+      let d={};try{d=await r.json()}catch{}
 
-    if(!r.ok){
-      if(r.status===409&&d.code==='ACTIVE_DISPATCH_CONFIRMATION'){
-        const ok=confirm('Existe uma saída ativa. Deseja encerrá-la e iniciar a nova saída?');
-        if(!ok)return;
-        payload.confirm_new_departure=true;
-        const r2=await fetch('/api/courier/depart',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(payload)
-        });
-        let d2={};try{d2=await r2.json()}catch{}
-        if(!r2.ok)throw Object.assign(new Error(d2.error||'Erro ao registrar saída.'),{status:r2.status});
-        d=d2;
-      }else{
-        throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
+      if(r.ok){
+        resetOrderFields();
+        showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
+        message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');
+        await loadCourier();
+        return;
       }
-    }
 
-    resetOrderFields();
-    showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
-    message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');
-    await loadCourier();
+      if(r.status===409&&d.code==='RECENT_ORDER_CONFIRMATION'){
+        const text=(d.recent||[]).map(x=>`${x.order_number} já usado por ${x.courier_name}`).join('\n');
+        if(confirm(`${text}\n\nPode ser erro de digitação. Deseja continuar mesmo assim?`)){
+          payload.confirm_recent_orders=true;continue;
+        }
+        return;
+      }
+
+      if(r.status===409&&d.code==='ACTIVE_DISPATCH_CONFIRMATION'){
+        if(confirm('Existe uma saída ativa. Encerrar e iniciar a nova?')){
+          payload.confirm_new_departure=true;continue;
+        }
+        return;
+      }
+
+      if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
+        const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
+        throw new Error(`PEDIDO DUPLICADO BLOQUEADO:\n${text}\n\nProcure o administrador.`);
+      }
+
+      throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
+    }
   }catch(err){
     if(!navigator.onLine||err instanceof TypeError){
       enqueueDeparture(orders);
@@ -785,7 +886,7 @@ function exportPeriod(){
 }
 
 
-function resetManualOrderFields(){$('manualOrderFields').innerHTML='';addManualOrderField()}
+function resetManualOrderFields(){$('manualOrderFields').innerHTML='';if($('manualPasteOrders'))$('manualPasteOrders').value='';addManualOrderField()}
 function addManualOrderField(){
   const n=$('manualOrderFields').querySelectorAll('.manual-order-input').length;
   if(n>=5)return;
@@ -833,20 +934,42 @@ async function submitManualDispatch(e){
   if(active&&!confirm('Este motoboy já possui uma saída ativa. Encerrar a anterior e iniciar esta nova saída?'))return;
 
   const btn=$('manualSubmit');btn.disabled=true;
-  const token=(crypto?.randomUUID?.()||('admin-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
+  const payload={
+    courier_id:courierId,
+    order_numbers:orders,
+    reason:$('manualReason').value.trim(),
+    client_token:makeClientToken(),
+    confirm_recent_orders:false
+  };
+
   try{
-    const d=await api('/api/admin/dispatches/manual',{
-      method:'POST',
-      body:JSON.stringify({
-        courier_id:courierId,
-        order_numbers:orders,
-        reason:$('manualReason').value.trim(),
-        client_token:token
-      })
-    });
-    message('manualMsg','Saída manual registrada com sucesso.','ok');
-    await loadAdmin();
-    setTimeout(closeManualDispatchModal,700);
+    for(let attempt=0;attempt<2;attempt++){
+      const r=await fetch('/api/admin/dispatches/manual',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+      let d={};try{d=await r.json()}catch{}
+
+      if(r.ok){
+        message('manualMsg','Saída manual registrada com sucesso.','ok');
+        await loadAdmin();
+        setTimeout(closeManualDispatchModal,700);
+        return;
+      }
+      if(r.status===409&&d.code==='RECENT_ORDER_CONFIRMATION'){
+        const text=(d.recent||[]).map(x=>`${x.order_number} já usado por ${x.courier_name}`).join('\n');
+        if(confirm(`${text}\n\nRegistrar novamente mesmo assim?`)){
+          payload.confirm_recent_orders=true;continue;
+        }
+        return;
+      }
+      if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
+        const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
+        throw new Error(`Pedido ativo duplicado bloqueado:\n${text}`);
+      }
+      throw new Error(d.error||'Erro ao registrar saída manual.');
+    }
   }catch(err){message('manualMsg',err.message,'err')}
   finally{btn.disabled=false}
 }
@@ -1043,6 +1166,74 @@ async function loadPushStatus(){
   }catch{}
 }
 
+
+function timeSince(iso){
+  if(!iso)return 'Sem saída';
+  const mins=Math.max(0,Math.floor((serverNowMs()-Date.parse(iso))/60000));
+  if(mins<60)return `${mins} min`;
+  const h=Math.floor(mins/60),m=mins%60;
+  return `${h}h ${m}min`;
+}
+async function loadOperations(){
+  if(me?.role!=='admin')return;
+  try{
+    if(!dashboard)await loadAdmin();
+    const p=await api('/api/admin/peak');
+    $('peakStrip').innerHTML=`
+      <div class="peak-item"><div class="label">Pedidos 15 min</div><div class="metric">${p.orders.last15}</div></div>
+      <div class="peak-item"><div class="label">Pedidos 30 min</div><div class="metric">${p.orders.last30}</div></div>
+      <div class="peak-item"><div class="label">Pedidos 60 min</div><div class="metric">${p.orders.last60}</div></div>
+      <div class="peak-item"><div class="label">Na rua</div><div class="metric">${p.team.on_road}</div></div>
+      <div class="peak-item"><div class="label">Disponíveis</div><div class="metric">${p.team.available}</div></div>
+      <div class="peak-item"><div class="label">Offline</div><div class="metric">${p.team.offline}</div></div>`;
+
+    $('teamNow').innerHTML=dashboard.couriers.filter(x=>x.approval_status==='APPROVED').map(x=>{
+      const label={NA_RUA:'NA RUA',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+      const detail=x.operational_status==='DISPONIVEL'?`Última saída há ${timeSince(x.last_departure)}`:(x.is_online?'Conectado':'Sem presença recente');
+      return `<div class="team-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${escapeHtml(x.name)}</b><span class="team-status ${x.operational_status}">${label}</span></div><div class="small muted" style="margin-top:7px">${detail}</div><div class="small" style="margin-top:5px">${x.today_count} pedido(s) hoje</div></div>`;
+    }).join('')||'<div class="empty">Nenhum motoboy.</div>';
+  }catch(err){alert(err.message)}
+}
+async function searchOrderNow(){
+  const q=$('quickOrderSearch').value.trim();
+  if(!q)return;
+  try{
+    const d=await api('/api/admin/orders/search?q='+encodeURIComponent(q));
+    $('quickOrderResults').innerHTML=d.rows.map(x=>`<div class="search-result"><div style="display:flex;justify-content:space-between;gap:10px"><b>${escapeHtml(x.order_number)} • ${escapeHtml(x.courier_name)}</b><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></div><div class="small muted" style="margin-top:5px">Saída: ${localDate(x.departed_at)} • Origem: ${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</div></div>`).join('')||'<div class="empty">Pedido não encontrado.</div>';
+  }catch(err){alert(err.message)}
+}
+function conflictLabel(t){
+  return {
+    ACTIVE_ORDER_DUPLICATE:'Pedido ativo duplicado',
+    ACTIVE_ORDER_DUPLICATE_ADMIN:'Pedido ativo duplicado (admin)',
+    ACTIVE_ORDER_RACE_BLOCKED:'Duplicidade simultânea bloqueada',
+    RECENT_ORDER_WARNING:'Pedido usado recentemente',
+    RECENT_ORDER_WARNING_ADMIN:'Pedido recente (admin)',
+    OFFLINE_SYNC_DELAY:'Sincronização offline atrasada',
+    IDEMPOTENT_REPLAY:'Reenvio duplicado evitado'
+  }[t]||t;
+}
+async function loadConflicts(){
+  try{
+    const d=await api('/api/admin/conflicts?limit=150');
+    $('conflicts24').textContent=d.counts.last24h;
+    $('conflictsOpen').textContent=d.counts.open;
+    $('conflictsCritical').textContent=d.counts.critical24h;
+    $('conflictsTable').innerHTML=d.rows.map(x=>{
+      const orders=Array.isArray(x.order_numbers)?x.order_numbers.join(', '):'';
+      const sev=x.severity==='critical'?'<span class="badge red">CRÍTICO</span>':x.severity==='warning'?'<span class="badge yellow">ATENÇÃO</span>':'<span class="badge blue">INFO</span>';
+      return `<tr class="${x.severity==='critical'?'conflict-critical':x.severity==='warning'?'conflict-warning':''}"><td>${localDate(x.created_at)}</td><td>${escapeHtml(conflictLabel(x.conflict_type))}</td><td>${escapeHtml(x.courier_name||x.actor_name||'—')}</td><td>${escapeHtml(orders)}</td><td>${sev}</td><td>${x.resolved_at?'<span class="badge green">RESOLVIDO</span>':`<button class="btn outline" onclick="resolveConflict(${x.id})">Resolver</button>`}</td></tr>`;
+    }).join('')||empty(6);
+  }catch(err){alert(err.message)}
+}
+async function resolveConflict(id){
+  try{await api('/api/admin/conflicts/'+id+'/resolve',{method:'POST'});await loadConflicts()}catch(err){alert(err.message)}
+}
+async function heartbeat(){
+  if(!me)return;
+  try{await api('/api/presence',{method:'POST'})}catch{}
+}
+
 async function loadReport(){
   const date=$('reportDate').value||spToday();
   try{
@@ -1156,8 +1347,10 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
+  else if(b.dataset.page==='operations')loadOperations();
+  else if(b.dataset.page==='conflicts')loadConflicts();
   else if(b.dataset.page==='report')loadReport();
   else if(b.dataset.page==='wallboard'){loadAdmin();renderWallboard();}
   else if(b.dataset.page==='management')loadManagement();
@@ -1193,8 +1386,11 @@ socket.on('notification:new',n=>{
 });
 socket.on('notification:changed',()=>{if(me?.role==='admin')loadNotifications()});
 socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotificationSettings()});
+socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
+socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
 
 setInterval(()=>document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs)),1000);
+setInterval(()=>{if(me)heartbeat();},20000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});

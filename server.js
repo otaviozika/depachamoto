@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -86,6 +86,8 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  skip: req => !!process.env.LOAD_TEST_KEY &&
+    req.get("x-load-test-key") === process.env.LOAD_TEST_KEY,
   message: { error: "Muitas tentativas de login. Aguarde alguns minutos e tente novamente." }
 });
 
@@ -220,6 +222,44 @@ CREATE INDEX IF NOT EXISTS audit_logs_created_idx
 ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS system_errors_created_idx
 ON system_errors(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_presence (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  source TEXT NOT NULL DEFAULT 'WEB'
+);
+
+CREATE INDEX IF NOT EXISTS user_presence_seen_idx
+ON user_presence(last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS active_order_locks (
+  order_number TEXT PRIMARY KEY,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS active_order_locks_courier_idx
+ON active_order_locks(courier_id);
+
+CREATE TABLE IF NOT EXISTS operational_conflicts (
+  id BIGSERIAL PRIMARY KEY,
+  conflict_type TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'warning',
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  courier_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  order_numbers JSONB,
+  details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS operational_conflicts_created_idx
+ON operational_conflicts(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS operational_conflicts_open_idx
+ON operational_conflicts(resolved_at,created_at DESC);
 `);
 
 await pool.query(`
@@ -243,6 +283,16 @@ INSERT INTO app_settings(setting_key,setting_value) VALUES
   ('vapid_private_key_enc',''),
   ('vapid_subject','')
 ON CONFLICT (setting_key) DO NOTHING;
+`);
+
+
+await pool.query(`
+INSERT INTO active_order_locks(order_number,dispatch_id,courier_id)
+SELECT o.order_number,d.id,d.courier_id
+FROM dispatch_orders o
+JOIN dispatches d ON d.id=o.dispatch_id
+WHERE d.status='ON_ROAD'
+ON CONFLICT(order_number) DO NOTHING;
 `);
 
 async function seedAdmin() {
@@ -461,6 +511,84 @@ async function recordSystemError(req, statusCode, err) {
 }
 
 
+
+async function touchPresence(userId, source = "WEB") {
+  if (!userId) return;
+  await pool.query(`
+    INSERT INTO user_presence(user_id,last_seen_at,source)
+    VALUES($1,NOW(),$2)
+    ON CONFLICT(user_id) DO UPDATE SET
+      last_seen_at=NOW(),
+      source=EXCLUDED.source
+  `, [userId, source]);
+}
+
+async function logOperationalConflict({
+  type,
+  severity = "warning",
+  actorUserId = null,
+  courierId = null,
+  orders = [],
+  details = {}
+}) {
+  try {
+    const q = await pool.query(`
+      INSERT INTO operational_conflicts(
+        conflict_type,severity,actor_user_id,courier_id,order_numbers,details
+      )
+      VALUES($1,$2,$3,$4,$5,$6)
+      RETURNING id,conflict_type,severity,created_at
+    `, [
+      type,
+      severity,
+      actorUserId,
+      courierId,
+      JSON.stringify(orders),
+      JSON.stringify(details)
+    ]);
+    io.emit("conflict:new", q.rows[0]);
+    return q.rows[0];
+  } catch {
+    return null;
+  }
+}
+
+async function inspectOrders(orders) {
+  if (!orders.length) return { active: [], recent: [] };
+
+  const active = (await pool.query(`
+    SELECT l.order_number,l.dispatch_id,l.courier_id,
+           u.name AS courier_name,d.departed_at
+    FROM active_order_locks l
+    JOIN users u ON u.id=l.courier_id
+    JOIN dispatches d ON d.id=l.dispatch_id
+    WHERE l.order_number = ANY($1::text[])
+    ORDER BY l.order_number
+  `, [orders])).rows;
+
+  const recent = (await pool.query(`
+    SELECT DISTINCT ON (o.order_number)
+      o.order_number,d.id AS dispatch_id,d.courier_id,
+      u.name AS courier_name,d.departed_at,d.status
+    FROM dispatch_orders o
+    JOIN dispatches d ON d.id=o.dispatch_id
+    JOIN users u ON u.id=d.courier_id
+    WHERE o.order_number = ANY($1::text[])
+      AND d.departed_at >= NOW()-INTERVAL '12 hours'
+    ORDER BY o.order_number,d.departed_at DESC,d.id DESC
+  `, [orders])).rows.filter(r => !active.some(a => a.order_number === r.order_number));
+
+  return { active, recent };
+}
+
+function recentWarningPayload(rows) {
+  return rows.map(r => ({
+    order_number: r.order_number,
+    courier_name: r.courier_name,
+    departed_at: r.departed_at,
+    status: r.status
+  }));
+}
 async function notificationEnabled(key, fallback = "true") {
   return (await getSetting(key, fallback)) === "true";
 }
@@ -523,6 +651,10 @@ async function closeActiveDispatch(client, courierId, releasedBy, reason, closed
     WHERE id=$4 AND status='ON_ROAD'
     RETURNING *
   `, [effectiveClose, releasedBy, reason, active.rows[0].id]);
+
+  if (q.rowCount) {
+    await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [active.rows[0].id]);
+  }
 
   return q.rows[0] || null;
 }
@@ -592,6 +724,10 @@ async function createDispatchTransaction({
       await client.query(
         "INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)",
         [dispatch.id, order]
+      );
+      await client.query(
+        "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id) VALUES($1,$2,$3)",
+        [order, dispatch.id, courierId]
       );
     }
 
@@ -832,7 +968,17 @@ app.post("/api/account/password", auth, asyncRoute(async (req, res) => {
   res.json({ ok: true, message: "Senha alterada com sucesso." });
 }));
 
+
+app.post("/api/presence", auth, asyncRoute(async (req, res) => {
+  await touchPresence(
+    req.session.user.id,
+    req.session.user.role === "courier" ? "COURIER_WEB" : "ADMIN_WEB"
+  );
+  res.json({ ok: true, server_now: new Date().toISOString() });
+}));
+
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
   const user = await currentUser(req.session.user.id);
 
   const active = (await pool.query(`
@@ -875,6 +1021,8 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
 }));
 
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+
   const user = await currentUser(req.session.user.id);
   if (user?.must_change_password) {
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
@@ -882,6 +1030,70 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
 
   const orders = normalizeOrders(req.body);
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
+
+  if (clientToken) {
+    const replay = await pool.query(`
+      SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+             ${orderArraySql("d")}
+      FROM dispatches d
+      WHERE d.client_token=$1
+      LIMIT 1
+    `, [clientToken]);
+
+    if (replay.rowCount) {
+      await logOperationalConflict({
+        type: "IDEMPOTENT_REPLAY",
+        severity: "info",
+        actorUserId: req.session.user.id,
+        courierId: req.session.user.id,
+        orders,
+        details: { client_token: clientToken }
+      });
+      return res.json({
+        dispatch: replay.rows[0],
+        duplicate: true,
+        server_now: new Date().toISOString()
+      });
+    }
+  }
+
+  const inspection = await inspectOrders(orders);
+
+  if (inspection.active.length) {
+    await logOperationalConflict({
+      type: "ACTIVE_ORDER_DUPLICATE",
+      severity: "critical",
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders: inspection.active.map(x => x.order_number),
+      details: { conflicts: inspection.active }
+    });
+
+    return res.status(409).json({
+      error: "Um ou mais pedidos já estão em uma saída ativa. Não é possível duplicar um pedido que está na rua.",
+      code: "ORDER_ALREADY_ACTIVE",
+      conflicts: inspection.active,
+      server_now: new Date().toISOString()
+    });
+  }
+
+  if (inspection.recent.length && req.body.confirm_recent_orders !== true) {
+    await logOperationalConflict({
+      type: "RECENT_ORDER_WARNING",
+      severity: "warning",
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders: inspection.recent.map(x => x.order_number),
+      details: { recent: inspection.recent }
+    });
+
+    return res.status(409).json({
+      error: "Um ou mais pedidos já foram usados nas últimas 12 horas. Confirme se deseja continuar.",
+      code: "RECENT_ORDER_CONFIRMATION",
+      recent: recentWarningPayload(inspection.recent),
+      server_now: new Date().toISOString()
+    });
+  }
 
   const activeQ = await pool.query(`
     SELECT d.id,d.departed_at,d.order_number,${orderArraySql("d")}
@@ -904,14 +1116,55 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     ? normalizeQueuedDepartureTime(req.body.estimated_departed_at)
     : null;
 
-  const result = await createDispatchTransaction({
-    actorUserId: req.session.user.id,
-    courierId: req.session.user.id,
-    orders,
-    source: "COURIER",
-    clientToken,
-    departedAt: queuedDeparture
-  });
+  if (req.body.offline_queued === true && queuedDeparture) {
+    const delayMinutes = Math.max(
+      0,
+      Math.round((Date.now() - Date.parse(queuedDeparture)) / 60000)
+    );
+    if (delayMinutes >= 5) {
+      await logOperationalConflict({
+        type: "OFFLINE_SYNC_DELAY",
+        severity: delayMinutes >= 15 ? "critical" : "warning",
+        actorUserId: req.session.user.id,
+        courierId: req.session.user.id,
+        orders,
+        details: {
+          delay_minutes: delayMinutes,
+          estimated_departed_at: queuedDeparture
+        }
+      });
+    }
+  }
+
+  let result;
+  try {
+    result = await createDispatchTransaction({
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders,
+      source: "COURIER",
+      clientToken,
+      departedAt: queuedDeparture
+    });
+  } catch (e) {
+    if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
+      const raceInspection = await inspectOrders(orders);
+      await logOperationalConflict({
+        type: "ACTIVE_ORDER_RACE_BLOCKED",
+        severity: "critical",
+        actorUserId: req.session.user.id,
+        courierId: req.session.user.id,
+        orders,
+        details: { conflicts: raceInspection.active }
+      });
+      return res.status(409).json({
+        error: "Outro registro utilizou este pedido ao mesmo tempo. Atualize e confira o pedido.",
+        code: "ORDER_ALREADY_ACTIVE",
+        conflicts: raceInspection.active
+      });
+    }
+    throw e;
+  }
 
   if (!result.duplicate) {
     await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
@@ -1289,6 +1542,49 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
   const reason = String(req.body.reason || "").trim().slice(0, 250);
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
+  if (clientToken) {
+    const replay = await pool.query("SELECT id FROM dispatches WHERE client_token=$1 LIMIT 1", [clientToken]);
+    if (replay.rowCount) {
+      return res.json({ duplicate: true, dispatch: { id: replay.rows[0].id } });
+    }
+  }
+
+  const inspection = await inspectOrders(orders);
+
+  if (inspection.active.length) {
+    await logOperationalConflict({
+      type: "ACTIVE_ORDER_DUPLICATE_ADMIN",
+      severity: "critical",
+      actorUserId: req.session.user.id,
+      courierId,
+      orders: inspection.active.map(x => x.order_number),
+      details: { conflicts: inspection.active }
+    });
+
+    return res.status(409).json({
+      error: "Pedido já está em uma saída ativa. Corrija a situação antes de registrar novamente.",
+      code: "ORDER_ALREADY_ACTIVE",
+      conflicts: inspection.active
+    });
+  }
+
+  if (inspection.recent.length && req.body.confirm_recent_orders !== true) {
+    await logOperationalConflict({
+      type: "RECENT_ORDER_WARNING_ADMIN",
+      severity: "warning",
+      actorUserId: req.session.user.id,
+      courierId,
+      orders: inspection.recent.map(x => x.order_number),
+      details: { recent: inspection.recent }
+    });
+
+    return res.status(409).json({
+      error: "Pedido utilizado nas últimas 12 horas. Confirme para continuar.",
+      code: "RECENT_ORDER_CONFIRMATION",
+      recent: recentWarningPayload(inspection.recent)
+    });
+  }
+
   const result = await createDispatchTransaction({
     actorUserId: req.session.user.id,
     courierId,
@@ -1472,6 +1768,111 @@ app.delete("/api/admin/push/subscribe", auth, adminOnly, asyncRoute(async (req, 
   res.json({ ok: true });
 }));
 
+
+app.get("/api/admin/peak", auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = await pool.query(`
+    SELECT
+      COUNT(o.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '15 minutes')::int AS orders_15,
+      COUNT(o.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '30 minutes')::int AS orders_30,
+      COUNT(o.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '60 minutes')::int AS orders_60,
+      COUNT(DISTINCT d.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '15 minutes')::int AS dispatches_15,
+      COUNT(DISTINCT d.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '30 minutes')::int AS dispatches_30,
+      COUNT(DISTINCT d.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '60 minutes')::int AS dispatches_60
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+  `);
+
+  const team = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE operational='NA_RUA')::int AS on_road,
+      COUNT(*) FILTER (WHERE operational='DISPONIVEL')::int AS available,
+      COUNT(*) FILTER (WHERE operational='OFFLINE')::int AS offline,
+      COUNT(*) FILTER (WHERE operational='INATIVO')::int AS inactive
+    FROM (
+      SELECT CASE
+        WHEN u.active=false THEN 'INATIVO'
+        WHEN EXISTS(SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND d.status='ON_ROAD') THEN 'NA_RUA'
+        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
+        ELSE 'OFFLINE'
+      END AS operational
+      FROM users u
+      LEFT JOIN user_presence p ON p.user_id=u.id
+      WHERE u.role='courier' AND u.approval_status='APPROVED'
+    ) x
+  `);
+
+  res.json({
+    orders: {
+      last15: q.rows[0].orders_15,
+      last30: q.rows[0].orders_30,
+      last60: q.rows[0].orders_60
+    },
+    dispatches: {
+      last15: q.rows[0].dispatches_15,
+      last30: q.rows[0].dispatches_30,
+      last60: q.rows[0].dispatches_60
+    },
+    team: team.rows[0],
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/orders/search", auth, adminOnly, asyncRoute(async (req, res) => {
+  let q = String(req.query.q || "").trim();
+  if (!q) return res.json({ rows: [] });
+  if (!q.startsWith("#")) q = "#" + q;
+
+  const rows = (await pool.query(`
+    SELECT o.order_number,d.id AS dispatch_id,d.dispatch_code,d.departed_at,
+           d.released_at,d.status,d.registration_source,d.admin_reason,
+           u.id AS courier_id,u.name AS courier_name,u.username
+    FROM dispatch_orders o
+    JOIN dispatches d ON d.id=o.dispatch_id
+    JOIN users u ON u.id=d.courier_id
+    WHERE o.order_number ILIKE $1
+    ORDER BY d.departed_at DESC,d.id DESC
+    LIMIT 20
+  `, [`%${q}%`])).rows;
+
+  res.json({ rows, server_now: new Date().toISOString() });
+}));
+
+app.get("/api/admin/conflicts", auth, adminOnly, asyncRoute(async (req, res) => {
+  const limit = parsePositiveInt(req.query.limit, 100, 300);
+  const rows = (await pool.query(`
+    SELECT c.id,c.conflict_type,c.severity,c.order_numbers,c.details,c.created_at,
+           c.resolved_at,au.name AS actor_name,cu.name AS courier_name
+    FROM operational_conflicts c
+    LEFT JOIN users au ON au.id=c.actor_user_id
+    LEFT JOIN users cu ON cu.id=c.courier_id
+    ORDER BY c.created_at DESC,c.id DESC
+    LIMIT $1
+  `, [limit])).rows;
+
+  const counts = (await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS last24h,
+      COUNT(*) FILTER (WHERE resolved_at IS NULL)::int AS open,
+      COUNT(*) FILTER (WHERE severity='critical' AND created_at >= NOW()-INTERVAL '24 hours')::int AS critical24h
+    FROM operational_conflicts
+  `)).rows[0];
+
+  res.json({ rows, counts, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/admin/conflicts/:id/resolve", auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = await pool.query(`
+    UPDATE operational_conflicts
+    SET resolved_at=COALESCE(resolved_at,NOW()),resolved_by=$1
+    WHERE id=$2
+    RETURNING id,resolved_at
+  `, [req.session.user.id, req.params.id]);
+
+  if (!q.rowCount) return res.status(404).json({ error: "Conflito não encontrado." });
+  io.emit("conflict:changed");
+  res.json({ conflict: q.rows[0] });
+}));
+
 app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) => {
   const dbStart = Date.now();
   await pool.query("SELECT 1");
@@ -1555,10 +1956,27 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
             (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       )::int AS today_count,
-      EXISTS(SELECT 1 FROM dispatches d2 WHERE d2.courier_id=u.id AND d2.status='ON_ROAD') AS on_road
-    FROM users u WHERE u.role='courier'
+      EXISTS(SELECT 1 FROM dispatches d2 WHERE d2.courier_id=u.id AND d2.status='ON_ROAD') AS on_road,
+      p.last_seen_at,
+      (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
+      (SELECT MAX(d3.departed_at) FROM dispatches d3 WHERE d3.courier_id=u.id) AS last_departure,
+      CASE
+        WHEN u.active=false THEN 'INATIVO'
+        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 'NA_RUA'
+        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
+        ELSE 'OFFLINE'
+      END AS operational_status
+    FROM users u
+    LEFT JOIN user_presence p ON p.user_id=u.id
+    WHERE u.role='courier'
     ORDER BY
       CASE u.approval_status WHEN 'PENDING' THEN 0 WHEN 'REJECTED' THEN 2 ELSE 1 END,
+      CASE
+        WHEN u.active=false THEN 4
+        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 1
+        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 2
+        ELSE 3
+      END,
       u.name
   `)).rows;
 
