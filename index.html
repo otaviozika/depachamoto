@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111827">
+<title>DespachaMoto</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--primary2:#fbbf24;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}.login{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#111827,#293548);padding:20px}.auth-box{width:min(450px,100%);background:#fff;border-radius:20px;padding:30px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.logo{font-size:25px;font-weight:900}.logo span{color:var(--primary)}.tabs{display:flex;background:#f3f4f6;padding:4px;border-radius:11px;margin:20px 0}.tabs button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;cursor:pointer}.tabs .on{background:white;font-weight:800;box-shadow:0 1px 5px #0001}.form{display:grid;gap:13px}.form label{font-size:13px;font-weight:700}.form input{width:100%;display:block;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;outline:none}.form input:focus{border-color:var(--primary)}.btn{border:0;border-radius:10px;padding:11px 15px;font-weight:800;cursor:pointer}.btn.primary{background:var(--primary);color:#111827}.btn.outline{background:#fff;border:1px solid var(--line)}.btn.danger{background:#fee2e2;color:#991b1b}.btn.success{background:#dcfce7;color:#166534}.msg{padding:10px;border-radius:9px;margin:10px 0;font-size:13px}.msg.err{background:#fee2e2;color:#991b1b}.msg.ok{background:#dcfce7;color:#166534}
+.app{min-height:100vh}.side{position:fixed;inset:0 auto 0 0;width:250px;background:var(--dark);color:white;padding:20px 15px;z-index:8}.side .logo{padding:8px 10px 25px}.nav{display:grid;gap:6px}.nav button{border:0;background:transparent;color:#cbd5e1;text-align:left;padding:12px;border-radius:10px;cursor:pointer}.nav button.active,.nav button:hover{background:#1f2937;color:white}.main{margin-left:250px}.top{height:70px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;padding:0 26px;position:sticky;top:0;z-index:5}.content{max-width:1450px;margin:auto;padding:25px}.page{display:none}.page.active{display:block}.title{font-size:27px;font-weight:900;margin:0}.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:20px 0}.card,.section{background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow)}.card{padding:18px}.metric{font-size:30px;font-weight:900;margin-top:7px}.label{font-size:13px;color:var(--muted)}.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.section{overflow:hidden}.section-head{padding:17px 19px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 15px;border-bottom:1px solid var(--line);font-size:13px;text-align:left;white-space:nowrap}.table th{color:var(--muted);background:#fafbfc}.badge{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#fef3c7;color:#92400e}.badge.gray{background:#eef2f7;color:#475569}.badge.red{background:#fee2e2;color:#991b1b}.hero{background:linear-gradient(135deg,#111827,#1f2937);color:#fff;padding:24px;border-radius:17px;margin-bottom:18px}.hero h2{margin:0 0 7px}.big{font-size:40px;font-weight:900}.mobile-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;padding:20px;z-index:30}.modal-box{width:min(460px,100%);background:#fff;border-radius:17px;padding:24px}.empty{text-align:center;padding:26px;color:var(--muted)}.status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.search{display:flex;gap:8px;padding:15px}.search input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
+@media(max-width:1050px){.cards{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}}
+@media(max-width:720px){.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}}
+</style>
+</head>
+<body>
+<div id="loginScreen" class="login">
+  <div class="auth-box">
+    <div class="logo">🛵 Despacha<span>Moto</span></div>
+    <h2>Bem-vindo</h2>
+    <p class="muted">Sistema online de despacho de motoboys.</p>
+    <div class="tabs">
+      <button id="tabLogin" class="on" onclick="setAuth('login')">Entrar</button>
+      <button id="tabRegister" onclick="setAuth('register')">Criar conta</button>
+    </div>
+    <div id="authMsg"></div>
+    <form id="loginForm" class="form">
+      <label>Usuário<input id="loginUser" autocomplete="username" required></label>
+      <label>Senha<input id="loginPass" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary">Entrar</button>
+    </form>
+    <form id="registerForm" class="form hidden">
+      <label>Nome completo<input id="regName" required></label>
+      <label>Usuário<input id="regUser" required></label>
+      <label>Senha<input id="regPass" type="password" minlength="6" required></label>
+      <label>Confirmar senha<input id="regPass2" type="password" minlength="6" required></label>
+      <button class="btn primary">Criar conta de motoboy</button>
+      <p class="small muted">O cadastro cria automaticamente um perfil de motoboy.</p>
+    </form>
+  </div>
+</div>
+
+<div id="adminApp" class="app hidden">
+  <aside class="side">
+    <div class="logo">🛵 Despacha<span>Moto</span></div>
+    <nav class="nav">
+      <button data-page="dashboard" class="active">▦ Dashboard</button>
+      <button data-page="road">◷ Quem está na rua</button>
+      <button data-page="history">▤ Histórico</button>
+      <button data-page="couriers">♙ Motoboys</button>
+      <button data-page="audit">◉ Auditoria</button>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="top"><b id="pageTitle">Dashboard</b><div><span id="adminName"></span> <button class="btn outline" onclick="logout()">Sair</button></div></div>
+    <div class="content">
+      <section id="dashboard" class="page active">
+        <h1 class="title">Central de despacho</h1><p class="muted">Acompanhe em tempo real quem saiu e há quanto tempo está na rua.</p>
+        <div class="cards">
+          <div class="card"><div class="label">Motoboys ativos</div><div id="mActive" class="metric">0</div></div>
+          <div class="card"><div class="label">🟠 Na rua</div><div id="mRoad" class="metric">0</div></div>
+          <div class="card"><div class="label">🟢 Disponíveis</div><div id="mAvailable" class="metric">0</div></div>
+          <div class="card"><div class="label">Saídas hoje</div><div id="mToday" class="metric">0</div></div>
+          <div class="card"><div class="label">Em andamento</div><div id="mProgress" class="metric">0</div></div>
+        </div>
+        <div class="grid">
+          <div class="section"><div class="section-head"><b>Quem está na rua agora</b><span class="badge orange">AO VIVO</span></div><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido</th><th>Saída</th><th>Tempo</th><th>Ação</th></tr></thead><tbody id="roadDash"></tbody></table></div></div>
+          <div class="section"><div class="section-head"><b>Últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido</th><th>Motoboy</th><th>Saída</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
+        </div>
+      </section>
+
+      <section id="road" class="page">
+        <h1 class="title">Quem está na rua</h1><p class="muted">O contador continua funcionando sem recarregar a página.</p>
+        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido</th><th>Horário da saída</th><th>Tempo na rua</th><th>Status</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div>
+      </section>
+
+      <section id="history" class="page">
+        <h1 class="title">Histórico de saídas</h1><p class="muted">Todos os registros permanecem salvos no banco.</p>
+        <div class="section" style="margin-top:18px"><div class="search"><input id="historySearch" placeholder="Pesquisar pedido ou motoboy..." oninput="renderHistory()"></div><div class="table-wrap"><table class="table"><thead><tr><th>Código</th><th>Pedido</th><th>Motoboy</th><th>Saída</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div>
+      </section>
+
+      <section id="couriers" class="page">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><h1 class="title">Motoboys</h1><p class="muted">Cadastro e controle de acesso.</p></div><button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button></div>
+        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>Saídas hoje</th><th>Situação</th><th>Ação</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
+      </section>
+
+      <section id="audit" class="page">
+        <h1 class="title">Auditoria</h1><p class="muted">Registro das principais ações do sistema.</p>
+        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div>
+      </section>
+    </div>
+  </main>
+  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="history">▤<br>Histórico</button><button data-page="couriers">♙<br>Equipe</button></div>
+</div>
+
+<div id="courierApp" class="hidden">
+  <div class="top"><b>🛵 DespachaMoto</b><div><span id="courierName"></span> <button class="btn outline" onclick="logout()">Sair</button></div></div>
+  <main class="content" style="max-width:760px">
+    <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre somente quando sair com um pedido.</div><div style="margin-top:15px">Saídas hoje<div id="myToday" class="big">0</div></div></div>
+    <div id="activeDispatch"></div>
+    <div id="departureCard" class="card">
+      <h2 style="margin-top:0">Registrar saída</h2>
+      <p class="muted">Digite o número do pedido. O horário será registrado automaticamente pelo servidor.</p>
+      <form id="departureForm" class="form">
+        <label>Número do pedido<input id="orderNumber" placeholder="#45892" required></label>
+        <button class="btn primary">🛵 Registrar saída</button>
+      </form>
+      <div id="departureMsg"></div>
+    </div>
+    <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+      <div class="card"><div class="label">Hoje</div><div id="statToday" class="metric">0</div></div>
+      <div class="card"><div class="label">Últimos 7 dias</div><div id="statWeek" class="metric">0</div></div>
+      <div class="card"><div class="label">Este mês</div><div id="statMonth" class="metric">0</div></div>
+    </div>
+    <div class="section"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
+  </main>
+</div>
+
+<div id="courierModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="6" required></label><button class="btn primary">Cadastrar</button></form></div></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+let me=null,dashboard=null;
+const $=id=>document.getElementById(id);
+
+async function api(url,opt={}){
+  const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
+  let d={}; try{d=await r.json()}catch{}
+  if(!r.ok) throw new Error(d.error||'Erro na operação.');
+  return d;
+}
+function setAuth(mode){
+  $('loginForm').classList.toggle('hidden',mode!=='login');
+  $('registerForm').classList.toggle('hidden',mode!=='register');
+  $('tabLogin').classList.toggle('on',mode==='login');
+  $('tabRegister').classList.toggle('on',mode==='register');
+  $('authMsg').innerHTML='';
+}
+function message(id,text,type){ $(id).innerHTML=text?`<div class="msg ${type}">${text}</div>`:''; }
+function localDate(x){return new Date(x).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function localTime(x){return new Date(x).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function elapsed(x){let s=Math.max(0,Math.floor((Date.now()-new Date(x).getTime())/1000)),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),q=s%60;return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(q).padStart(2,'0')}`}
+function empty(cols){return `<tr><td colspan="${cols}" class="empty">Nenhum registro.</td></tr>`}
+
+async function login(e){
+  e.preventDefault(); message('authMsg','','');
+  try{
+    const d=await api('/api/login',{method:'POST',body:JSON.stringify({username:$('loginUser').value,password:$('loginPass').value})});
+    me=d.user; showApp();
+  }catch(err){message('authMsg',err.message,'err')}
+}
+async function register(e){
+  e.preventDefault(); message('authMsg','','');
+  if($('regPass').value!==$('regPass2').value) return message('authMsg','As senhas não conferem.','err');
+  try{
+    const d=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('regName').value,username:$('regUser').value,password:$('regPass').value})});
+    setAuth('login'); $('loginUser').value=d.user.username; message('authMsg','Cadastro criado com sucesso. Agora faça login.','ok');
+  }catch(err){message('authMsg',err.message,'err')}
+}
+async function logout(){try{await api('/api/logout',{method:'POST'})}catch{} location.reload()}
+
+function showApp(){
+  $('loginScreen').classList.add('hidden');
+  if(me.role==='admin'){
+    $('adminApp').classList.remove('hidden'); $('adminName').textContent=me.name; loadAdmin();
+  }else{
+    $('courierApp').classList.remove('hidden'); $('courierName').textContent=me.name; $('hello').textContent=me.name.split(' ')[0]; loadCourier();
+  }
+}
+
+async function loadAdmin(){
+  dashboard=await api('/api/admin/dashboard');
+  const m=dashboard.metrics;
+  $('mActive').textContent=m.activeCouriers;
+  $('mRoad').textContent=m.onRoad;
+  $('mAvailable').textContent=m.available;
+  $('mToday').textContent=m.today;
+  $('mProgress').textContent=m.onRoad;
+  renderRoad();
+  renderRecent();
+  renderHistory();
+  renderCouriers();
+}
+function renderRoad(){
+  const a=dashboard.active;
+  $('roadDash').innerHTML=a.map(x=>`<tr><td><b>${x.courier_name}</b></td><td>${x.order_number}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start="${x.departed_at}">${elapsed(x.departed_at)}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('')||empty(5);
+  $('roadTable').innerHTML=a.map(x=>`<tr><td><b>${x.courier_name}</b></td><td>${x.order_number}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start="${x.departed_at}">${elapsed(x.departed_at)}</b></td><td><span class="badge orange">NA RUA</span></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar para nova saída</button></td></tr>`).join('')||empty(6);
+}
+function renderRecent(){
+  $('recentTable').innerHTML=dashboard.recent.slice(0,8).map(x=>`<tr><td>${x.order_number}</td><td>${x.courier_name}</td><td>${localTime(x.departed_at)}</td></tr>`).join('')||empty(3);
+}
+function renderHistory(){
+  if(!dashboard)return;
+  const q=($('historySearch')?.value||'').toLowerCase();
+  const rows=dashboard.recent.filter(x=>(x.order_number+' '+x.courier_name+' '+x.dispatch_code).toLowerCase().includes(q));
+  $('historyTable').innerHTML=rows.map(x=>`<tr><td>${x.dispatch_code}</td><td><b>${x.order_number}</b></td><td>${x.courier_name}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(5);
+}
+function renderCouriers(){
+  $('courierTable').innerHTML=dashboard.couriers.map(x=>`<tr><td>${x.name}</td><td>${x.username}</td><td>${x.today_count}</td><td><div class="status-line"><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVO':'INATIVO'}</span>${x.on_road?'<span class="badge orange">NA RUA</span>':''}</div></td><td><button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button></td></tr>`).join('')||empty(5);
+}
+async function releaseDispatch(id){
+  if(!confirm('Liberar este motoboy para registrar uma nova saída? O histórico anterior será preservado.')) return;
+  try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST'}); await loadAdmin();}
+  catch(err){alert(err.message)}
+}
+async function toggleCourier(id,active){
+  try{await api('/api/admin/couriers/'+id,{method:'PATCH',body:JSON.stringify({active})});await loadAdmin();}
+  catch(err){alert(err.message)}
+}
+
+async function loadCourier(){
+  const d=await api('/api/courier/dashboard');
+  $('myToday').textContent=d.stats.today;
+  $('statToday').textContent=d.stats.today;
+  $('statWeek').textContent=d.stats.week;
+  $('statMonth').textContent=d.stats.month;
+  $('myHistory').innerHTML=d.recent.map(x=>`<tr><td>${x.order_number}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(3);
+
+  if(d.active){
+    $('departureCard').classList.add('hidden');
+    $('activeDispatch').innerHTML=`<div class="hero"><h2>🟠 Você está na rua</h2><div>Pedido <b>${d.active.order_number}</b></div><div style="margin-top:12px">Saiu às <b>${localTime(d.active.departed_at)}</b></div><div style="margin-top:8px">Tempo na rua<div class="big live" data-start="${d.active.departed_at}">${elapsed(d.active.departed_at)}</div></div><div class="muted">Quando você precisar registrar a próxima saída, o administrador libera seu status atual.</div></div>`;
+  } else {
+    $('departureCard').classList.remove('hidden');
+    $('activeDispatch').innerHTML='';
+  }
+}
+async function depart(e){
+  e.preventDefault(); message('departureMsg','','');
+  try{
+    await api('/api/courier/depart',{method:'POST',body:JSON.stringify({order_number:$('orderNumber').value})});
+    $('orderNumber').value=''; message('departureMsg','Saída registrada com sucesso.','ok'); await loadCourier();
+  }catch(err){message('departureMsg',err.message,'err')}
+}
+
+function openCourierModal(){$('courierModal').style.display='grid';$('courierModalMsg').innerHTML='';$('newName').focus()}
+function closeCourierModal(){$('courierModal').style.display='none'}
+async function createCourier(e){
+  e.preventDefault();
+  try{
+    await api('/api/admin/couriers',{method:'POST',body:JSON.stringify({name:$('newName').value,username:$('newUser').value,password:$('newPass').value})});
+    $('courierForm').reset();message('courierModalMsg','Motoboy cadastrado com sucesso.','ok');await loadAdmin();setTimeout(closeCourierModal,600);
+  }catch(err){message('courierModalMsg',err.message,'err')}
+}
+async function loadAudit(){
+  const d=await api('/api/admin/audit');
+  $('auditTable').innerHTML=d.rows.map(x=>`<tr><td>${localDate(x.created_at)}</td><td>${x.user_name||'Sistema'}</td><td>${x.action}</td><td>${x.details?JSON.stringify(x.details):''}</td></tr>`).join('')||empty(4);
+}
+
+document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  $(b.dataset.page).classList.add('active');
+  document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
+  $('pageTitle').textContent={dashboard:'Dashboard',road:'Quem está na rua',history:'Histórico',couriers:'Motoboys',audit:'Auditoria'}[b.dataset.page];
+  if(b.dataset.page==='audit')loadAudit(); else loadAdmin();
+});
+
+$('loginForm').onsubmit=login;
+$('registerForm').onsubmit=register;
+$('departureForm').onsubmit=depart;
+$('courierForm').onsubmit=createCourier;
+
+const socket=io();
+socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.role==='courier')loadCourier()});
+socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
+setInterval(()=>document.querySelectorAll('.live').forEach(x=>x.textContent=elapsed(x.dataset.start)),1000);
+
+(async()=>{
+  try{const d=await api('/api/me');me=d.user;showApp()}catch{}
+})();
+</script>
+</body>
+</html>
