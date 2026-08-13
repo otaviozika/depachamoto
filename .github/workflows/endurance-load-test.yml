@@ -1,0 +1,164 @@
+name: DespachaMoto - Resistência 30 Minutos
+
+on:
+  workflow_dispatch:
+    inputs:
+      couriers:
+        description: "Motoboys simultâneos"
+        required: true
+        default: "40"
+        type: string
+      duration_minutes:
+        description: "Duração em minutos"
+        required: true
+        default: "30"
+        type: string
+      departure_interval_seconds:
+        description: "Intervalo médio de saída por motoboy"
+        required: true
+        default: "30"
+        type: string
+      orders_per_departure:
+        description: "Pedidos por saída"
+        required: true
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  endurance-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: despachamoto_endurance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d despachamoto_endurance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachamoto_endurance
+      SESSION_SECRET: github-actions-endurance-secret-2026-very-long
+      ADMIN_USERNAME: enduranceadmin
+      ADMIN_PASSWORD: EnduranceAdmin-987654
+      ADMIN_NAME: Administrador Endurance
+      NODE_ENV: test
+      PORT: "3000"
+      DB_POOL_MAX: "25"
+      TARGET_URL: http://127.0.0.1:3000
+      LOADTEST_ADMIN_USERNAME: enduranceadmin
+      LOADTEST_ADMIN_PASSWORD: EnduranceAdmin-987654
+      LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
+      COURIERS: ${{ inputs.couriers }}
+      DURATION_MINUTES: ${{ inputs.duration_minutes }}
+      DEPARTURE_INTERVAL_SECONDS: ${{ inputs.departure_interval_seconds }}
+      ORDERS_PER_DEPARTURE: ${{ inputs.orders_per_departure }}
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Validar sintaxe
+        run: |
+          node --check server.js
+          node --check scripts/endurance-staging.js
+
+      - name: Iniciar DespachaMoto temporário
+        run: |
+          npm start > server-endurance.log 2>&1 &
+          echo $! > server.pid
+
+      - name: Aguardar sistema saudável
+        run: |
+          for i in {1..60}; do
+            CODE=$(curl -sS -o health.json -w "%{http_code}" --max-time 10 http://127.0.0.1:3000/api/health || true)
+            if [ "$CODE" = "200" ]; then
+              cat health.json
+              echo
+              exit 0
+            fi
+            echo "Tentativa $i: HTTP $CODE"
+            sleep 2
+          done
+          cat server-endurance.log || true
+          exit 1
+
+      - name: Monitorar memória do servidor
+        run: |
+          echo "timestamp,rss_kb,vsz_kb" > server-memory.csv
+          (
+            while kill -0 "$(cat server.pid)" 2>/dev/null; do
+              TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+              VALUES=$(ps -o rss=,vsz= -p "$(cat server.pid)" | awk '{$1=$1;print}')
+              if [ -n "$VALUES" ]; then
+                RSS=$(echo "$VALUES" | awk '{print $1}')
+                VSZ=$(echo "$VALUES" | awk '{print $2}')
+                echo "$TS,$RSS,$VSZ" >> server-memory.csv
+              fi
+              sleep 30
+            done
+          ) &
+          echo $! > memory-monitor.pid
+
+      - name: Rodar teste de resistência
+        run: |
+          node scripts/endurance-staging.js
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "## DespachaMoto - Resistência" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Perfil:** $COURIERS motoboys, $DURATION_MINUTES minutos, 1 saída a cada $DEPARTURE_INTERVAL_SECONDS s, $ORDERS_PER_DEPARTURE pedidos/saída" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f endurance-report.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat endurance-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Mostrar log se falhar
+        if: failure()
+        run: |
+          tail -300 server-endurance.log || true
+
+      - name: Salvar relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: despachamoto-endurance-report
+          path: |
+            endurance-report.json
+            server-endurance.log
+            server-memory.csv
+            health.json
+          if-no-files-found: ignore
+
+      - name: Encerrar processos
+        if: always()
+        run: |
+          if [ -f memory-monitor.pid ]; then
+            kill "$(cat memory-monitor.pid)" || true
+          fi
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" || true
+          fi
