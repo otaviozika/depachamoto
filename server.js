@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -686,16 +686,18 @@ async function acknowledgeIfoodEvents(eventIds) {
 }
 
 async function setIfoodSyncSuccess(eventCount) {
+  const count = Math.max(0, Number.parseInt(eventCount, 10) || 0);
+
   await pool.query(`
     UPDATE ifood_sync_state SET
       last_poll_at=NOW(),
       last_success_at=NOW(),
       last_error=NULL,
       last_error_at=NULL,
-      last_event_count=$1,
-      total_events_received=total_events_received+$1
+      last_event_count=$1::integer,
+      total_events_received=total_events_received + ($1::integer)::bigint
     WHERE singleton=1
-  `, [eventCount]);
+  `, [count]);
 }
 
 async function setIfoodSyncError(err) {
