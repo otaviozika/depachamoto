@@ -9,6 +9,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_USERNAME = process.env.LOADTEST_ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.LOADTEST_ADMIN_PASSWORD;
 const CONFIRM = process.env.LOAD_TEST_CONFIRM;
+const LOAD_TEST_KEY = process.env.LOAD_TEST_KEY || "";
 
 const COURIERS = Math.max(1, Number(process.env.COURIERS || 40));
 const DURATION_MINUTES = Math.max(1, Number(process.env.DURATION_MINUTES || 30));
@@ -66,6 +67,7 @@ async function request(path, cookie = "", opt = {}) {
       headers: {
         "content-type": "application/json",
         ...(cookie ? { cookie } : {}),
+        ...(LOAD_TEST_KEY ? { "x-load-test-key": LOAD_TEST_KEY } : {}),
         ...(opt.headers || {})
       }
     });
