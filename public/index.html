@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.8</title>
+<title>DespachaMoto 2.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -95,6 +95,7 @@
     <nav class="nav">
       <button data-page="dashboard" class="active">▦ Dashboard</button>
       <button data-page="operations">⚡ Operação</button>
+      <button data-page="ifood">🍔 iFood</button>
       <button data-page="road">◷ Quem está na rua</button>
       <button data-page="wallboard">🖥️ Modo telão</button>
       <button data-page="history">▤ Histórico</button>
@@ -159,6 +160,60 @@
           </div>
         </div>
       </section>
+
+
+<section id="ifood" class="page">
+  <h1 class="title">Integração iFood</h1>
+  <p class="muted">Fase 1: conexão, recebimento e armazenamento de pedidos. Nenhum despacho é enviado ao iFood nesta fase.</p>
+
+  <div class="warning" style="margin-top:18px">
+    <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
+    Primeiro vamos validar autenticação, loja e recebimento do pedido de teste.
+  </div>
+
+  <div id="ifoodStatusCards" class="cards" style="grid-template-columns:repeat(4,1fr);margin-top:18px">
+    <div class="card"><div class="label">Credenciais</div><div class="metric" style="font-size:22px">—</div></div>
+    <div class="card"><div class="label">Loja iFood</div><div class="metric" style="font-size:22px">—</div></div>
+    <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">0</div></div>
+    <div class="card"><div class="label">Sincronização</div><div class="metric" style="font-size:22px">—</div></div>
+  </div>
+
+  <div class="section" style="margin-top:18px">
+    <div class="section-head">
+      <b>Conexão</b>
+      <div class="actions">
+        <button id="ifoodTestBtn" class="btn outline" onclick="testIfoodConnection()">Testar conexão</button>
+        <button id="ifoodSyncBtn" class="btn primary" onclick="syncIfoodNow()">Sincronizar agora</button>
+      </div>
+    </div>
+    <div style="padding:20px">
+      <div id="ifoodConnectionMsg" class="small muted">Carregando status...</div>
+      <div id="ifoodMerchants" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top:18px">
+    <div class="section-head">
+      <b>Pedidos iFood recebidos</b>
+      <button class="btn outline" onclick="loadIfoodStatus()">Atualizar</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Pedido</th>
+            <th>Entrega</th>
+            <th>Status</th>
+            <th>Origem</th>
+            <th>Teste</th>
+            <th>Último evento</th>
+          </tr>
+        </thead>
+        <tbody id="ifoodOrdersTable"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
 <section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
@@ -1335,6 +1390,113 @@ async function enterWallFullscreen(){
   const el=$('wallboard');
   try{if(!document.fullscreenElement)await el.requestFullscreen();else await document.exitFullscreen()}catch{}
 }
+
+function ifoodDeliveryLabel(value){
+  if(value==='MERCHANT')return '<span class="badge green">ENTREGA PRÓPRIA</span>';
+  if(value==='IFOOD')return '<span class="badge red">ENTREGA IFOOD</span>';
+  return '<span class="badge yellow">A IDENTIFICAR</span>';
+}
+
+function ifoodStatusBadge(status){
+  const s=String(status||'—').toUpperCase();
+  if(['CONCLUDED','DISPATCHED'].includes(s))return `<span class="badge green">${escapeHtml(s)}</span>`;
+  if(['CANCELLED','ORDER_CANCELLED'].includes(s))return `<span class="badge red">${escapeHtml(s)}</span>`;
+  return `<span class="badge yellow">${escapeHtml(s)}</span>`;
+}
+
+async function loadIfoodStatus(){
+  if(me?.role!=='admin')return;
+
+  try{
+    const d=await api('/api/admin/ifood/status');
+
+    const configured=d.configured
+      ? '<span class="badge green">CONFIGURADO</span>'
+      : '<span class="badge red">FALTANDO</span>';
+
+    const merchants=(d.merchants||[]);
+    const auto=d.autoEnabled
+      ? '<span class="badge green">AUTOMÁTICO</span>'
+      : '<span class="badge yellow">MANUAL</span>';
+
+    $('ifoodStatusCards').innerHTML=`
+      <div class="card"><div class="label">Credenciais</div><div style="margin-top:10px">${configured}</div></div>
+      <div class="card"><div class="label">Loja iFood</div><div class="metric">${merchants.length}</div></div>
+      <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">${d.counts?.orders||0}</div></div>
+      <div class="card"><div class="label">Sincronização</div><div style="margin-top:10px">${auto}</div></div>`;
+
+    const last=d.state?.last_success_at
+      ? `Última sincronização com sucesso: <b>${localDate(d.state.last_success_at)}</b>.`
+      : 'Ainda não houve uma sincronização com sucesso.';
+
+    const err=d.state?.last_error
+      ? `<div class="msg err" style="margin-top:10px">${escapeHtml(d.state.last_error)}</div>`
+      : '';
+
+    $('ifoodConnectionMsg').innerHTML=
+      `${last} ${d.autoEnabled
+        ? 'IFOOD_ENABLED está ativo.'
+        : 'IFOOD_ENABLED está false: somente sincronização manual nesta fase.'}${err}`;
+
+    $('ifoodMerchants').innerHTML=merchants.length
+      ? `<div class="small muted" style="margin-bottom:6px">Loja(s) vinculada(s)</div>`+
+        merchants.map(m=>`<div style="padding:10px 0;border-top:1px solid var(--line)">
+          <b>${escapeHtml(m.name||'Loja iFood')}</b>
+          <div class="small muted">${escapeHtml(m.id)}</div>
+        </div>`).join('')
+      : '<div class="empty">Clique em “Testar conexão” para buscar a loja vinculada.</div>';
+
+    $('ifoodOrdersTable').innerHTML=(d.recentOrders||[]).map(x=>`
+      <tr>
+        <td><b>#${escapeHtml(x.display_id||x.order_id)}</b><div class="small muted">${escapeHtml(x.order_id)}</div></td>
+        <td>${ifoodDeliveryLabel(x.delivered_by)}</td>
+        <td>${ifoodStatusBadge(x.status||x.last_event_code)}</td>
+        <td>${escapeHtml(x.sales_channel||x.category||'IFOOD')}</td>
+        <td>${x.is_test===true?'<span class="badge yellow">TESTE</span>':'—'}</td>
+        <td>${x.last_event_at?localDate(x.last_event_at):'—'}<div class="small muted">${escapeHtml(x.last_event_code||'')}</div></td>
+      </tr>`).join('')||empty(6);
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+    $('ifoodOrdersTable').innerHTML=empty(6);
+  }
+}
+
+async function testIfoodConnection(){
+  const btn=$('ifoodTestBtn');
+  btn.disabled=true;
+  btn.textContent='Testando...';
+  try{
+    const d=await api('/api/admin/ifood/test-connection',{method:'POST'});
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'iFood conectado.')}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Testar conexão';
+  }
+}
+
+async function syncIfoodNow(){
+  const btn=$('ifoodSyncBtn');
+  btn.disabled=true;
+  btn.textContent='Sincronizando...';
+
+  try{
+    const d=await api('/api/admin/ifood/sync-now',{method:'POST'});
+    const text=d.skipped
+      ? 'Já existe uma sincronização em andamento.'
+      : `Eventos recebidos: ${d.events||0} • novos: ${d.newEvents||0} • pedidos atualizados: ${d.ordersUpdated||0} • ACK: ${d.acknowledged||0}`;
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(text)}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Sincronizar agora';
+  }
+}
+
 async function loadMonitoring(){
   if(me?.role!=='admin')return;
   try{
@@ -1581,9 +1743,10 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
   else if(b.dataset.page==='operations')loadOperations();
+  else if(b.dataset.page==='ifood')loadIfoodStatus();
   else if(b.dataset.page==='conflicts')loadConflicts();
   else if(b.dataset.page==='report')loadReport();
   else if(b.dataset.page==='wallboard'){loadAdmin();renderWallboard();}
@@ -1609,6 +1772,7 @@ socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
+socket.on('ifood:changed',()=>{if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus()});
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
   if(me?.role!=='admin')return;
