@@ -56,10 +56,15 @@ jobs:
       NODE_ENV: test
       PORT: "3000"
       DB_POOL_MAX: "25"
+
       TARGET_URL: http://127.0.0.1:3000
+
       LOADTEST_ADMIN_USERNAME: enduranceadmin
       LOADTEST_ADMIN_PASSWORD: EnduranceAdmin-987654
+
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
+      LOAD_TEST_KEY: github-actions-endurance-only
+
       COURIERS: ${{ inputs.couriers }}
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
       DEPARTURE_INTERVAL_SECONDS: ${{ inputs.departure_interval_seconds }}
@@ -91,32 +96,39 @@ jobs:
         run: |
           for i in {1..60}; do
             CODE=$(curl -sS -o health.json -w "%{http_code}" --max-time 10 http://127.0.0.1:3000/api/health || true)
+
             if [ "$CODE" = "200" ]; then
               cat health.json
               echo
               exit 0
             fi
+
             echo "Tentativa $i: HTTP $CODE"
             sleep 2
           done
+
           cat server-endurance.log || true
           exit 1
 
       - name: Monitorar memória do servidor
         run: |
           echo "timestamp,rss_kb,vsz_kb" > server-memory.csv
+
           (
             while kill -0 "$(cat server.pid)" 2>/dev/null; do
               TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
               VALUES=$(ps -o rss=,vsz= -p "$(cat server.pid)" | awk '{$1=$1;print}')
+
               if [ -n "$VALUES" ]; then
                 RSS=$(echo "$VALUES" | awk '{print $1}')
                 VSZ=$(echo "$VALUES" | awk '{print $2}')
                 echo "$TS,$RSS,$VSZ" >> server-memory.csv
               fi
+
               sleep 30
             done
           ) &
+
           echo $! > memory-monitor.pid
 
       - name: Rodar teste de resistência
@@ -128,8 +140,11 @@ jobs:
         run: |
           echo "## DespachaMoto - Resistência" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+
           echo "**Perfil:** $COURIERS motoboys, $DURATION_MINUTES minutos, 1 saída a cada $DEPARTURE_INTERVAL_SECONDS s, $ORDERS_PER_DEPARTURE pedidos/saída" >> "$GITHUB_STEP_SUMMARY"
+
           echo "" >> "$GITHUB_STEP_SUMMARY"
+
           if [ -f endurance-report.json ]; then
             echo '```json' >> "$GITHUB_STEP_SUMMARY"
             cat endurance-report.json >> "$GITHUB_STEP_SUMMARY"
@@ -159,6 +174,7 @@ jobs:
           if [ -f memory-monitor.pid ]; then
             kill "$(cat memory-monitor.pid)" || true
           fi
+
           if [ -f server.pid ]; then
             kill "$(cat server.pid)" || true
           fi
