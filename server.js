@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.8.0";
+const VERSION = "2.0.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -260,6 +260,69 @@ ON operational_conflicts(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS operational_conflicts_open_idx
 ON operational_conflicts(resolved_at,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ifood_merchants (
+  merchant_id TEXT PRIMARY KEY,
+  name TEXT,
+  corporate_name TEXT,
+  payload JSONB,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ifood_events (
+  event_id TEXT PRIMARY KEY,
+  order_id TEXT,
+  merchant_id TEXT,
+  code TEXT,
+  full_code TEXT,
+  event_created_at TIMESTAMPTZ,
+  payload JSONB NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  acknowledged_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ifood_events_order_idx
+ON ifood_events(order_id,event_created_at DESC);
+
+CREATE INDEX IF NOT EXISTS ifood_events_received_idx
+ON ifood_events(received_at DESC);
+
+CREATE TABLE IF NOT EXISTS ifood_orders (
+  order_id TEXT PRIMARY KEY,
+  display_id TEXT,
+  merchant_id TEXT,
+  status TEXT,
+  order_type TEXT,
+  category TEXT,
+  sales_channel TEXT,
+  delivered_by TEXT,
+  is_test BOOLEAN,
+  order_created_at TIMESTAMPTZ,
+  last_event_code TEXT,
+  last_event_at TIMESTAMPTZ,
+  payload JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ifood_orders_display_idx
+ON ifood_orders(display_id);
+
+CREATE INDEX IF NOT EXISTS ifood_orders_updated_idx
+ON ifood_orders(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ifood_sync_state (
+  singleton SMALLINT PRIMARY KEY DEFAULT 1 CHECK (singleton=1),
+  last_poll_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_error TEXT,
+  last_error_at TIMESTAMPTZ,
+  last_event_count INTEGER NOT NULL DEFAULT 0,
+  total_events_received BIGINT NOT NULL DEFAULT 0
+);
+
+INSERT INTO ifood_sync_state(singleton)
+VALUES(1)
+ON CONFLICT(singleton) DO NOTHING;
 `);
 
 await pool.query(`
@@ -346,6 +409,411 @@ async function audit(userId, action, entity, entityId, details = {}) {
     [userId || null, action, entity, entityId || null, JSON.stringify(details)]
   );
 }
+
+const IFOOD_AUTH_URL = "https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token";
+const IFOOD_MERCHANT_BASE = "https://merchant-api.ifood.com.br/merchant/v1.0";
+const IFOOD_EVENTS_BASE = "https://merchant-api.ifood.com.br/events/v1.0";
+const IFOOD_ORDER_BASE = "https://merchant-api.ifood.com.br/order/v1.0";
+
+let ifoodTokenCache = {
+  accessToken: null,
+  expiresAt: 0
+};
+
+let ifoodSyncRunning = false;
+
+function ifoodConfigured() {
+  return Boolean(
+    String(process.env.IFOOD_CLIENT_ID || "").trim() &&
+    String(process.env.IFOOD_CLIENT_SECRET || "").trim()
+  );
+}
+
+function ifoodAutoEnabled() {
+  return String(process.env.IFOOD_ENABLED || "false").toLowerCase() === "true";
+}
+
+function ifoodSafeError(err) {
+  const raw = String(err?.message || err || "Erro desconhecido.");
+  return raw
+    .replace(String(process.env.IFOOD_CLIENT_SECRET || ""), "[SECRET]")
+    .replace(String(process.env.IFOOD_CLIENT_ID || ""), "[CLIENT_ID]")
+    .slice(0, 600);
+}
+
+async function fetchIfood(url, options = {}, timeoutMs = 12000) {
+  const response = await fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      accept: "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const text = await response.text();
+  let body = null;
+
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+
+  if (!response.ok) {
+    const err = new Error(`iFood HTTP ${response.status}`);
+    err.statusCode = response.status;
+    err.ifoodBody = typeof body === "string" ? body.slice(0, 300) : body;
+    throw err;
+  }
+
+  return { response, body };
+}
+
+async function getIfoodAccessToken(force = false) {
+  if (!ifoodConfigured()) {
+    const err = new Error("Credenciais do iFood não configuradas no servidor.");
+    err.status = 503;
+    throw err;
+  }
+
+  const now = Date.now();
+  if (
+    !force &&
+    ifoodTokenCache.accessToken &&
+    ifoodTokenCache.expiresAt > now + 60_000
+  ) {
+    return ifoodTokenCache.accessToken;
+  }
+
+  const form = new URLSearchParams({
+    grantType: "client_credentials",
+    clientId: String(process.env.IFOOD_CLIENT_ID).trim(),
+    clientSecret: String(process.env.IFOOD_CLIENT_SECRET).trim()
+  });
+
+  const { body } = await fetchIfood(IFOOD_AUTH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: form.toString()
+  });
+
+  const token = body?.accessToken;
+  const expiresIn = Number(body?.expiresIn || 21600);
+
+  if (!token) {
+    throw new Error("iFood autenticou sem retornar accessToken.");
+  }
+
+  ifoodTokenCache = {
+    accessToken: token,
+    expiresAt: now + Math.max(300, expiresIn) * 1000
+  };
+
+  return token;
+}
+
+async function ifoodApi(url, options = {}) {
+  let token = await getIfoodAccessToken(false);
+
+  try {
+    return await fetchIfood(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {})
+      }
+    });
+  } catch (err) {
+    // Token expirado/revogado: uma única renovação e retry.
+    if (err?.statusCode !== 401) throw err;
+
+    token = await getIfoodAccessToken(true);
+    return fetchIfood(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {})
+      }
+    });
+  }
+}
+
+async function fetchAndStoreIfoodMerchants() {
+  const { body } = await ifoodApi(`${IFOOD_MERCHANT_BASE}/merchants?page=1&size=100`);
+  const merchants = Array.isArray(body) ? body : (body?.merchants || body?.content || []);
+
+  for (const merchant of merchants) {
+    if (!merchant?.id) continue;
+
+    await pool.query(`
+      INSERT INTO ifood_merchants(merchant_id,name,corporate_name,payload,last_seen_at)
+      VALUES($1,$2,$3,$4,NOW())
+      ON CONFLICT(merchant_id) DO UPDATE SET
+        name=EXCLUDED.name,
+        corporate_name=EXCLUDED.corporate_name,
+        payload=EXCLUDED.payload,
+        last_seen_at=NOW()
+    `, [
+      String(merchant.id),
+      merchant.name || null,
+      merchant.corporateName || null,
+      JSON.stringify(merchant)
+    ]);
+  }
+
+  return merchants
+    .filter(x => x?.id)
+    .map(x => ({
+      id: String(x.id),
+      name: x.name || "Loja iFood",
+      corporateName: x.corporateName || null
+    }));
+}
+
+function normalizeIfoodEvents(body) {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.events)) return body.events;
+  return [];
+}
+
+async function upsertIfoodOrderFromDetails(order, fallback = {}) {
+  if (!order?.id && !fallback.orderId) return false;
+
+  const orderId = String(order?.id || fallback.orderId);
+  const merchantId = order?.merchant?.id || fallback.merchantId || null;
+  const lastEventCode = fallback.fullCode || fallback.code || order?.status || null;
+  const lastEventAt = fallback.createdAt || null;
+
+  await pool.query(`
+    INSERT INTO ifood_orders(
+      order_id,display_id,merchant_id,status,order_type,category,sales_channel,
+      delivered_by,is_test,order_created_at,last_event_code,last_event_at,payload,updated_at
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+    ON CONFLICT(order_id) DO UPDATE SET
+      display_id=COALESCE(EXCLUDED.display_id,ifood_orders.display_id),
+      merchant_id=COALESCE(EXCLUDED.merchant_id,ifood_orders.merchant_id),
+      status=COALESCE(EXCLUDED.status,ifood_orders.status),
+      order_type=COALESCE(EXCLUDED.order_type,ifood_orders.order_type),
+      category=COALESCE(EXCLUDED.category,ifood_orders.category),
+      sales_channel=COALESCE(EXCLUDED.sales_channel,ifood_orders.sales_channel),
+      delivered_by=COALESCE(EXCLUDED.delivered_by,ifood_orders.delivered_by),
+      is_test=COALESCE(EXCLUDED.is_test,ifood_orders.is_test),
+      order_created_at=COALESCE(EXCLUDED.order_created_at,ifood_orders.order_created_at),
+      last_event_code=COALESCE(EXCLUDED.last_event_code,ifood_orders.last_event_code),
+      last_event_at=COALESCE(EXCLUDED.last_event_at,ifood_orders.last_event_at),
+      payload=COALESCE(EXCLUDED.payload,ifood_orders.payload),
+      updated_at=NOW()
+  `, [
+    orderId,
+    order?.displayId || null,
+    merchantId ? String(merchantId) : null,
+    order?.status || lastEventCode || null,
+    order?.orderType || null,
+    order?.category || null,
+    order?.salesChannel || null,
+    order?.delivery?.deliveredBy || null,
+    typeof order?.isTest === "boolean" ? order.isTest : null,
+    order?.createdAt || null,
+    lastEventCode,
+    lastEventAt,
+    JSON.stringify(order || {})
+  ]);
+
+  return true;
+}
+
+async function storeIfoodEvent(event) {
+  if (!event?.id) return { stored: false, duplicate: false };
+
+  const result = await pool.query(`
+    INSERT INTO ifood_events(
+      event_id,order_id,merchant_id,code,full_code,event_created_at,payload
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7)
+    ON CONFLICT(event_id) DO NOTHING
+    RETURNING event_id
+  `, [
+    String(event.id),
+    event.orderId ? String(event.orderId) : null,
+    event.merchantId ? String(event.merchantId) : null,
+    event.code || null,
+    event.fullCode || null,
+    event.createdAt || null,
+    JSON.stringify(event)
+  ]);
+
+  return {
+    stored: result.rowCount === 1,
+    duplicate: result.rowCount === 0
+  };
+}
+
+async function ifoodOrderAlreadyStored(orderId) {
+  if (!orderId) return false;
+  const q = await pool.query("SELECT 1 FROM ifood_orders WHERE order_id=$1", [String(orderId)]);
+  return q.rowCount > 0;
+}
+
+async function fetchIfoodOrderDetails(orderId) {
+  const { body } = await ifoodApi(`${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}`);
+  return body;
+}
+
+async function acknowledgeIfoodEvents(eventIds) {
+  const unique = [...new Set(eventIds.filter(Boolean).map(String))];
+  if (!unique.length) return 0;
+
+  const payload = unique.map(id => ({ id }));
+  await ifoodApi(`${IFOOD_EVENTS_BASE}/events/acknowledgment`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  await pool.query(`
+    UPDATE ifood_events
+    SET acknowledged_at=COALESCE(acknowledged_at,NOW())
+    WHERE event_id=ANY($1::text[])
+  `, [unique]);
+
+  return unique.length;
+}
+
+async function setIfoodSyncSuccess(eventCount) {
+  await pool.query(`
+    UPDATE ifood_sync_state SET
+      last_poll_at=NOW(),
+      last_success_at=NOW(),
+      last_error=NULL,
+      last_error_at=NULL,
+      last_event_count=$1,
+      total_events_received=total_events_received+$1
+    WHERE singleton=1
+  `, [eventCount]);
+}
+
+async function setIfoodSyncError(err) {
+  await pool.query(`
+    UPDATE ifood_sync_state SET
+      last_poll_at=NOW(),
+      last_error=$1,
+      last_error_at=NOW()
+    WHERE singleton=1
+  `, [ifoodSafeError(err)]).catch(() => {});
+}
+
+async function syncIfoodOnce({ reason = "manual" } = {}) {
+  if (ifoodSyncRunning) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "already_running",
+      events: 0,
+      ordersUpdated: 0,
+      acknowledged: 0
+    };
+  }
+
+  ifoodSyncRunning = true;
+
+  try {
+    const merchants = await fetchAndStoreIfoodMerchants();
+    const merchantIds = merchants.map(x => x.id);
+
+    if (!merchantIds.length) {
+      throw new Error("Nenhuma loja iFood vinculada às credenciais.");
+    }
+
+    const url = new URL(`${IFOOD_EVENTS_BASE}/events:polling`);
+    url.searchParams.set("categories", "FOOD");
+    // Evita que esta integração de despacho altere presença/abertura da loja.
+    url.searchParams.set("excludeHeartbeat", "true");
+
+    const { response, body } = await ifoodApi(url.toString(), {
+      headers: {
+        "x-polling-merchants": merchantIds.join(",")
+      }
+    });
+
+    const events = response.status === 204 ? [] : normalizeIfoodEvents(body);
+    events.sort((a, b) => Date.parse(a?.createdAt || 0) - Date.parse(b?.createdAt || 0));
+
+    const ackIds = [];
+    let ordersUpdated = 0;
+    let newEvents = 0;
+    const detailsFetched = new Set();
+
+    for (const event of events) {
+      if (!event?.id) continue;
+
+      const stored = await storeIfoodEvent(event);
+      if (stored.stored) newEvents++;
+
+      let safeToAck = true;
+
+      if (event.orderId) {
+        const orderId = String(event.orderId);
+        const already = await ifoodOrderAlreadyStored(orderId);
+
+        // Para evento novo, ou caso ainda não tenhamos detalhes do pedido,
+        // recupera a estrutura completa antes do ACK.
+        if ((!already || stored.stored) && !detailsFetched.has(orderId)) {
+          try {
+            const order = await fetchIfoodOrderDetails(orderId);
+            await upsertIfoodOrderFromDetails(order, event);
+            detailsFetched.add(orderId);
+            ordersUpdated++;
+          } catch (err) {
+            // Mantém o evento sem ACK para tentar novamente em polling futuro.
+            safeToAck = false;
+            console.error(`iFood order details ${orderId}:`, ifoodSafeError(err));
+          }
+        } else if (already) {
+          // Atualiza pelo menos o último evento mesmo sem buscar payload novamente.
+          await pool.query(`
+            UPDATE ifood_orders SET
+              status=COALESCE($2,status),
+              last_event_code=COALESCE($2,last_event_code),
+              last_event_at=COALESCE($3,last_event_at),
+              updated_at=NOW()
+            WHERE order_id=$1
+          `, [
+            orderId,
+            event.fullCode || event.code || null,
+            event.createdAt || null
+          ]);
+        }
+      }
+
+      if (safeToAck) ackIds.push(String(event.id));
+    }
+
+    const acknowledged = await acknowledgeIfoodEvents(ackIds);
+    await setIfoodSyncSuccess(events.length);
+
+    return {
+      ok: true,
+      reason,
+      merchants: merchants.length,
+      events: events.length,
+      newEvents,
+      ordersUpdated,
+      acknowledged
+    };
+  } catch (err) {
+    await setIfoodSyncError(err);
+    throw err;
+  } finally {
+    ifoodSyncRunning = false;
+  }
+}
+
 async function auditBestEffort(userId, action, entity, entityId, details = {}) {
   try {
     await audit(userId, action, entity, entityId, details);
@@ -1894,6 +2362,100 @@ app.post("/api/admin/conflicts/:id/resolve", auth, adminOnly, asyncRoute(async (
   res.json({ conflict: q.rows[0] });
 }));
 
+
+app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) => {
+  const merchants = (await pool.query(`
+    SELECT merchant_id AS id,name,corporate_name,last_seen_at
+    FROM ifood_merchants
+    ORDER BY name NULLS LAST,merchant_id
+  `)).rows;
+
+  const state = (await pool.query(`
+    SELECT last_poll_at,last_success_at,last_error,last_error_at,last_event_count,total_events_received
+    FROM ifood_sync_state
+    WHERE singleton=1
+  `)).rows[0] || {};
+
+  const counts = (await pool.query(`
+    SELECT
+      COUNT(*)::int AS orders,
+      COUNT(*) FILTER (WHERE delivered_by='MERCHANT')::int AS merchant_delivery,
+      COUNT(*) FILTER (WHERE delivered_by='IFOOD')::int AS ifood_delivery,
+      COUNT(*) FILTER (WHERE is_test=true)::int AS test_orders
+    FROM ifood_orders
+  `)).rows[0];
+
+  const recentOrders = (await pool.query(`
+    SELECT order_id,display_id,merchant_id,status,order_type,category,sales_channel,
+           delivered_by,is_test,order_created_at,last_event_code,last_event_at,updated_at
+    FROM ifood_orders
+    ORDER BY COALESCE(last_event_at,updated_at) DESC
+    LIMIT 30
+  `)).rows;
+
+  res.json({
+    configured: ifoodConfigured(),
+    autoEnabled: ifoodAutoEnabled(),
+    phase: "FASE_1_SEM_DISPATCH",
+    tokenCached: Boolean(
+      ifoodTokenCache.accessToken &&
+      ifoodTokenCache.expiresAt > Date.now() + 60_000
+    ),
+    syncing: ifoodSyncRunning,
+    merchants,
+    state,
+    counts,
+    recentOrders,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/ifood/test-connection", auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!ifoodConfigured()) {
+    return res.status(503).json({
+      error: "IFOOD_CLIENT_ID/IFOOD_CLIENT_SECRET não estão configurados."
+    });
+  }
+
+  const merchants = await fetchAndStoreIfoodMerchants();
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_CONNECTION_TESTED",
+    "ifood",
+    null,
+    { merchants: merchants.length }
+  );
+
+  res.json({
+    ok: true,
+    connected: true,
+    merchants,
+    message: `${merchants.length} loja(s) acessível(is) com as credenciais configuradas.`
+  });
+}));
+
+app.post("/api/admin/ifood/sync-now", auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!ifoodConfigured()) {
+    return res.status(503).json({
+      error: "Credenciais do iFood não configuradas."
+    });
+  }
+
+  const result = await syncIfoodOnce({ reason: "admin_manual" });
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_MANUAL_SYNC",
+    "ifood",
+    null,
+    result
+  );
+
+  io.emit("ifood:changed");
+  res.json(result);
+}));
+
 app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) => {
   const dbStart = Date.now();
   await pool.query("SELECT 1");
@@ -2361,6 +2923,32 @@ setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 100
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
+
+// iFood Fase 1: polling automático somente quando IFOOD_ENABLED=true.
+// Com false, nenhuma chamada automática ao iFood é feita.
+setInterval(() => {
+  if (!ifoodAutoEnabled() || !ifoodConfigured()) return;
+
+  syncIfoodOnce({ reason: "automatic_30s" })
+    .then(result => {
+      if (result.events > 0) io.emit("ifood:changed");
+    })
+    .catch(err => {
+      console.error("iFood automatic sync:", ifoodSafeError(err));
+    });
+}, 30 * 1000);
+
+setTimeout(() => {
+  if (!ifoodAutoEnabled() || !ifoodConfigured()) return;
+
+  syncIfoodOnce({ reason: "automatic_startup" })
+    .then(result => {
+      if (result.events > 0) io.emit("ifood:changed");
+    })
+    .catch(err => {
+      console.error("iFood startup sync:", ifoodSafeError(err));
+    });
+}, 8000);
 
 setTimeout(() => {
   createNotification({
