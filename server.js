@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.0.1";
+const VERSION = "2.1.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -309,6 +309,17 @@ ON ifood_orders(display_id);
 
 CREATE INDEX IF NOT EXISTS ifood_orders_updated_idx
 ON ifood_orders(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ifood_dispatch_links (
+  ifood_order_id TEXT PRIMARY KEY REFERENCES ifood_orders(order_id) ON DELETE RESTRICT,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  local_order_number TEXT NOT NULL,
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ifood_dispatch_status TEXT NOT NULL DEFAULT 'NOT_SENT'
+);
+
+CREATE INDEX IF NOT EXISTS ifood_dispatch_links_dispatch_idx
+ON ifood_dispatch_links(dispatch_id);
 
 CREATE TABLE IF NOT EXISTS ifood_sync_state (
   singleton SMALLINT PRIMARY KEY DEFAULT 1 CHECK (singleton=1),
@@ -652,6 +663,227 @@ async function storeIfoodEvent(event) {
     stored: result.rowCount === 1,
     duplicate: result.rowCount === 0
   };
+}
+
+
+function canonicalIfoodOrderStatus(value) {
+  const s = String(value || "").trim().toUpperCase();
+  if (!s) return "UNKNOWN";
+  if (s.includes("CANCEL")) return "CANCELLED";
+  if (s.includes("CONCLUD")) return "CONCLUDED";
+  if (s.includes("DISPATCH")) return "DISPATCHED";
+  if (s.includes("DELIVERED")) return "DELIVERED";
+  if (s.includes("READY")) return "READY_TO_PICKUP";
+  if (s.includes("SEPARATION_ENDED")) return "SEPARATION_ENDED";
+  if (s.includes("SEPARATION_STARTED")) return "SEPARATION_STARTED";
+  if (s.includes("PREPARATION")) return "PREPARATION_STARTED";
+  if (s.includes("CONFIRM")) return "CONFIRMED";
+  if (s.includes("PLACED") || s.includes("CREATED")) return "PLACED";
+  return s;
+}
+
+function ifoodOrderIsTerminal(status) {
+  return ["CANCELLED", "CONCLUDED", "DISPATCHED", "DELIVERED"]
+    .includes(canonicalIfoodOrderStatus(status));
+}
+
+function ifoodOrderCanBeSelected(status) {
+  return [
+    "CONFIRMED",
+    "READY_TO_PICKUP",
+    "PREPARATION_STARTED",
+    "SEPARATION_STARTED",
+    "SEPARATION_ENDED"
+  ].includes(canonicalIfoodOrderStatus(status));
+}
+
+function plainLocalOrderNumber(value) {
+  return String(value || "").trim().replace(/^#/, "").toLowerCase();
+}
+
+async function inspectIfoodOrdersForDeparture(orders) {
+  const requested = [...new Set(
+    orders.map(plainLocalOrderNumber).filter(Boolean)
+  )];
+
+  if (!requested.length) return { accepted: [], blocked: [], matched: [] };
+
+  const rows = (await pool.query(`
+    SELECT
+      o.order_id,o.display_id,o.merchant_id,o.status,o.order_type,o.category,
+      o.sales_channel,o.delivered_by,o.is_test,o.order_created_at,
+      o.last_event_code,o.last_event_at,
+      l.dispatch_id AS linked_dispatch_id,
+      d.status AS linked_dispatch_status,
+      u.name AS linked_courier_name
+    FROM ifood_orders o
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+    LEFT JOIN dispatches d ON d.id=l.dispatch_id
+    LEFT JOIN users u ON u.id=d.courier_id
+    WHERE LOWER(COALESCE(o.display_id,'')) = ANY($1::text[])
+    ORDER BY COALESCE(o.last_event_at,o.updated_at) DESC
+  `, [requested])).rows;
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = plainLocalOrderNumber(row.display_id);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+
+  const accepted = [];
+  const blocked = [];
+  const matched = [];
+
+  for (const localOrder of orders) {
+    const key = plainLocalOrderNumber(localOrder);
+    const candidates = grouped.get(key) || [];
+
+    // Não encontrado no iFood = pedido manual. Mantém compatibilidade com outros canais.
+    if (!candidates.length) continue;
+
+    const current = candidates.filter(x => !ifoodOrderIsTerminal(x.status || x.last_event_code));
+
+    if (current.length > 1) {
+      blocked.push({
+        order_number: localOrder,
+        code: "IFOOD_ORDER_AMBIGUOUS",
+        message: "Há mais de um pedido iFood ativo com esse número. Procure o administrador."
+      });
+      continue;
+    }
+
+    const row = current[0] || candidates[0];
+    const status = canonicalIfoodOrderStatus(row.status || row.last_event_code);
+
+    matched.push({
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      delivered_by: row.delivered_by,
+      status,
+      is_test: row.is_test
+    });
+
+    if (String(row.order_type || "").toUpperCase() !== "DELIVERY") {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_NOT_DELIVERY",
+        message: "Esse pedido iFood não é uma entrega."
+      });
+      continue;
+    }
+
+    if (String(row.delivered_by || "").toUpperCase() === "IFOOD") {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_PARTNER_DELIVERY",
+        message: "Esse pedido usa entrega parceira iFood e não pode sair com motoboy da loja."
+      });
+      continue;
+    }
+
+    if (String(row.delivered_by || "").toUpperCase() !== "MERCHANT") {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_DELIVERY_MODE_UNKNOWN",
+        message: "O tipo de entrega desse pedido iFood ainda não está identificado."
+      });
+      continue;
+    }
+
+    if (ifoodOrderIsTerminal(status)) {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_ORDER_CLOSED",
+        message: `Esse pedido iFood já está ${status.toLowerCase()}.`
+      });
+      continue;
+    }
+
+    if (!ifoodOrderCanBeSelected(status)) {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_ORDER_NOT_READY",
+        message: status === "PLACED"
+          ? "Esse pedido iFood ainda não foi confirmado."
+          : "Esse pedido iFood ainda não está disponível para despacho."
+      });
+      continue;
+    }
+
+    if (row.linked_dispatch_id) {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_ORDER_ALREADY_LINKED",
+        message: row.linked_courier_name
+          ? `Esse pedido iFood já foi vinculado a uma saída de ${row.linked_courier_name}.`
+          : "Esse pedido iFood já foi vinculado a uma saída."
+      });
+      continue;
+    }
+
+    accepted.push({
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      status,
+      delivered_by: row.delivered_by
+    });
+  }
+
+  return { accepted, blocked, matched };
+}
+
+async function getAvailableIfoodOrders(search = "", limit = 30) {
+  const q = String(search || "").trim().replace(/^#/, "").slice(0, 50);
+  const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 30, 1), 100);
+
+  const rows = (await pool.query(`
+    SELECT
+      o.order_id,o.display_id,o.merchant_id,o.status,o.order_type,o.category,
+      o.sales_channel,o.delivered_by,o.is_test,o.order_created_at,
+      o.last_event_code,o.last_event_at,o.updated_at
+    FROM ifood_orders o
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+    LEFT JOIN active_order_locks a
+      ON LOWER(a.order_number)=LOWER('#' || COALESCE(o.display_id,''))
+    WHERE UPPER(COALESCE(o.order_type,''))='DELIVERY'
+      AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
+      AND l.ifood_order_id IS NULL
+      AND a.order_number IS NULL
+      AND (
+        UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%CONFIRM%'
+        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%READY%'
+        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%PREPARATION%'
+        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%SEPARATION%'
+      )
+      AND ($1='' OR COALESCE(o.display_id,'') ILIKE '%' || $1 || '%')
+    ORDER BY
+      CASE
+        WHEN UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%READY%' THEN 0
+        ELSE 1
+      END,
+      COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC
+    LIMIT $2
+  `, [q, safeLimit])).rows;
+
+  return rows.map(row => ({
+    orderId: row.order_id,
+    displayId: row.display_id,
+    status: canonicalIfoodOrderStatus(row.status || row.last_event_code),
+    deliveredBy: row.delivered_by,
+    isTest: row.is_test,
+    orderCreatedAt: row.order_created_at,
+    lastEventAt: row.last_event_at,
+    salesChannel: row.sales_channel || "IFOOD"
+  }));
 }
 
 async function ifoodOrderAlreadyStored(orderId) {
@@ -1147,7 +1379,8 @@ async function createDispatchTransaction({
   source,
   adminReason = null,
   clientToken = null,
-  departedAt = null
+  departedAt = null,
+  ifoodLinks = []
 }) {
   const client = await pool.connect();
   try {
@@ -1210,6 +1443,24 @@ async function createDispatchTransaction({
         "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id) VALUES($1,$2,$3)",
         [order, dispatch.id, courierId]
       );
+    }
+
+    for (const link of ifoodLinks) {
+      const linked = await client.query(`
+        INSERT INTO ifood_dispatch_links(
+          ifood_order_id,dispatch_id,local_order_number,ifood_dispatch_status
+        )
+        VALUES($1,$2,$3,'NOT_SENT')
+        ON CONFLICT(ifood_order_id) DO NOTHING
+        RETURNING ifood_order_id
+      `, [link.order_id, dispatch.id, link.order_number]);
+
+      if (!linked.rowCount) {
+        const err = new Error(`Pedido iFood ${link.order_number} já foi vinculado a outra saída.`);
+        err.code = "IFOOD_ORDER_ALREADY_LINKED";
+        err.status = 409;
+        throw err;
+      }
     }
 
     await client.query("COMMIT");
@@ -1511,6 +1762,65 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
   });
 }));
 
+
+app.get("/api/courier/ifood/available", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+
+  const orders = await getAvailableIfoodOrders(req.query.q || "", req.query.limit || 30);
+
+  const partnerCount = Number((await pool.query(`
+    SELECT COUNT(*)::int AS c
+    FROM ifood_orders o
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+    WHERE UPPER(COALESCE(o.order_type,''))='DELIVERY'
+      AND UPPER(COALESCE(o.delivered_by,''))='IFOOD'
+      AND l.ifood_order_id IS NULL
+      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%CANCEL%'
+      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%CONCLUD%'
+      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%DISPATCH%'
+  `)).rows[0]?.c || 0);
+
+  res.json({
+    orders,
+    partnerDeliveryCount: partnerCount,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/courier/ifood/lookup", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+
+  let order = String(req.query.order || "").trim();
+  if (!order) return res.status(400).json({ error: "Informe o pedido." });
+  if (!order.startsWith("#")) order = "#" + order;
+
+  const inspection = await inspectIfoodOrdersForDeparture([order]);
+
+  if (inspection.blocked.length) {
+    return res.json({
+      found: true,
+      valid: false,
+      ...inspection.blocked[0]
+    });
+  }
+
+  if (inspection.accepted.length) {
+    return res.json({
+      found: true,
+      valid: true,
+      ...inspection.accepted[0]
+    });
+  }
+
+  res.json({
+    found: false,
+    valid: true,
+    manual: true,
+    order_number: order,
+    message: "Pedido não encontrado no iFood. Será tratado como pedido manual."
+  });
+}));
+
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
 
@@ -1521,6 +1831,16 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
 
   const orders = normalizeOrders(req.body);
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
+
+  const ifoodInspection = await inspectIfoodOrdersForDeparture(orders);
+  if (ifoodInspection.blocked.length) {
+    return res.status(409).json({
+      error: ifoodInspection.blocked[0].message,
+      code: ifoodInspection.blocked[0].code,
+      ifood: ifoodInspection.blocked[0],
+      server_now: new Date().toISOString()
+    });
+  }
 
   if (clientToken) {
     const replay = await pool.query(`
@@ -1635,9 +1955,17 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       orders,
       source: "COURIER",
       clientToken,
-      departedAt: queuedDeparture
+      departedAt: queuedDeparture,
+      ifoodLinks: ifoodInspection.accepted
     });
   } catch (e) {
+    if (e.code === "IFOOD_ORDER_ALREADY_LINKED") {
+      return res.status(409).json({
+        error: e.message,
+        code: "IFOOD_ORDER_ALREADY_LINKED"
+      });
+    }
+
     if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
       const raceInspection = await inspectOrders(orders);
       await logOperationalConflict({
@@ -2031,6 +2359,15 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
 
   const orders = normalizeOrders(req.body);
   const reason = String(req.body.reason || "").trim().slice(0, 250);
+
+  const ifoodInspection = await inspectIfoodOrdersForDeparture(orders);
+  if (ifoodInspection.blocked.length) {
+    return res.status(409).json({
+      error: ifoodInspection.blocked[0].message,
+      code: ifoodInspection.blocked[0].code,
+      ifood: ifoodInspection.blocked[0]
+    });
+  }
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
   if (clientToken) {
@@ -2082,7 +2419,8 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     orders,
     source: "ADMIN",
     adminReason: reason || "Registro manual pelo administrador",
-    clientToken
+    clientToken,
+    ifoodLinks: ifoodInspection.accepted
   });
 
   if (!result.duplicate) {
@@ -2383,15 +2721,34 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
       COUNT(*)::int AS orders,
       COUNT(*) FILTER (WHERE delivered_by='MERCHANT')::int AS merchant_delivery,
       COUNT(*) FILTER (WHERE delivered_by='IFOOD')::int AS ifood_delivery,
-      COUNT(*) FILTER (WHERE is_test=true)::int AS test_orders
+      COUNT(*) FILTER (WHERE is_test=true)::int AS test_orders,
+      COUNT(*) FILTER (
+        WHERE UPPER(COALESCE(order_type,''))='DELIVERY'
+          AND UPPER(COALESCE(delivered_by,''))='MERCHANT'
+          AND (
+            UPPER(COALESCE(status,last_event_code,'')) LIKE '%CONFIRM%'
+            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%READY%'
+            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%PREPARATION%'
+            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%SEPARATION%'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ifood_dispatch_links l WHERE l.ifood_order_id=ifood_orders.order_id
+          )
+      )::int AS available_merchant_delivery
     FROM ifood_orders
   `)).rows[0];
 
   const recentOrders = (await pool.query(`
-    SELECT order_id,display_id,merchant_id,status,order_type,category,sales_channel,
-           delivered_by,is_test,order_created_at,last_event_code,last_event_at,updated_at
-    FROM ifood_orders
-    ORDER BY COALESCE(last_event_at,updated_at) DESC
+    SELECT
+      o.order_id,o.display_id,o.merchant_id,o.status,o.order_type,o.category,o.sales_channel,
+      o.delivered_by,o.is_test,o.order_created_at,o.last_event_code,o.last_event_at,o.updated_at,
+      l.dispatch_id,u.name AS local_courier_name,d.status AS local_dispatch_status,
+      l.ifood_dispatch_status
+    FROM ifood_orders o
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+    LEFT JOIN dispatches d ON d.id=l.dispatch_id
+    LEFT JOIN users u ON u.id=d.courier_id
+    ORDER BY COALESCE(o.last_event_at,o.updated_at) DESC
     LIMIT 30
   `)).rows;
 
@@ -2434,6 +2791,59 @@ app.post("/api/admin/ifood/test-connection", auth, adminOnly, asyncRoute(async (
     connected: true,
     merchants,
     message: `${merchants.length} loja(s) acessível(is) com as credenciais configuradas.`
+  });
+}));
+
+
+app.post("/api/admin/ifood/orders/:id/confirm-test", auth, adminOnly, asyncRoute(async (req, res) => {
+  const orderId = String(req.params.id || "").trim();
+
+  const order = (await pool.query(`
+    SELECT order_id,display_id,status,last_event_code,is_test,category,order_type
+    FROM ifood_orders
+    WHERE order_id=$1
+    LIMIT 1
+  `, [orderId])).rows[0];
+
+  if (!order) return res.status(404).json({ error: "Pedido iFood não encontrado." });
+  if (order.is_test !== true) {
+    return res.status(403).json({
+      error: "Este botão é permitido somente para pedidos de teste."
+    });
+  }
+
+  const status = canonicalIfoodOrderStatus(order.status || order.last_event_code);
+
+  if (status !== "PLACED") {
+    return res.status(409).json({
+      error: `O pedido de teste está em ${status}; somente PLACED pode ser confirmado por este botão.`
+    });
+  }
+
+  const { body } = await ifoodApi(
+    `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    }
+  );
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_TEST_ORDER_CONFIRM_REQUESTED",
+    "ifood_order",
+    null,
+    {
+      order_id: orderId,
+      display_id: order.display_id
+    }
+  );
+
+  res.status(202).json({
+    ok: true,
+    accepted: true,
+    response: body || null,
+    message: "Confirmação enviada ao iFood. Sincronize novamente em alguns segundos."
   });
 }));
 

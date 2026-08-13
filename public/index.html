@@ -21,7 +21,7 @@
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:20px 0}.card,.section{background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow)}.card{padding:18px}.metric{font-size:30px;font-weight:900;margin-top:7px}.label{font-size:13px;color:var(--muted)}.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.section{overflow:hidden}.section-head{padding:17px 19px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 15px;border-bottom:1px solid var(--line);font-size:13px;text-align:left;white-space:nowrap}.table th{color:var(--muted);background:#fafbfc}
 .badge{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#ffedd5;color:#9a3412}.badge.yellow{background:#fef9c3;color:#854d0e}.badge.gray{background:#eef2f7;color:#475569}.badge.red{background:#fee2e2;color:#991b1b}.badge.blue{background:#dbeafe;color:#1d4ed8}
 .hero{background:linear-gradient(135deg,#111827,#1f2937);color:#fff;padding:24px;border-radius:17px;margin-bottom:18px}.hero h2{margin:0 0 7px}.big{font-size:40px;font-weight:900}.mobile-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;padding:20px;z-index:30}.modal-box{width:min(480px,100%);background:#fff;border-radius:17px;padding:24px}.empty{text-align:center;padding:26px;color:var(--muted)}.status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.search{display:flex;gap:8px;padding:15px}.search input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
-.order-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+.order-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
 .scan-btn{white-space:nowrap;min-height:42px}
 .scanner-box{width:min(560px,100%);padding:18px}
 .scanner-stage{position:relative;background:#05070a;border-radius:14px;overflow:hidden;aspect-ratio:4/3;margin-top:14px}
@@ -33,7 +33,19 @@
 .scanner-help{font-size:13px;color:var(--muted);line-height:1.45;margin-top:10px}
 .scanner-status{padding:10px 12px;border-radius:10px;background:#f3f4f6;margin-top:10px;font-size:13px}
 .scanner-status.ok{background:#dcfce7;color:#166534}
+
 .scanner-status.err{background:#fee2e2;color:#991b1b}
+.ifood-queue{display:grid;gap:9px;margin-top:12px}
+.ifood-order-card{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+.ifood-order-card.selected{opacity:.55}
+.ifood-order-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ifood-order-number{font-size:18px;font-weight:900;color:var(--navy)}
+.ifood-search{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px}
+.order-validation{grid-column:1/-1;font-size:12px;min-height:16px;margin-top:-3px}
+.order-validation.ok{color:#15803d}
+.order-validation.warn{color:#a16207}
+.order-validation.err{color:#b91c1c}
+
 .orders-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.order-chip{background:#fef3c7;color:#92400e;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:800}.live{font-variant-numeric:tabular-nums}.actions{display:flex;gap:7px;flex-wrap:wrap}.settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.settings-grid input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px}.security-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.health-list{display:grid;gap:10px}.health-line{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--line)}
 
 .analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
@@ -164,11 +176,11 @@
 
 <section id="ifood" class="page">
   <h1 class="title">Integração iFood</h1>
-  <p class="muted">Fase 1: conexão, recebimento e armazenamento de pedidos. Nenhum despacho é enviado ao iFood nesta fase.</p>
+  <p class="muted">Fase 2: fila operacional e seleção pelo motoboy. O despacho automático no iFood continua desativado.</p>
 
   <div class="warning" style="margin-top:18px">
     <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
-    Primeiro vamos validar autenticação, loja e recebimento do pedido de teste.
+    Agora vamos validar a fila, a seleção/digitação pelo motoboy e o vínculo local da saída.
   </div>
 
   <div id="ifoodStatusCards" class="cards" style="grid-template-columns:repeat(4,1fr);margin-top:18px">
@@ -207,6 +219,7 @@
             <th>Origem</th>
             <th>Teste</th>
             <th>Último evento</th>
+            <th>Ação</th>
           </tr>
         </thead>
         <tbody id="ifoodOrdersTable"></tbody>
@@ -445,9 +458,28 @@
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
     <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre os pedidos que está levando.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
-    <div id="departureCard" class="card">
+    
+    <div id="ifoodCourierCard" class="card">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0">🍔 Pedidos iFood disponíveis</h2>
+          <div class="small muted">Somente entrega própria. Toque em Adicionar ou digite o número abaixo.</div>
+        </div>
+        <button type="button" class="btn outline" onclick="loadCourierIfoodOrders()">Atualizar</button>
+      </div>
+
+      <div class="ifood-search">
+        <input id="courierIfoodSearch" placeholder="Buscar pedido iFood, ex.: 9240" oninput="scheduleCourierIfoodSearch()">
+        <button type="button" class="btn outline" onclick="loadCourierIfoodOrders()">Buscar</button>
+      </div>
+
+      <div id="courierIfoodInfo" class="small muted" style="margin-top:9px"></div>
+      <div id="courierIfoodQueue" class="ifood-queue"></div>
+    </div>
+
+<div id="departureCard" class="card">
       <h2 style="margin-top:0">Registrar saída</h2>
-      <p class="muted">Informe de 1 a 5 pedidos. Você pode digitar ou escanear cada pedido individualmente.</p>
+      <p class="muted">Informe de 1 a 5 pedidos. Escolha na fila do iFood ou digite o número do pedido.</p>
       <form id="departureForm" class="form">
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
@@ -703,11 +735,131 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label><button type="button" class="btn outline scan-btn" onclick="openOrderScanner(this)">📷 Escanear</button>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required oninput="scheduleIfoodFieldLookup(this)"></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;$('addOrderBtn').disabled=n>=5}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
 
+
+
+let courierIfoodSearchTimer=null;
+const ifoodFieldTimers=new WeakMap();
+
+function normalizedUiOrder(v){
+  let x=String(v||'').trim();
+  if(!x)return '';
+  if(!x.startsWith('#'))x='#'+x;
+  return x;
+}
+
+function selectedLocalOrdersSet(){
+  return new Set(getOrderValues().map(x=>normalizedUiOrder(x).toLowerCase()));
+}
+
+function scheduleCourierIfoodSearch(){
+  clearTimeout(courierIfoodSearchTimer);
+  courierIfoodSearchTimer=setTimeout(loadCourierIfoodOrders,250);
+}
+
+async function loadCourierIfoodOrders(){
+  if(me?.role!=='courier')return;
+  const q=String($('courierIfoodSearch')?.value||'').trim();
+
+  try{
+    const d=await api(`/api/courier/ifood/available?q=${encodeURIComponent(q)}&limit=30`);
+    const selected=selectedLocalOrdersSet();
+    const rows=(d.orders||[]).filter(x=>!selected.has(('#'+x.displayId).toLowerCase()));
+
+    $('courierIfoodInfo').textContent=
+      `${rows.length} entrega(s) própria(s) disponível(is)`+
+      (d.partnerDeliveryCount?` • ${d.partnerDeliveryCount} entrega(s) parceira(s) iFood fora da seleção`:'');
+
+    $('courierIfoodQueue').innerHTML=rows.slice(0,20).map(x=>`
+      <div class="ifood-order-card">
+        <div>
+          <div class="ifood-order-main">
+            <span class="ifood-order-number">#${escapeHtml(x.displayId||'—')}</span>
+            <span class="badge green">ENTREGA PRÓPRIA</span>
+            ${x.isTest?'<span class="badge yellow">TESTE</span>':''}
+          </div>
+          <div class="small muted" style="margin-top:5px">
+            ${escapeHtml(x.status||'—')} • ${x.lastEventAt?localDate(x.lastEventAt):x.orderCreatedAt?localDate(x.orderCreatedAt):'—'}
+          </div>
+        </div>
+        <button type="button" class="btn primary" onclick='addIfoodOrderToDeparture(${JSON.stringify(x.displayId)})'>Adicionar</button>
+      </div>`).join('')||'<div class="empty">Nenhuma entrega própria disponível.</div>';
+  }catch(err){
+    $('courierIfoodInfo').textContent='';
+    $('courierIfoodQueue').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function addIfoodOrderToDeparture(displayId){
+  const value=normalizedUiOrder(displayId);
+  const existing=[...document.querySelectorAll('.order-input')];
+
+  if(existing.some(x=>normalizedUiOrder(x.value).toLowerCase()===value.toLowerCase())){
+    return message('departureMsg',`${value} já está nesta saída.`,'err');
+  }
+
+  let target=existing.find(x=>!x.value.trim());
+
+  if(!target){
+    if(existing.length>=5){
+      return message('departureMsg','Você já adicionou 5 pedidos nesta saída.','err');
+    }
+    addOrderField();
+    const now=[...document.querySelectorAll('.order-input')];
+    target=now[now.length-1];
+  }
+
+  target.value=value;
+  target.dispatchEvent(new Event('input',{bubbles:true}));
+  message('departureMsg',`${value} adicionado à saída.`,'ok');
+  loadCourierIfoodOrders();
+}
+
+function scheduleIfoodFieldLookup(input){
+  const row=input.closest('.order-row');
+  const status=row?.querySelector('.order-validation');
+  if(status){status.className='order-validation';status.textContent='';}
+
+  const old=ifoodFieldTimers.get(input);
+  if(old)clearTimeout(old);
+
+  if(!input.value.trim())return;
+
+  const timer=setTimeout(()=>lookupIfoodField(input),350);
+  ifoodFieldTimers.set(input,timer);
+}
+
+async function lookupIfoodField(input){
+  const row=input.closest('.order-row');
+  const box=row?.querySelector('.order-validation');
+  if(!box)return;
+
+  let value=normalizedUiOrder(input.value);
+  if(!value)return;
+  input.value=value;
+
+  try{
+    const d=await api(`/api/courier/ifood/lookup?order=${encodeURIComponent(value)}`);
+
+    if(d.found&&d.valid){
+      box.className='order-validation ok';
+      box.textContent=`✓ iFood • entrega própria • ${d.status||'disponível'}`;
+    }else if(d.found&&!d.valid){
+      box.className='order-validation err';
+      box.textContent=`✕ ${d.message||'Pedido iFood indisponível.'}`;
+    }else{
+      box.className='order-validation warn';
+      box.textContent='Pedido não encontrado no iFood — será tratado como manual.';
+    }
+  }catch(err){
+    box.className='order-validation warn';
+    box.textContent='Não foi possível validar no iFood agora. O pedido manual continua disponível.';
+  }
+}
 
 let scannerStream=null;
 let scannerDetector=null;
@@ -1036,6 +1188,8 @@ async function loadCourier(){
     $('activeDispatch').innerHTML='';
     $('currentDepartureNote')?.remove();
   }
+
+  loadCourierIfoodOrders().catch(()=>{});
 }
 async function depart(e){
   e.preventDefault();
@@ -1103,6 +1257,10 @@ async function depart(e){
       if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
         const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
         throw new Error(`PEDIDO DUPLICADO BLOQUEADO:\n${text}\n\nProcure o administrador.`);
+      }
+
+      if(r.status===409&&String(d.code||'').startsWith('IFOOD_')){
+        throw new Error(d.error||'Pedido iFood indisponível para esta saída.');
       }
 
       throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
@@ -1446,18 +1604,41 @@ async function loadIfoodStatus(){
         </div>`).join('')
       : '<div class="empty">Clique em “Testar conexão” para buscar a loja vinculada.</div>';
 
-    $('ifoodOrdersTable').innerHTML=(d.recentOrders||[]).map(x=>`
-      <tr>
+    $('ifoodOrdersTable').innerHTML=(d.recentOrders||[]).map(x=>{
+      const canonical=String(x.status||x.last_event_code||'').toUpperCase();
+      const canConfirmTest=x.is_test===true&&(canonical.includes('PLACED')||canonical.includes('CREATED'));
+      const action=x.local_courier_name
+        ? `<span class="badge green">Com ${escapeHtml(x.local_courier_name)}</span>`
+        : canConfirmTest
+          ? `<button class="btn outline" onclick='confirmIfoodTestOrder(${JSON.stringify(x.order_id)})'>Confirmar teste</button>`
+          : '—';
+
+      return `<tr>
         <td><b>#${escapeHtml(x.display_id||x.order_id)}</b><div class="small muted">${escapeHtml(x.order_id)}</div></td>
         <td>${ifoodDeliveryLabel(x.delivered_by)}</td>
         <td>${ifoodStatusBadge(x.status||x.last_event_code)}</td>
         <td>${escapeHtml(x.sales_channel||x.category||'IFOOD')}</td>
         <td>${x.is_test===true?'<span class="badge yellow">TESTE</span>':'—'}</td>
         <td>${x.last_event_at?localDate(x.last_event_at):'—'}<div class="small muted">${escapeHtml(x.last_event_code||'')}</div></td>
-      </tr>`).join('')||empty(6);
+        <td>${action}</td>
+      </tr>`;
+    }).join('')||empty(7);
   }catch(err){
     $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
-    $('ifoodOrdersTable').innerHTML=empty(6);
+    $('ifoodOrdersTable').innerHTML=empty(7);
+  }
+}
+
+
+async function confirmIfoodTestOrder(orderId){
+  if(!confirm('Confirmar este pedido de TESTE no iFood? Esta ação não despacha o pedido; apenas confirma o recebimento para evitar o cancelamento automático.'))return;
+
+  try{
+    const d=await api(`/api/admin/ifood/orders/${encodeURIComponent(orderId)}/confirm-test`,{method:'POST'});
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'Confirmação enviada.')}</div>`;
+    setTimeout(()=>loadIfoodStatus(),1200);
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -1772,7 +1953,10 @@ socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
-socket.on('ifood:changed',()=>{if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus()});
+socket.on('ifood:changed',()=>{
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
+  if(me?.role==='courier')loadCourierIfoodOrders();
+});
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
   if(me?.role!=='admin')return;
