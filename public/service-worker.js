@@ -1,4 +1,4 @@
-const CACHE = "despachamoto-v2.3-production-safety";
+const CACHE = "despachamoto-v2.3.1-branding";
 const STATIC = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", event => {
