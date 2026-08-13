@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -340,6 +340,18 @@ CREATE TABLE IF NOT EXISTS ifood_dispatch_jobs (
 CREATE INDEX IF NOT EXISTS ifood_dispatch_jobs_ready_idx
 ON ifood_dispatch_jobs(status,next_attempt_at);
 
+CREATE TABLE IF NOT EXISTS ifood_runtime_control (
+  singleton SMALLINT PRIMARY KEY DEFAULT 1 CHECK (singleton=1),
+  dispatch_paused BOOLEAN NOT NULL DEFAULT FALSE,
+  pause_reason TEXT,
+  changed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO ifood_runtime_control(singleton,dispatch_paused)
+VALUES(1,FALSE)
+ON CONFLICT(singleton) DO NOTHING;
+
 INSERT INTO ifood_dispatch_jobs(
   ifood_order_id,dispatch_id,status,next_attempt_at,accepted_at
 )
@@ -536,6 +548,69 @@ function ifoodAutoEnabled() {
 
 function ifoodDispatchEnabled() {
   return String(process.env.IFOOD_DISPATCH_ENABLED || "false").toLowerCase() === "true";
+}
+
+function ifoodEnvironment() {
+  const value = String(process.env.IFOOD_ENVIRONMENT || "test").trim().toLowerCase();
+  return value === "production" ? "production" : "test";
+}
+
+function ifoodAllowedMerchantIds() {
+  return [...new Set(
+    String(process.env.IFOOD_ALLOWED_MERCHANT_IDS || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean)
+  )];
+}
+
+function ifoodMerchantAllowed(merchantId) {
+  const id = String(merchantId || "").trim();
+  const allowed = ifoodAllowedMerchantIds();
+
+  // No ambiente de teste, lista vazia mantém compatibilidade com a loja sandbox.
+  if (ifoodEnvironment() === "test" && allowed.length === 0) return true;
+
+  // Em produção a allowlist é obrigatória.
+  if (!id || allowed.length === 0) return false;
+  return allowed.includes(id);
+}
+
+function ifoodProductionSafetyReady() {
+  if (ifoodEnvironment() !== "production") return true;
+  return ifoodAllowedMerchantIds().length > 0;
+}
+
+async function getIfoodRuntimeControl() {
+  const row = (await pool.query(`
+    SELECT
+      c.dispatch_paused,c.pause_reason,c.changed_at,c.changed_by,
+      u.name AS changed_by_name
+    FROM ifood_runtime_control c
+    LEFT JOIN users u ON u.id=c.changed_by
+    WHERE c.singleton=1
+  `)).rows[0];
+
+  return row || {
+    dispatch_paused: false,
+    pause_reason: null,
+    changed_at: null,
+    changed_by: null,
+    changed_by_name: null
+  };
+}
+
+async function ifoodAutomaticDispatchAllowed() {
+  if (!ifoodConfigured()) return { allowed: false, reason: "credentials_missing" };
+  if (!ifoodDispatchEnabled()) return { allowed: false, reason: "env_flag_disabled" };
+  if (!ifoodProductionSafetyReady()) return { allowed: false, reason: "production_allowlist_missing" };
+
+  const control = await getIfoodRuntimeControl();
+  if (control.dispatch_paused) {
+    return { allowed: false, reason: "runtime_paused", control };
+  }
+
+  return { allowed: true, reason: "ok", control };
 }
 
 function ifoodSafeError(err) {
@@ -790,7 +865,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
   const data = (await pool.query(`
     SELECT
       j.ifood_order_id,j.dispatch_id,j.status,j.attempts,
-      o.display_id,o.status AS order_status,o.order_type,o.delivered_by,o.is_test,
+      o.display_id,o.merchant_id,o.status AS order_status,o.order_type,o.delivered_by,o.is_test,
       l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,u.name AS courier_name
     FROM ifood_dispatch_jobs j
@@ -823,6 +898,14 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
 
   if (String(data.delivered_by || "").toUpperCase() !== "MERCHANT") {
     return failIfoodDispatchJob(job.ifood_order_id, "Pedido não é de entrega própria (MERCHANT).", 422);
+  }
+
+  if (!ifoodMerchantAllowed(data.merchant_id)) {
+    return failIfoodDispatchJob(
+      job.ifood_order_id,
+      "Loja iFood bloqueada pela proteção IFOOD_ALLOWED_MERCHANT_IDS.",
+      403
+    );
   }
 
   const lifecycle = canonicalIfoodOrderStatus(data.order_status);
@@ -992,7 +1075,9 @@ async function processIfoodDispatchByOrder(orderId, options = {}) {
 
 async function runIfoodDispatchWorkerOnce() {
   if (ifoodDispatchWorkerRunning) return;
-  if (!ifoodConfigured() || !ifoodDispatchEnabled()) return;
+
+  const gate = await ifoodAutomaticDispatchAllowed();
+  if (!gate.allowed) return;
 
   ifoodDispatchWorkerRunning = true;
   try {
@@ -1009,6 +1094,38 @@ async function runIfoodDispatchWorkerOnce() {
   } finally {
     ifoodDispatchWorkerRunning = false;
   }
+}
+
+
+async function fetchIfoodMerchantOperationalData(merchantId) {
+  const id = String(merchantId || "").trim();
+  if (!id) return null;
+
+  const [detailsResult, statusResult] = await Promise.allSettled([
+    ifoodApi(`${IFOOD_MERCHANT_BASE}/merchants/${encodeURIComponent(id)}`),
+    ifoodApi(`${IFOOD_MERCHANT_BASE}/merchants/${encodeURIComponent(id)}/status`)
+  ]);
+
+  return {
+    merchantId: id,
+    allowed: ifoodMerchantAllowed(id),
+    details:
+      detailsResult.status === "fulfilled"
+        ? detailsResult.value.body
+        : null,
+    status:
+      statusResult.status === "fulfilled"
+        ? statusResult.value.body
+        : null,
+    detailsError:
+      detailsResult.status === "rejected"
+        ? ifoodSafeError(detailsResult.reason)
+        : null,
+    statusError:
+      statusResult.status === "rejected"
+        ? ifoodSafeError(statusResult.reason)
+        : null
+  };
 }
 
 async function fetchAndStoreIfoodMerchants() {
@@ -2562,7 +2679,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     server_now: new Date().toISOString()
   });
 
-  if (ifoodDispatchQueued > 0 && ifoodDispatchEnabled()) {
+  if (ifoodDispatchQueued > 0) {
     setImmediate(() => {
       runIfoodDispatchWorkerOnce().catch(err => {
         console.error("iFood dispatch after departure:", ifoodDispatchErrorText(err));
@@ -3335,12 +3452,36 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     LIMIT 30
   `)).rows;
 
+  const runtimeControl = await getIfoodRuntimeControl();
+  const allowedMerchantIds = ifoodAllowedMerchantIds();
+  const environment = ifoodEnvironment();
+  const automaticGate = await ifoodAutomaticDispatchAllowed();
+
+  const lastSuccessMs = state?.last_success_at ? Date.parse(state.last_success_at) : NaN;
+  const syncAgeSeconds = Number.isFinite(lastSuccessMs)
+    ? Math.max(0, Math.round((Date.now() - lastSuccessMs) / 1000))
+    : null;
+
+  const merchantSafety = merchants.map(m => ({
+    id: m.id,
+    name: m.name,
+    allowed: ifoodMerchantAllowed(m.id)
+  }));
+
   res.json({
     configured: ifoodConfigured(),
     autoEnabled: ifoodAutoEnabled(),
     dispatchEnabled: ifoodDispatchEnabled(),
     dispatchWorkerRunning: ifoodDispatchWorkerRunning,
-    phase: "FASE_3_DISPATCH_CONTROLADO",
+    environment,
+    productionSafetyReady: ifoodProductionSafetyReady(),
+    allowedMerchantCount: allowedMerchantIds.length,
+    merchantSafety,
+    runtimeControl,
+    automaticDispatchAllowed: automaticGate.allowed,
+    automaticDispatchBlockReason: automaticGate.reason,
+    syncAgeSeconds,
+    phase: "FASE_4_SEGURANCA_PRODUCAO",
     tokenCached: Boolean(
       ifoodTokenCache.accessToken &&
       ifoodTokenCache.expiresAt > Date.now() + 60_000
@@ -3350,6 +3491,123 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     state,
     counts,
     recentOrders,
+    server_now: new Date().toISOString()
+  });
+}));
+
+
+app.post("/api/admin/ifood/dispatch-control/pause", auth, adminOnly, asyncRoute(async (req, res) => {
+  const reason = String(req.body?.reason || "Pausa de emergência pelo administrador")
+    .trim()
+    .slice(0, 300);
+
+  await pool.query(`
+    UPDATE ifood_runtime_control SET
+      dispatch_paused=TRUE,
+      pause_reason=$1,
+      changed_by=$2,
+      changed_at=NOW()
+    WHERE singleton=1
+  `, [reason, req.session.user.id]);
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_DISPATCH_PAUSED",
+    "ifood",
+    null,
+    { reason }
+  );
+
+  await createNotification({
+    type: "IFOOD_DISPATCH_PAUSED",
+    severity: "warning",
+    title: "Despachos iFood pausados",
+    message: reason,
+    uniqueKey: `ifood-pause:${Date.now()}`
+  }).catch(() => {});
+
+  io.emit("ifood:changed");
+
+  res.json({
+    ok: true,
+    paused: true,
+    message: "Novos despachos automáticos do iFood foram pausados."
+  });
+}));
+
+app.post("/api/admin/ifood/dispatch-control/resume", auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!ifoodProductionSafetyReady()) {
+    return res.status(409).json({
+      error: "Não é possível retomar em PRODUÇÃO sem IFOOD_ALLOWED_MERCHANT_IDS."
+    });
+  }
+
+  await pool.query(`
+    UPDATE ifood_runtime_control SET
+      dispatch_paused=FALSE,
+      pause_reason=NULL,
+      changed_by=$1,
+      changed_at=NOW()
+    WHERE singleton=1
+  `, [req.session.user.id]);
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_DISPATCH_RESUMED",
+    "ifood",
+    null,
+    {
+      environment: ifoodEnvironment(),
+      allowedMerchantCount: ifoodAllowedMerchantIds().length
+    }
+  );
+
+  io.emit("ifood:changed");
+
+  setImmediate(() => {
+    runIfoodDispatchWorkerOnce().catch(err => {
+      console.error("iFood dispatch after resume:", ifoodDispatchErrorText(err));
+    });
+  });
+
+  res.json({
+    ok: true,
+    paused: false,
+    message: "Despachos automáticos do iFood foram retomados."
+  });
+}));
+
+app.get("/api/admin/ifood/merchant-operational/:id", auth, adminOnly, asyncRoute(async (req, res) => {
+  const merchantId = String(req.params.id || "").trim();
+
+  const known = (await pool.query(`
+    SELECT merchant_id,name
+    FROM ifood_merchants
+    WHERE merchant_id=$1
+    LIMIT 1
+  `, [merchantId])).rows[0];
+
+  if (!known) {
+    return res.status(404).json({ error: "Loja iFood não conhecida pelo DespachaMoto." });
+  }
+
+  const result = await fetchIfoodMerchantOperationalData(merchantId);
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_MERCHANT_OPERATIONAL_CHECK",
+    "ifood_merchant",
+    null,
+    {
+      merchant_id: merchantId,
+      allowed: result.allowed,
+      state: result.status?.state || null
+    }
+  );
+
+  res.json({
+    ...result,
+    knownName: known.name,
     server_now: new Date().toISOString()
   });
 }));
@@ -3996,12 +4254,22 @@ app.get("/api/health", async (req, res) => {
   try {
     const started = Date.now();
     await pool.query("SELECT 1");
+    const ifoodControl = await getIfoodRuntimeControl().catch(() => ({ dispatch_paused: null }));
+
     res.json({
       ok: true,
       database: "connected",
       dbLatencyMs: Date.now() - started,
       time: new Date().toISOString(),
-      version: VERSION
+      version: VERSION,
+      ifood: {
+        configured: ifoodConfigured(),
+        environment: ifoodEnvironment(),
+        eventSyncEnabled: ifoodAutoEnabled(),
+        dispatchFlagEnabled: ifoodDispatchEnabled(),
+        dispatchPaused: ifoodControl.dispatch_paused,
+        productionSafetyReady: ifoodProductionSafetyReady()
+      }
     });
   } catch (err) {
     res.status(503).json({
@@ -4054,8 +4322,6 @@ setTimeout(() => {
 
 
 setInterval(() => {
-  if (!ifoodDispatchEnabled() || !ifoodConfigured()) return;
-
   runIfoodDispatchWorkerOnce().catch(err => {
     console.error("iFood dispatch interval:", ifoodDispatchErrorText(err));
   });
@@ -4063,11 +4329,7 @@ setInterval(() => {
 
 setTimeout(() => {
   resetStaleIfoodDispatchJobs()
-    .then(() => {
-      if (ifoodDispatchEnabled() && ifoodConfigured()) {
-        return runIfoodDispatchWorkerOnce();
-      }
-    })
+    .then(() => runIfoodDispatchWorkerOnce())
     .catch(err => {
       console.error("iFood dispatch startup:", ifoodDispatchErrorText(err));
     });

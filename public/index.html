@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.2</title>
+<title>DespachaMoto 2.3</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -176,7 +176,7 @@
 
 <section id="ifood" class="page">
   <h1 class="title">Integração iFood</h1>
-  <p class="muted">Fase 3: saída local + despacho iFood em fila segura. Primeiro validaremos um despacho controlado de teste.</p>
+  <p class="muted">Fase 4: proteção operacional antes da produção — ambiente, allowlist de loja e pausa de emergência.</p>
 
   <div class="warning" style="margin-top:18px">
     <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
@@ -188,6 +188,22 @@
     <div class="card"><div class="label">Loja iFood</div><div class="metric" style="font-size:22px">—</div></div>
     <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">0</div></div>
     <div class="card"><div class="label">Sincronização</div><div class="metric" style="font-size:22px">—</div></div>
+  </div>
+
+
+  <div class="section" style="margin-top:18px">
+    <div class="section-head">
+      <b>🛡️ Segurança de produção</b>
+      <div class="actions">
+        <button id="ifoodPauseBtn" class="btn danger" type="button" onclick="pauseIfoodDispatch()">Pausar despachos</button>
+        <button id="ifoodResumeBtn" class="btn primary hidden" type="button" onclick="resumeIfoodDispatch()">Retomar despachos</button>
+      </div>
+    </div>
+    <div style="padding:20px">
+      <div id="ifoodSafetySummary" class="small muted">Carregando proteções...</div>
+      <div id="ifoodSafetyChecklist" style="display:grid;gap:8px;margin-top:14px"></div>
+      <div id="ifoodMerchantSafety" style="margin-top:16px"></div>
+    </div>
   </div>
 
   <div class="section" style="margin-top:18px">
@@ -1599,12 +1615,22 @@ async function loadIfoodStatus(){
       ? '<span class="badge green">AUTOMÁTICO</span>'
       : '<span class="badge yellow">TESTE/MANUAL</span>';
 
+    const envBadge=d.environment==='production'
+      ? '<span class="badge red">PRODUÇÃO</span>'
+      : '<span class="badge yellow">TESTE</span>';
+
+    const runtimeBadge=d.runtimeControl?.dispatch_paused
+      ? '<span class="badge red">PAUSADO</span>'
+      : '<span class="badge green">LIBERADO</span>';
+
     $('ifoodStatusCards').innerHTML=`
+      <div class="card"><div class="label">Ambiente</div><div style="margin-top:10px">${envBadge}</div></div>
       <div class="card"><div class="label">Credenciais</div><div style="margin-top:10px">${configured}</div></div>
       <div class="card"><div class="label">Loja iFood</div><div class="metric">${merchants.length}</div></div>
       <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">${d.counts?.orders||0}</div></div>
       <div class="card"><div class="label">Eventos</div><div style="margin-top:10px">${auto}</div></div>
-      <div class="card"><div class="label">Despacho iFood</div><div style="margin-top:10px">${dispatchMode}</div><div class="small muted" style="margin-top:7px">${d.counts?.dispatch_pending||0} pendente(s) • ${d.counts?.dispatch_failed||0} erro(s)</div></div>`;
+      <div class="card"><div class="label">Despacho iFood</div><div style="margin-top:10px">${dispatchMode}</div><div class="small muted" style="margin-top:7px">${d.counts?.dispatch_pending||0} pendente(s) • ${d.counts?.dispatch_failed||0} erro(s)</div></div>
+      <div class="card"><div class="label">Emergência</div><div style="margin-top:10px">${runtimeBadge}</div></div>`;
 
     const last=d.state?.last_success_at
       ? `Última sincronização com sucesso: <b>${localDate(d.state.last_success_at)}</b>.`
@@ -1631,6 +1657,82 @@ async function loadIfoodStatus(){
         </div>`).join('')
       : '<div class="empty">Clique em “Testar conexão” para buscar a loja vinculada.</div>';
 
+
+    const paused=Boolean(d.runtimeControl?.dispatch_paused);
+    $('ifoodPauseBtn').classList.toggle('hidden',paused);
+    $('ifoodResumeBtn').classList.toggle('hidden',!paused);
+
+    const syncHealthy=d.syncAgeSeconds!==null&&d.syncAgeSeconds<=90;
+    const checklist=[
+      {
+        ok:d.configured,
+        text:'Credenciais iFood configuradas'
+      },
+      {
+        ok:d.autoEnabled,
+        text:'Recebimento automático de eventos ativo'
+      },
+      {
+        ok:d.dispatchEnabled,
+        text:'Flag de despacho automático ativa'
+      },
+      {
+        ok:d.productionSafetyReady,
+        text:d.environment==='production'
+          ? 'Allowlist de merchantId configurada para produção'
+          : 'Ambiente de teste — allowlist opcional'
+      },
+      {
+        ok:syncHealthy,
+        text:d.syncAgeSeconds===null
+          ? 'Ainda não houve sincronização'
+          : `Última sincronização há ${d.syncAgeSeconds}s`
+      },
+      {
+        ok:(d.counts?.dispatch_failed||0)===0,
+        text:`Falhas de despacho: ${d.counts?.dispatch_failed||0}`
+      }
+    ];
+
+    $('ifoodSafetyChecklist').innerHTML=checklist.map(x=>`
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <span>${x.ok?'✅':'⚠️'}</span>
+        <span>${escapeHtml(x.text)}</span>
+      </div>`).join('');
+
+    const blockedReason={
+      ok:'Pronto',
+      credentials_missing:'Credenciais ausentes',
+      env_flag_disabled:'IFOOD_DISPATCH_ENABLED está false',
+      production_allowlist_missing:'Produção sem merchantId autorizado',
+      runtime_paused:'Pausa de emergência ativa'
+    }[d.automaticDispatchBlockReason]||d.automaticDispatchBlockReason||'—';
+
+    $('ifoodSafetySummary').innerHTML=`
+      <b>${d.automaticDispatchAllowed?'✅ Despacho automático liberado':'🛑 Despacho automático bloqueado'}</b>
+      <div style="margin-top:5px">Motivo: ${escapeHtml(blockedReason)}</div>
+      ${paused&&d.runtimeControl?.pause_reason
+        ? `<div style="margin-top:5px">Pausa: ${escapeHtml(d.runtimeControl.pause_reason)}</div>`
+        : ''
+      }`;
+
+    $('ifoodMerchantSafety').innerHTML=(d.merchantSafety||[]).length
+      ? `<div class="small muted" style="margin-bottom:6px">Proteção por loja</div>`+
+        d.merchantSafety.map(m=>`
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)">
+            <div>
+              <b>${escapeHtml(m.name||'Loja iFood')}</b>
+              <div class="small muted">${escapeHtml(m.id)}</div>
+            </div>
+            <div class="actions">
+              ${m.allowed
+                ? '<span class="badge green">AUTORIZADA</span>'
+                : '<span class="badge red">BLOQUEADA</span>'
+              }
+              <button class="btn outline" type="button" onclick='checkIfoodMerchantOperational(${JSON.stringify(m.id)})'>Verificar loja</button>
+            </div>
+          </div>`).join('')
+      : '<div class="small muted">Nenhuma loja carregada.</div>';
     $('ifoodOrdersTable').innerHTML=(d.recentOrders||[]).map(x=>{
       const canonical=String(x.status||'').toUpperCase();
       const canConfirmTest=x.is_test===true&&(canonical==='PLACED'||canonical==='CREATED');
@@ -1679,6 +1781,46 @@ async function loadIfoodStatus(){
 }
 
 
+
+
+async function pauseIfoodDispatch(){
+  const reason=prompt('Motivo da pausa dos despachos iFood:','Pausa operacional de emergência');
+  if(reason===null)return;
+
+  try{
+    const d=await api('/api/admin/ifood/dispatch-control/pause',{
+      method:'POST',
+      body:JSON.stringify({reason})
+    });
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message)}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function resumeIfoodDispatch(){
+  if(!confirm('Retomar o envio automático de novos despachos ao iFood?'))return;
+
+  try{
+    const d=await api('/api/admin/ifood/dispatch-control/resume',{method:'POST'});
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message)}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function checkIfoodMerchantOperational(merchantId){
+  try{
+    const d=await api(`/api/admin/ifood/merchant-operational/${encodeURIComponent(merchantId)}`);
+    const state=d.status?.state||'não informado';
+    const details=d.details?'detalhes OK':'detalhes indisponíveis';
+    alert(`Loja: ${d.knownName||merchantId}\nStatus iFood: ${state}\n${details}\nAllowlist: ${d.allowed?'autorizada':'bloqueada'}`);
+  }catch(err){
+    alert(`Falha ao verificar loja: ${err.message}`);
+  }
+}
 
 async function dispatchIfoodTestOrder(orderId){
   if(!confirm('Enviar o DESPACHO deste pedido de TESTE ao iFood agora? A saída já está registrada no DespachaMoto.'))return;
