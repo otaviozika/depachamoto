@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.7.1</title>
+<title>DespachaMoto 1.8</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -21,7 +21,20 @@
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:20px 0}.card,.section{background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow)}.card{padding:18px}.metric{font-size:30px;font-weight:900;margin-top:7px}.label{font-size:13px;color:var(--muted)}.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.section{overflow:hidden}.section-head{padding:17px 19px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 15px;border-bottom:1px solid var(--line);font-size:13px;text-align:left;white-space:nowrap}.table th{color:var(--muted);background:#fafbfc}
 .badge{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#ffedd5;color:#9a3412}.badge.yellow{background:#fef9c3;color:#854d0e}.badge.gray{background:#eef2f7;color:#475569}.badge.red{background:#fee2e2;color:#991b1b}.badge.blue{background:#dbeafe;color:#1d4ed8}
 .hero{background:linear-gradient(135deg,#111827,#1f2937);color:#fff;padding:24px;border-radius:17px;margin-bottom:18px}.hero h2{margin:0 0 7px}.big{font-size:40px;font-weight:900}.mobile-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;padding:20px;z-index:30}.modal-box{width:min(480px,100%);background:#fff;border-radius:17px;padding:24px}.empty{text-align:center;padding:26px;color:var(--muted)}.status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.search{display:flex;gap:8px;padding:15px}.search input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
-.order-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.orders-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.order-chip{background:#fef3c7;color:#92400e;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:800}.live{font-variant-numeric:tabular-nums}.actions{display:flex;gap:7px;flex-wrap:wrap}.settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.settings-grid input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px}.security-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.health-list{display:grid;gap:10px}.health-line{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--line)}
+.order-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+.scan-btn{white-space:nowrap;min-height:42px}
+.scanner-box{width:min(560px,100%);padding:18px}
+.scanner-stage{position:relative;background:#05070a;border-radius:14px;overflow:hidden;aspect-ratio:4/3;margin-top:14px}
+.scanner-stage video{width:100%;height:100%;object-fit:cover;display:block}
+.scanner-guide{position:absolute;inset:18% 10%;border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.34);pointer-events:none}
+.scanner-guide:before,.scanner-guide:after{content:"";position:absolute;width:38px;height:38px;border-color:#ff9f0a;border-style:solid}
+.scanner-guide:before{top:-3px;left:-3px;border-width:4px 0 0 4px;border-radius:12px 0 0 0}
+.scanner-guide:after{right:-3px;bottom:-3px;border-width:0 4px 4px 0;border-radius:0 0 12px 0}
+.scanner-help{font-size:13px;color:var(--muted);line-height:1.45;margin-top:10px}
+.scanner-status{padding:10px 12px;border-radius:10px;background:#f3f4f6;margin-top:10px;font-size:13px}
+.scanner-status.ok{background:#dcfce7;color:#166534}
+.scanner-status.err{background:#fee2e2;color:#991b1b}
+.orders-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.order-chip{background:#fef3c7;color:#92400e;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:800}.live{font-variant-numeric:tabular-nums}.actions{display:flex;gap:7px;flex-wrap:wrap}.settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.settings-grid input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px}.security-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.health-list{display:grid;gap:10px}.health-line{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--line)}
 
 .analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
 .chart-box{padding:18px}.bar-chart{display:flex;align-items:flex-end;gap:8px;height:230px;padding:16px 4px 0;border-bottom:1px solid var(--line);overflow-x:auto}
@@ -379,7 +392,7 @@
     <div id="activeDispatch"></div>
     <div id="departureCard" class="card">
       <h2 style="margin-top:0">Registrar saída</h2>
-      <p class="muted">Informe de 1 a 5 pedidos.</p>
+      <p class="muted">Informe de 1 a 5 pedidos. Você pode digitar ou escanear cada pedido individualmente.</p>
       <form id="departureForm" class="form">
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
@@ -435,6 +448,34 @@
 </div>
 
 <div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<input id="currentPassword" type="password" required></label><label>Nova senha<input id="newPassword" type="password" minlength="8" required></label><label>Confirmar nova senha<input id="newPassword2" type="password" minlength="8" required></label><button class="btn primary">Alterar senha</button></form></div></div>
+
+<div id="scannerModal" class="modal">
+  <div class="modal-box scanner-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div>
+        <h2 style="margin:0">📷 Escanear pedido</h2>
+        <div class="small muted">Leia somente o pedido selecionado.</div>
+      </div>
+      <button class="btn outline" type="button" onclick="closeOrderScanner()">×</button>
+    </div>
+
+    <div id="scannerStage" class="scanner-stage">
+      <video id="scannerVideo" autoplay muted playsinline></video>
+      <div class="scanner-guide"></div>
+    </div>
+
+    <div id="scannerStatus" class="scanner-status">Preparando câmera...</div>
+    <div class="scanner-help">
+      Aponte para o QR Code ou código de barras do pedido. O scanner preenche apenas um campo e não registra a saída automaticamente.
+    </div>
+
+    <div class="actions" style="margin-top:12px">
+      <button id="scannerTorchBtn" class="btn outline hidden" type="button" onclick="toggleScannerTorch()">🔦 Lanterna</button>
+      <button class="btn outline" type="button" onclick="closeOrderScanner()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -607,10 +648,210 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label><button type="button" class="btn outline scan-btn" onclick="openOrderScanner(this)">📷 Escanear</button>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;$('addOrderBtn').disabled=n>=5}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
+
+
+let scannerStream=null;
+let scannerDetector=null;
+let scannerTargetInput=null;
+let scannerLoopActive=false;
+let scannerTorchOn=false;
+let scannerLastRead='';
+let scannerLastReadAt=0;
+
+function scannerMessage(text,type=''){
+  const el=$('scannerStatus');
+  if(!el)return;
+  el.textContent=text;
+  el.className='scanner-status'+(type?' '+type:'');
+}
+
+function normalizeScannedOrder(raw){
+  let value=String(raw||'').trim();
+  if(!value)return '';
+
+  // Alguns QR Codes podem trazer JSON simples.
+  if((value.startsWith('{')&&value.endsWith('}'))||(value.startsWith('[')&&value.endsWith(']'))){
+    try{
+      const data=JSON.parse(value);
+      const candidate=data?.pedido??data?.order??data?.order_number??data?.orderNumber??data?.numero_pedido??data?.numero;
+      if(candidate!==undefined&&candidate!==null)value=String(candidate).trim();
+    }catch{}
+  }
+
+  // Se existir um "#pedido" legível dentro do conteúdo, prioriza esse identificador.
+  const hashMatch=value.match(/#[A-Za-z0-9._-]{1,49}/);
+  if(hashMatch)value=hashMatch[0];
+
+  // Não tenta adivinhar pedido dentro de URLs ou textos gigantes.
+  if(value.length>50)return '';
+  if(/[\r\n]/.test(value))return '';
+
+  if(!value.startsWith('#'))value='#'+value;
+  return value;
+}
+
+async function scannerFormats(){
+  if(!('BarcodeDetector' in window))return [];
+  try{
+    const supported=await BarcodeDetector.getSupportedFormats();
+    const preferred=['qr_code','code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','data_matrix','codabar'];
+    return preferred.filter(x=>supported.includes(x));
+  }catch{
+    return [];
+  }
+}
+
+async function openOrderScanner(btn){
+  const row=btn.closest('.order-row');
+  scannerTargetInput=row?.querySelector('.order-input')||null;
+  if(!scannerTargetInput)return;
+
+  $('scannerModal').style.display='grid';
+  scannerMessage('Preparando câmera...');
+  $('scannerTorchBtn').classList.add('hidden');
+  scannerLastRead='';
+  scannerLastReadAt=0;
+
+  if(!navigator.mediaDevices?.getUserMedia){
+    scannerMessage('Este aparelho não disponibiliza câmera pelo navegador. Digite o pedido manualmente.','err');
+    return;
+  }
+
+  if(!('BarcodeDetector' in window)){
+    scannerMessage('O leitor automático não é compatível com este navegador. Você ainda pode digitar o pedido manualmente.','err');
+    return;
+  }
+
+  try{
+    const formats=await scannerFormats();
+    if(!formats.length){
+      scannerMessage('Nenhum formato de código compatível foi encontrado neste navegador.','err');
+      return;
+    }
+
+    scannerDetector=new BarcodeDetector({formats});
+    scannerStream=await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:{ideal:'environment'},
+        width:{ideal:1280},
+        height:{ideal:720}
+      },
+      audio:false
+    });
+
+    const video=$('scannerVideo');
+    video.srcObject=scannerStream;
+    await video.play();
+
+    const track=scannerStream.getVideoTracks()[0];
+    try{
+      const caps=track.getCapabilities?.();
+      if(caps?.torch)$('scannerTorchBtn').classList.remove('hidden');
+    }catch{}
+
+    scannerLoopActive=true;
+    scannerMessage('Aponte a câmera para o código do pedido.');
+    scanOrderFrame();
+  }catch(err){
+    if(err?.name==='NotAllowedError'){
+      scannerMessage('Permissão da câmera negada. Libere a câmera para este site ou digite o pedido manualmente.','err');
+    }else if(err?.name==='NotFoundError'){
+      scannerMessage('Nenhuma câmera foi encontrada neste aparelho.','err');
+    }else{
+      scannerMessage('Não foi possível iniciar a câmera. Digite o pedido manualmente.','err');
+    }
+  }
+}
+
+async function scanOrderFrame(){
+  if(!scannerLoopActive||!scannerDetector)return;
+  const video=$('scannerVideo');
+
+  try{
+    if(video.readyState>=2){
+      const codes=await scannerDetector.detect(video);
+      if(codes?.length){
+        const raw=String(codes[0].rawValue||'').trim();
+        const now=Date.now();
+
+        // Exige a mesma leitura em sequência para reduzir leituras acidentais.
+        if(raw&&raw===scannerLastRead&&(now-scannerLastReadAt)<1600){
+          const order=normalizeScannedOrder(raw);
+          if(!order){
+            scannerMessage('Código lido, mas o conteúdo não parece ser um número de pedido válido.','err');
+            scannerLastRead='';
+          }else{
+            const other=[...document.querySelectorAll('.order-input')]
+              .filter(x=>x!==scannerTargetInput)
+              .map(x=>x.value.trim().toLowerCase())
+              .filter(Boolean);
+
+            if(other.includes(order.toLowerCase())){
+              scannerMessage(`${order} já foi adicionado nesta saída.`, 'err');
+              scannerLastRead='';
+            }else{
+              scannerTargetInput.value=order;
+              scannerTargetInput.dispatchEvent(new Event('input',{bubbles:true}));
+              scannerMessage(`${order} lido com sucesso.`, 'ok');
+              if(navigator.vibrate)navigator.vibrate(80);
+              setTimeout(closeOrderScanner,450);
+              return;
+            }
+          }
+        }else if(raw){
+          scannerLastRead=raw;
+          scannerLastReadAt=now;
+          scannerMessage('Código encontrado. Mantenha a câmera firme...');
+        }
+      }
+    }
+  }catch{}
+
+  if(scannerLoopActive)setTimeout(scanOrderFrame,140);
+}
+
+async function toggleScannerTorch(){
+  const track=scannerStream?.getVideoTracks?.()[0];
+  if(!track)return;
+  try{
+    scannerTorchOn=!scannerTorchOn;
+    await track.applyConstraints({advanced:[{torch:scannerTorchOn}]});
+    $('scannerTorchBtn').textContent=scannerTorchOn?'🔦 Desligar lanterna':'🔦 Lanterna';
+  }catch{
+    scannerTorchOn=false;
+    scannerMessage('A lanterna não pôde ser ativada neste aparelho.','err');
+  }
+}
+
+function closeOrderScanner(){
+  scannerLoopActive=false;
+  scannerDetector=null;
+  scannerTorchOn=false;
+  scannerLastRead='';
+
+  if(scannerStream){
+    scannerStream.getTracks().forEach(t=>t.stop());
+    scannerStream=null;
+  }
+
+  const video=$('scannerVideo');
+  if(video)video.srcObject=null;
+  $('scannerTorchBtn')?.classList.add('hidden');
+  if($('scannerTorchBtn'))$('scannerTorchBtn').textContent='🔦 Lanterna';
+  $('scannerModal').style.display='none';
+
+  const target=scannerTargetInput;
+  scannerTargetInput=null;
+  if(target)setTimeout(()=>target.focus(),50);
+}
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&scannerLoopActive)closeOrderScanner();
+});
 
 async function login(e){e.preventDefault();try{const d=await api('/api/login',{method:'POST',body:JSON.stringify({username:$('loginUser').value,password:$('loginPass').value})});me=d.user;showApp()}catch(err){message('authMsg',err.message,'err')}}
 async function register(e){e.preventDefault();if($('regPass').value!==$('regPass2').value)return message('authMsg','As senhas não conferem.','err');try{const d=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('regName').value,username:$('regUser').value,password:$('regPass').value})});setAuth('login');$('loginUser').value=d.user.username;message('authMsg',d.message||'Cadastro enviado para aprovação.','ok')}catch(err){message('authMsg',err.message,'err')}}
