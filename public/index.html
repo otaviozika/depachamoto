@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 1.7</title>
+<title>DespachaMoto 1.7.1</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -381,7 +381,6 @@
       <h2 style="margin-top:0">Registrar saída</h2>
       <p class="muted">Informe de 1 a 5 pedidos.</p>
       <form id="departureForm" class="form">
-        <label>Colar vários pedidos (opcional)<textarea id="courierPasteOrders" class="quick-paste" placeholder="Ex.: 5821, 5822, 5823" oninput="applyCourierPaste()"></textarea></label>
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
           <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
@@ -601,19 +600,13 @@ function parsePastedOrders(text){
   }
   return out;
 }
-function applyCourierPaste(){
-  const vals=parsePastedOrders($('courierPasteOrders').value);
-  if(!vals.length)return;
-  $('orderFields').innerHTML='';
-  vals.forEach(v=>{addOrderField();const inputs=$('orderFields').querySelectorAll('.order-input');inputs[inputs.length-1].value=v});
-}
 function applyManualPaste(){
   const vals=parsePastedOrders($('manualPasteOrders').value);
   if(!vals.length)return;
   $('manualOrderFields').innerHTML='';
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
-function resetOrderFields(){$('orderFields').innerHTML='';if($('courierPasteOrders'))$('courierPasteOrders').value='';addOrderField()}
+function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
 function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;$('addOrderBtn').disabled=n>=5}
