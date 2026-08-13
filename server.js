@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "1.7.1";
+const VERSION = "1.7.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -345,6 +345,17 @@ async function audit(userId, action, entity, entityId, details = {}) {
     "INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)",
     [userId || null, action, entity, entityId || null, JSON.stringify(details)]
   );
+}
+async function auditBestEffort(userId, action, entity, entityId, details = {}) {
+  try {
+    await audit(userId, action, entity, entityId, details);
+    return true;
+  } catch (err) {
+    // A operação principal já pode ter sido COMMITada. Não transformar uma
+    // saída válida em HTTP 500 apenas porque o log de auditoria ficou sem conexão.
+    console.error(`Audit best-effort failed [${action}]:`, err?.message || err);
+    return false;
+  }
 }
 function requestMeta(req) {
   return {
@@ -737,8 +748,16 @@ async function createDispatchTransaction({
     return { dispatch, closedPrevious, duplicate: false };
   } catch (e) {
     try { await client.query("ROLLBACK"); } catch {}
-    if (e.code === "23505" && clientToken) {
-      const existing = await pool.query(`
+
+    // Recuperação idempotente SOMENTE quando a colisão é do client_token.
+    // Importante: usa o mesmo client já reservado. Em v1.7.1, usar pool.query()
+    // aqui podia esgotar o pool quando muitas requisições colidiam ao mesmo tempo.
+    if (
+      e.code === "23505" &&
+      clientToken &&
+      String(e.constraint || "") === "dispatches_client_token_unique_idx"
+    ) {
+      const existing = await client.query(`
         SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
                ${orderArraySql("d")}
         FROM dispatches d
@@ -749,6 +768,8 @@ async function createDispatchTransaction({
         return { dispatch: existing.rows[0], closedPrevious: null, duplicate: true };
       }
     }
+
+    // Colisões de active_order_locks seguem para a rota, que responde 409.
     throw e;
   } finally {
     client.release();
@@ -1167,7 +1188,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   }
 
   if (!result.duplicate) {
-    await audit(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
+    await auditBestEffort(req.session.user.id, "DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
       order_numbers: orders,
       order_count: orders.length,
       departed_at: result.dispatch.departed_at,
@@ -1595,7 +1616,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
   });
 
   if (!result.duplicate) {
-    await audit(req.session.user.id, "MANUAL_DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
+    await auditBestEffort(req.session.user.id, "MANUAL_DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
       courier_id: courierId,
       courier_name: courier.name,
       order_numbers: orders,
