@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.1.1";
+const VERSION = "2.1.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -335,29 +335,40 @@ INSERT INTO ifood_sync_state(singleton)
 VALUES(1)
 ON CONFLICT(singleton) DO NOTHING;
 
--- v2.1.1: corrige registros em que um evento DELIVERY/OUTROS foi salvo
--- indevidamente como status principal. Usa o último evento ORDER_STATUS conhecido.
+-- v2.1.2: corrige registros em que evento não pertencente ao ciclo
+-- principal foi salvo indevidamente como status.
+-- Usa subquery correlacionada no SET (compatível com PostgreSQL em UPDATE).
 UPDATE ifood_orders o
-SET status = latest.full_code,
+SET status = (
+      SELECT e.full_code
+      FROM ifood_events e
+      WHERE e.order_id=o.order_id
+        AND UPPER(COALESCE(e.full_code,'')) IN (
+          'PLACED','CONFIRMED','PREPARATION_STARTED',
+          'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
+          'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
+        )
+      ORDER BY e.event_created_at DESC NULLS LAST,e.received_at DESC
+      LIMIT 1
+    ),
     updated_at = NOW()
-FROM LATERAL (
-  SELECT e.full_code
-  FROM ifood_events e
-  WHERE e.order_id=o.order_id
-    AND UPPER(COALESCE(e.full_code,'')) IN (
+WHERE (
+    o.status IS NULL
+    OR UPPER(o.status) NOT IN (
       'PLACED','CONFIRMED','PREPARATION_STARTED',
       'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
       'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
     )
-  ORDER BY e.event_created_at DESC NULLS LAST,e.received_at DESC
-  LIMIT 1
-) latest
-WHERE
-  o.status IS NULL
-  OR UPPER(o.status) NOT IN (
-    'PLACED','CONFIRMED','PREPARATION_STARTED',
-    'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
-    'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM ifood_events e
+    WHERE e.order_id=o.order_id
+      AND UPPER(COALESCE(e.full_code,'')) IN (
+        'PLACED','CONFIRMED','PREPARATION_STARTED',
+        'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
+        'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
+      )
   );
 `);
 
