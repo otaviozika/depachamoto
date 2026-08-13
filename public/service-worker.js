@@ -1,4 +1,4 @@
-const CACHE = "despachamoto-v2.1-ifood-fila";
+const CACHE = "despachamoto-v2.1.1-ifood-status";
 const STATIC = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", event => {

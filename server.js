@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.1.0";
+const VERSION = "2.1.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -334,6 +334,31 @@ CREATE TABLE IF NOT EXISTS ifood_sync_state (
 INSERT INTO ifood_sync_state(singleton)
 VALUES(1)
 ON CONFLICT(singleton) DO NOTHING;
+
+-- v2.1.1: corrige registros em que um evento DELIVERY/OUTROS foi salvo
+-- indevidamente como status principal. Usa o último evento ORDER_STATUS conhecido.
+UPDATE ifood_orders o
+SET status = latest.full_code,
+    updated_at = NOW()
+FROM LATERAL (
+  SELECT e.full_code
+  FROM ifood_events e
+  WHERE e.order_id=o.order_id
+    AND UPPER(COALESCE(e.full_code,'')) IN (
+      'PLACED','CONFIRMED','PREPARATION_STARTED',
+      'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
+      'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
+    )
+  ORDER BY e.event_created_at DESC NULLS LAST,e.received_at DESC
+  LIMIT 1
+) latest
+WHERE
+  o.status IS NULL
+  OR UPPER(o.status) NOT IN (
+    'PLACED','CONFIRMED','PREPARATION_STARTED',
+    'SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP',
+    'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
+  );
 `);
 
 await pool.query(`
@@ -592,13 +617,56 @@ function normalizeIfoodEvents(body) {
   return [];
 }
 
+
+const IFOOD_ORDER_STATUS_VALUES = new Set([
+  "PLACED",
+  "CONFIRMED",
+  "PREPARATION_STARTED",
+  "SEPARATION_STARTED",
+  "SEPARATION_ENDED",
+  "READY_TO_PICKUP",
+  "DISPATCHED",
+  "CONCLUDED",
+  "CANCELLED",
+  "DELIVERED"
+]);
+
+const IFOOD_ORDER_STATUS_SHORT_CODES = {
+  PLC: "PLACED",
+  CFM: "CONFIRMED",
+  SPS: "SEPARATION_STARTED",
+  SPE: "SEPARATION_ENDED",
+  RTP: "READY_TO_PICKUP",
+  DSP: "DISPATCHED",
+  CON: "CONCLUDED",
+  CAN: "CANCELLED"
+};
+
+function normalizeIfoodLifecycleStatus(value) {
+  const s = String(value || "").trim().toUpperCase();
+  if (!s) return null;
+  if (IFOOD_ORDER_STATUS_VALUES.has(s)) return s;
+  if (IFOOD_ORDER_STATUS_SHORT_CODES[s]) return IFOOD_ORDER_STATUS_SHORT_CODES[s];
+  return null;
+}
+
+function ifoodLifecycleStatusFromEvent(event) {
+  return (
+    normalizeIfoodLifecycleStatus(event?.fullCode) ||
+    normalizeIfoodLifecycleStatus(event?.code)
+  );
+}
+
 async function upsertIfoodOrderFromDetails(order, fallback = {}) {
   if (!order?.id && !fallback.orderId) return false;
 
   const orderId = String(order?.id || fallback.orderId);
   const merchantId = order?.merchant?.id || fallback.merchantId || null;
-  const lastEventCode = fallback.fullCode || fallback.code || order?.status || null;
+  const lastEventCode = fallback.fullCode || fallback.code || null;
   const lastEventAt = fallback.createdAt || null;
+  const lifecycleStatus =
+    normalizeIfoodLifecycleStatus(order?.status) ||
+    ifoodLifecycleStatusFromEvent(fallback);
 
   await pool.query(`
     INSERT INTO ifood_orders(
@@ -624,7 +692,7 @@ async function upsertIfoodOrderFromDetails(order, fallback = {}) {
     orderId,
     order?.displayId || null,
     merchantId ? String(merchantId) : null,
-    order?.status || lastEventCode || null,
+    lifecycleStatus,
     order?.orderType || null,
     order?.category || null,
     order?.salesChannel || null,
@@ -667,19 +735,7 @@ async function storeIfoodEvent(event) {
 
 
 function canonicalIfoodOrderStatus(value) {
-  const s = String(value || "").trim().toUpperCase();
-  if (!s) return "UNKNOWN";
-  if (s.includes("CANCEL")) return "CANCELLED";
-  if (s.includes("CONCLUD")) return "CONCLUDED";
-  if (s.includes("DISPATCH")) return "DISPATCHED";
-  if (s.includes("DELIVERED")) return "DELIVERED";
-  if (s.includes("READY")) return "READY_TO_PICKUP";
-  if (s.includes("SEPARATION_ENDED")) return "SEPARATION_ENDED";
-  if (s.includes("SEPARATION_STARTED")) return "SEPARATION_STARTED";
-  if (s.includes("PREPARATION")) return "PREPARATION_STARTED";
-  if (s.includes("CONFIRM")) return "CONFIRMED";
-  if (s.includes("PLACED") || s.includes("CREATED")) return "PLACED";
-  return s;
+  return normalizeIfoodLifecycleStatus(value) || "UNKNOWN";
 }
 
 function ifoodOrderIsTerminal(status) {
@@ -754,7 +810,7 @@ async function inspectIfoodOrdersForDeparture(orders) {
     }
 
     const row = current[0] || candidates[0];
-    const status = canonicalIfoodOrderStatus(row.status || row.last_event_code);
+    const status = canonicalIfoodOrderStatus(row.status);
 
     matched.push({
       order_number: localOrder,
@@ -859,15 +915,15 @@ async function getAvailableIfoodOrders(search = "", limit = 30) {
       AND l.ifood_order_id IS NULL
       AND a.order_number IS NULL
       AND (
-        UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%CONFIRM%'
-        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%READY%'
-        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%PREPARATION%'
-        OR UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%SEPARATION%'
+        UPPER(COALESCE(o.status,''))='CONFIRMED'
+        OR UPPER(COALESCE(o.status,''))='READY_TO_PICKUP'
+        OR UPPER(COALESCE(o.status,''))='PREPARATION_STARTED'
+        OR UPPER(COALESCE(o.status,'')) IN ('SEPARATION_STARTED','SEPARATION_ENDED')
       )
       AND ($1='' OR COALESCE(o.display_id,'') ILIKE '%' || $1 || '%')
     ORDER BY
       CASE
-        WHEN UPPER(COALESCE(o.status,o.last_event_code,'')) LIKE '%READY%' THEN 0
+        WHEN UPPER(COALESCE(o.status,''))='READY_TO_PICKUP' THEN 0
         ELSE 1
       END,
       COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC
@@ -877,7 +933,7 @@ async function getAvailableIfoodOrders(search = "", limit = 30) {
   return rows.map(row => ({
     orderId: row.order_id,
     displayId: row.display_id,
-    status: canonicalIfoodOrderStatus(row.status || row.last_event_code),
+    status: canonicalIfoodOrderStatus(row.status),
     deliveredBy: row.delivered_by,
     isTest: row.is_test,
     orderCreatedAt: row.order_created_at,
@@ -1009,17 +1065,22 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
             console.error(`iFood order details ${orderId}:`, ifoodSafeError(err));
           }
         } else if (already) {
-          // Atualiza pelo menos o último evento mesmo sem buscar payload novamente.
+          // O último evento é sempre registrado, mas somente eventos ORDER_STATUS
+          // podem alterar o status principal do pedido.
+          const lifecycleStatus = ifoodLifecycleStatusFromEvent(event);
+          const eventCode = event.fullCode || event.code || null;
+
           await pool.query(`
             UPDATE ifood_orders SET
               status=COALESCE($2,status),
-              last_event_code=COALESCE($2,last_event_code),
-              last_event_at=COALESCE($3,last_event_at),
+              last_event_code=COALESCE($3,last_event_code),
+              last_event_at=COALESCE($4,last_event_at),
               updated_at=NOW()
             WHERE order_id=$1
           `, [
             orderId,
-            event.fullCode || event.code || null,
+            lifecycleStatus,
+            eventCode,
             event.createdAt || null
           ]);
         }
@@ -1775,9 +1836,9 @@ app.get("/api/courier/ifood/available", auth, courierOnly, asyncRoute(async (req
     WHERE UPPER(COALESCE(o.order_type,''))='DELIVERY'
       AND UPPER(COALESCE(o.delivered_by,''))='IFOOD'
       AND l.ifood_order_id IS NULL
-      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%CANCEL%'
-      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%CONCLUD%'
-      AND UPPER(COALESCE(o.status,o.last_event_code,'')) NOT LIKE '%DISPATCH%'
+      AND UPPER(COALESCE(o.status,''))<>'CANCELLED'
+      AND UPPER(COALESCE(o.status,''))<>'CONCLUDED'
+      AND UPPER(COALESCE(o.status,''))<>'DISPATCHED'
   `)).rows[0]?.c || 0);
 
   res.json({
@@ -2726,10 +2787,10 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
         WHERE UPPER(COALESCE(order_type,''))='DELIVERY'
           AND UPPER(COALESCE(delivered_by,''))='MERCHANT'
           AND (
-            UPPER(COALESCE(status,last_event_code,'')) LIKE '%CONFIRM%'
-            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%READY%'
-            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%PREPARATION%'
-            OR UPPER(COALESCE(status,last_event_code,'')) LIKE '%SEPARATION%'
+            UPPER(COALESCE(status,''))='CONFIRMED'
+            OR UPPER(COALESCE(status,''))='READY_TO_PICKUP'
+            OR UPPER(COALESCE(status,''))='PREPARATION_STARTED'
+            OR UPPER(COALESCE(status,'')) IN ('SEPARATION_STARTED','SEPARATION_ENDED')
           )
           AND NOT EXISTS (
             SELECT 1 FROM ifood_dispatch_links l WHERE l.ifood_order_id=ifood_orders.order_id
@@ -2812,7 +2873,7 @@ app.post("/api/admin/ifood/orders/:id/confirm-test", auth, adminOnly, asyncRoute
     });
   }
 
-  const status = canonicalIfoodOrderStatus(order.status || order.last_event_code);
+  const status = canonicalIfoodOrderStatus(order.status);
 
   if (status !== "PLACED") {
     return res.status(409).json({
