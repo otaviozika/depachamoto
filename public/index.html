@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.0</title>
+<title>DespachaMoto 2.2</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -176,14 +176,14 @@
 
 <section id="ifood" class="page">
   <h1 class="title">Integração iFood</h1>
-  <p class="muted">Fase 2: fila operacional e seleção pelo motoboy. O despacho automático no iFood continua desativado.</p>
+  <p class="muted">Fase 3: saída local + despacho iFood em fila segura. Primeiro validaremos um despacho controlado de teste.</p>
 
   <div class="warning" style="margin-top:18px">
     <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
-    Agora vamos validar a fila, a seleção/digitação pelo motoboy e o vínculo local da saída.
+    A saída é salva primeiro no DespachaMoto. O iFood é atualizado depois, sem bloquear o motoboy.
   </div>
 
-  <div id="ifoodStatusCards" class="cards" style="grid-template-columns:repeat(4,1fr);margin-top:18px">
+  <div id="ifoodStatusCards" class="cards" style="margin-top:18px">
     <div class="card"><div class="label">Credenciais</div><div class="metric" style="font-size:22px">—</div></div>
     <div class="card"><div class="label">Loja iFood</div><div class="metric" style="font-size:22px">—</div></div>
     <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">0</div></div>
@@ -1234,7 +1234,14 @@ async function depart(e){
       if(r.ok){
         resetOrderFields();
         showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
-        message('departureMsg',`Saída registrada com ${orders.length} pedido(s).`,'ok');
+        const ifoodInfo=d.ifood_dispatch;
+        let successText=`Saída registrada com ${orders.length} pedido(s).`;
+        if(ifoodInfo?.queued){
+          successText+=ifoodInfo.automatic_enabled
+            ? ' iFood: sincronizando despacho em segundo plano.'
+            : ' Pedido iFood vinculado; despacho automático está desativado.';
+        }
+        message('departureMsg',successText,'ok');
         await loadCourier();
         return;
       }
@@ -1562,6 +1569,17 @@ function ifoodStatusBadge(status){
   return `<span class="badge yellow">${escapeHtml(s)}</span>`;
 }
 
+
+function ifoodDispatchBadge(value){
+  const s=String(value||'').toUpperCase();
+  if(s==='DISPATCHED'||s==='CONCLUDED')return `<span class="badge green">${escapeHtml(s)}</span>`;
+  if(s==='API_ACCEPTED')return '<span class="badge green">API ACEITOU</span>';
+  if(s==='RETRY')return '<span class="badge yellow">TENTANDO NOVAMENTE</span>';
+  if(s==='PENDING'||s==='NOT_SENT'||s==='PROCESSING')return '<span class="badge yellow">AGUARDANDO iFOOD</span>';
+  if(s==='FAILED')return '<span class="badge red">ERRO iFOOD</span>';
+  return '—';
+}
+
 async function loadIfoodStatus(){
   if(me?.role!=='admin')return;
 
@@ -1577,11 +1595,16 @@ async function loadIfoodStatus(){
       ? '<span class="badge green">AUTOMÁTICO</span>'
       : '<span class="badge yellow">MANUAL</span>';
 
+    const dispatchMode=d.dispatchEnabled
+      ? '<span class="badge green">AUTOMÁTICO</span>'
+      : '<span class="badge yellow">TESTE/MANUAL</span>';
+
     $('ifoodStatusCards').innerHTML=`
       <div class="card"><div class="label">Credenciais</div><div style="margin-top:10px">${configured}</div></div>
       <div class="card"><div class="label">Loja iFood</div><div class="metric">${merchants.length}</div></div>
       <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">${d.counts?.orders||0}</div></div>
-      <div class="card"><div class="label">Sincronização</div><div style="margin-top:10px">${auto}</div></div>`;
+      <div class="card"><div class="label">Eventos</div><div style="margin-top:10px">${auto}</div></div>
+      <div class="card"><div class="label">Despacho iFood</div><div style="margin-top:10px">${dispatchMode}</div><div class="small muted" style="margin-top:7px">${d.counts?.dispatch_pending||0} pendente(s) • ${d.counts?.dispatch_failed||0} erro(s)</div></div>`;
 
     const last=d.state?.last_success_at
       ? `Última sincronização com sucesso: <b>${localDate(d.state.last_success_at)}</b>.`
@@ -1593,8 +1616,12 @@ async function loadIfoodStatus(){
 
     $('ifoodConnectionMsg').innerHTML=
       `${last} ${d.autoEnabled
-        ? 'IFOOD_ENABLED está ativo.'
-        : 'IFOOD_ENABLED está false: somente sincronização manual nesta fase.'}${err}`;
+        ? 'Eventos automáticos ativos.'
+        : 'Eventos em modo manual.'} ${
+          d.dispatchEnabled
+            ? 'Despacho automático iFood ATIVO.'
+            : 'Despacho automático DESATIVADO; somente teste controlado pelo Admin.'
+        }${err}`;
 
     $('ifoodMerchants').innerHTML=merchants.length
       ? `<div class="small muted" style="margin-bottom:6px">Loja(s) vinculada(s)</div>`+
@@ -1605,18 +1632,40 @@ async function loadIfoodStatus(){
       : '<div class="empty">Clique em “Testar conexão” para buscar a loja vinculada.</div>';
 
     $('ifoodOrdersTable').innerHTML=(d.recentOrders||[]).map(x=>{
-      const canonical=String(x.status||x.last_event_code||'').toUpperCase();
-      const canConfirmTest=x.is_test===true&&(canonical.includes('PLACED')||canonical.includes('CREATED'));
-      const action=x.local_courier_name
-        ? `<span class="badge green">Com ${escapeHtml(x.local_courier_name)}</span>`
-        : canConfirmTest
-          ? `<button class="btn outline" onclick='confirmIfoodTestOrder(${JSON.stringify(x.order_id)})'>Confirmar teste</button>`
-          : '—';
+      const canonical=String(x.status||'').toUpperCase();
+      const canConfirmTest=x.is_test===true&&(canonical==='PLACED'||canonical==='CREATED');
+      let action='—';
+
+      if(x.local_courier_name){
+        const local=`<span class="badge green">Com ${escapeHtml(x.local_courier_name)}</span>`;
+        const dispatch=ifoodDispatchBadge(x.ifood_dispatch_status||x.dispatch_job_status);
+        let button='';
+
+        if(
+          x.is_test===true &&
+          ['CONFIRMED','READY_TO_PICKUP','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED'].includes(canonical) &&
+          !['API_ACCEPTED','DISPATCHED','CONCLUDED'].includes(String(x.ifood_dispatch_status||'').toUpperCase())
+        ){
+          button=`<button class="btn outline" style="margin-top:6px" onclick='dispatchIfoodTestOrder(${JSON.stringify(x.order_id)})'>Despachar teste</button>`;
+        }
+
+        if(String(x.dispatch_job_status||'').toUpperCase()==='FAILED'){
+          button=`<button class="btn danger" style="margin-top:6px" onclick='retryIfoodDispatch(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
+        }
+
+        action=`<div style="display:grid;gap:5px">${local}${dispatch}${button}${
+          x.dispatch_last_error
+            ? `<span class="small" style="color:#b91c1c;max-width:240px;white-space:normal">${escapeHtml(x.dispatch_last_error)}</span>`
+            : ''
+        }</div>`;
+      }else if(canConfirmTest){
+        action=`<button class="btn outline" onclick='confirmIfoodTestOrder(${JSON.stringify(x.order_id)})'>Confirmar teste</button>`;
+      }
 
       return `<tr>
         <td><b>#${escapeHtml(x.display_id||x.order_id)}</b><div class="small muted">${escapeHtml(x.order_id)}</div></td>
         <td>${ifoodDeliveryLabel(x.delivered_by)}</td>
-        <td>${ifoodStatusBadge(x.status||x.last_event_code)}</td>
+        <td>${ifoodStatusBadge(x.status)}</td>
         <td>${escapeHtml(x.sales_channel||x.category||'IFOOD')}</td>
         <td>${x.is_test===true?'<span class="badge yellow">TESTE</span>':'—'}</td>
         <td>${x.last_event_at?localDate(x.last_event_at):'—'}<div class="small muted">${escapeHtml(x.last_event_code||'')}</div></td>
@@ -1629,6 +1678,29 @@ async function loadIfoodStatus(){
   }
 }
 
+
+
+async function dispatchIfoodTestOrder(orderId){
+  if(!confirm('Enviar o DESPACHO deste pedido de TESTE ao iFood agora? A saída já está registrada no DespachaMoto.'))return;
+  try{
+    const d=await api(`/api/admin/ifood/orders/${encodeURIComponent(orderId)}/dispatch-test`,{method:'POST'});
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'Despacho enviado ao iFood.')}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function retryIfoodDispatch(orderId){
+  if(!confirm('Tentar enviar este despacho ao iFood novamente?'))return;
+  try{
+    const d=await api(`/api/admin/ifood/orders/${encodeURIComponent(orderId)}/retry-dispatch`,{method:'POST'});
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'Nova tentativa executada.')}</div>`;
+    await loadIfoodStatus();
+  }catch(err){
+    $('ifoodConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
 
 async function confirmIfoodTestOrder(orderId){
   if(!confirm('Confirmar este pedido de TESTE no iFood? Esta ação não despacha o pedido; apenas confirma o recebimento para evitar o cancelamento automático.'))return;
