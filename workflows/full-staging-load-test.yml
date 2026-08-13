@@ -1,0 +1,148 @@
+name: DespachaMoto - Staging Brutal 50 Motoboys
+
+on:
+  workflow_dispatch:
+    inputs:
+      couriers:
+        description: "Motoboys simultâneos"
+        required: true
+        default: "50"
+        type: string
+      departures_per_courier:
+        description: "Saídas por motoboy"
+        required: true
+        default: "40"
+        type: string
+      orders_per_departure:
+        description: "Pedidos por saída (1 a 5)"
+        required: true
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-staging-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: despachamoto_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d despachamoto_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachamoto_test
+      SESSION_SECRET: github-actions-despachamoto-staging-secret-2026-very-long
+      ADMIN_USERNAME: loadtestadmin
+      ADMIN_PASSWORD: LoadTestAdmin-987654
+      ADMIN_NAME: Administrador Teste
+      NODE_ENV: test
+      PORT: "3000"
+      DB_POOL_MAX: "25"
+      LOAD_TEST_KEY: github-actions-load-test-only
+      TARGET_URL: http://127.0.0.1:3000
+      LOADTEST_ADMIN_USERNAME: loadtestadmin
+      LOADTEST_ADMIN_PASSWORD: LoadTestAdmin-987654
+      LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
+      COURIERS: ${{ inputs.couriers }}
+      DEPARTURES_PER_COURIER: ${{ inputs.departures_per_courier }}
+      ORDERS_PER_DEPARTURE: ${{ inputs.orders_per_departure }}
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Validar sintaxe
+        run: |
+          node --check server.js
+          node --check scripts/loadtest-staging-50.js
+
+      - name: Iniciar DespachaMoto temporário
+        run: |
+          npm start > server-staging.log 2>&1 &
+          echo $! > server.pid
+
+      - name: Aguardar servidor + PostgreSQL
+        run: |
+          for i in {1..60}; do
+            CODE=$(curl -sS -o health.json -w "%{http_code}" --max-time 10 http://127.0.0.1:3000/api/health || true)
+            if [ "$CODE" = "200" ]; then
+              echo "DespachaMoto staging saudável:"
+              cat health.json
+              echo
+              exit 0
+            fi
+            echo "Tentativa $i: HTTP $CODE"
+            sleep 2
+          done
+          echo "Servidor não ficou saudável."
+          cat server-staging.log || true
+          exit 1
+
+      - name: Rodar teste completo - 50 motoboys
+        id: brutal
+        run: |
+          set +e
+          node scripts/loadtest-staging-50.js | tee full-staging-load-report.json
+          CODE=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          exit "$CODE"
+
+      - name: Resumo do teste
+        if: always()
+        run: |
+          echo "## DespachaMoto - Staging Brutal" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Perfil:** $COURIERS motoboys × $DEPARTURES_PER_COURIER saídas × $ORDERS_PER_DEPARTURE pedidos" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f full-staging-load-report.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat full-staging-load-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Mostrar log do servidor se falhar
+        if: failure()
+        run: |
+          echo "---- server-staging.log ----"
+          tail -300 server-staging.log || true
+
+      - name: Salvar relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: despachamoto-full-staging-report
+          path: |
+            full-staging-load-report.json
+            server-staging.log
+            health.json
+          if-no-files-found: ignore
+
+      - name: Encerrar servidor
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" || true
+          fi
