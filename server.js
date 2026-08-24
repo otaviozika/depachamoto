@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.3.2";
+const VERSION = "2.4.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -115,6 +115,15 @@ ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS nickname TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_key TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_type TEXT;
 
 CREATE TABLE IF NOT EXISTS dispatches (
   id BIGSERIAL PRIMARY KEY,
@@ -260,6 +269,57 @@ ON operational_conflicts(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS operational_conflicts_open_idx
 ON operational_conflicts(resolved_at,created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS payment_rate_rules (
+  id BIGSERIAL PRIMARY KEY,
+  effective_from DATE NOT NULL UNIQUE,
+  per_delivery NUMERIC(12,2) NOT NULL CHECK (per_delivery >= 0),
+  base_mon_thu NUMERIC(12,2) NOT NULL CHECK (base_mon_thu >= 0),
+  base_fri_sun NUMERIC(12,2) NOT NULL CHECK (base_fri_sun >= 0),
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS courier_payments (
+  id BIGSERIAL PRIMARY KEY,
+  payment_date DATE NOT NULL,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tip_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  adjustment_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  payment_method TEXT,
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','REVIEWED','PAID')),
+  notes TEXT,
+  delivery_count_snapshot INTEGER,
+  per_delivery_snapshot NUMERIC(12,2),
+  base_snapshot NUMERIC(12,2),
+  total_snapshot NUMERIC(12,2),
+  pix_key_snapshot TEXT,
+  pix_type_snapshot TEXT,
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  paid_at TIMESTAMPTZ,
+  paid_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(payment_date,courier_id)
+);
+
+CREATE INDEX IF NOT EXISTS courier_payments_date_idx
+ON courier_payments(payment_date DESC);
+
+CREATE INDEX IF NOT EXISTS courier_payments_courier_idx
+ON courier_payments(courier_id,payment_date DESC);
+
+CREATE INDEX IF NOT EXISTS courier_payments_status_idx
+ON courier_payments(status,payment_date DESC);
+
+INSERT INTO payment_rate_rules(
+  effective_from,per_delivery,base_mon_thu,base_fri_sun
+)
+VALUES('2000-01-01',6.00,60.00,75.00)
+ON CONFLICT(effective_from) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS ifood_merchants (
   merchant_id TEXT PRIMARY KEY,
@@ -511,7 +571,7 @@ function courierOnly(req, res, next) {
 }
 async function currentUser(userId) {
   const q = await pool.query(
-    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash FROM users WHERE id=$1",
+    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash,nickname,pix_key,pix_type FROM users WHERE id=$1",
     [userId]
   );
   return q.rows[0] || null;
@@ -2241,6 +2301,195 @@ function csvCell(v) {
   return `"${s.replaceAll('"', '""')}"`;
 }
 
+function parseMoneyValue(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return Number(fallback);
+  const normalized = String(value).trim().replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return Number(fallback);
+  return Math.round(n * 100) / 100;
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function paymentStatusLabel(status) {
+  return status === "PAID" ? "PAGO" : status === "REVIEWED" ? "CONFERIDO" : "EM ABERTO";
+}
+
+function isFriSun(date) {
+  const d = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return d === 5 || d === 6 || d === 0;
+}
+
+async function getPaymentRateRule(date) {
+  const q = await pool.query(`
+    SELECT id,effective_from,per_delivery,base_mon_thu,base_fri_sun,created_at
+    FROM payment_rate_rules
+    WHERE effective_from <= $1::date
+    ORDER BY effective_from DESC,id DESC
+    LIMIT 1
+  `, [date]);
+
+  const r = q.rows[0] || {
+    id: null,
+    effective_from: "2000-01-01",
+    per_delivery: 6,
+    base_mon_thu: 60,
+    base_fri_sun: 75
+  };
+
+  return {
+    id: r.id,
+    effective_from: r.effective_from,
+    per_delivery: Number(r.per_delivery),
+    base_mon_thu: Number(r.base_mon_thu),
+    base_fri_sun: Number(r.base_fri_sun),
+    created_at: r.created_at || null
+  };
+}
+
+function calculatePaymentAmounts({ date, deliveryCount, rule, tip = 0, discount = 0, adjustment = 0 }) {
+  const count = Math.max(0, Number(deliveryCount) || 0);
+  const perDelivery = roundMoney(rule?.per_delivery || 0);
+  const base = count > 0
+    ? roundMoney(isFriSun(date) ? rule?.base_fri_sun || 0 : rule?.base_mon_thu || 0)
+    : 0;
+  const tipAmount = roundMoney(tip);
+  const discountAmount = Math.max(0, roundMoney(discount));
+  const adjustmentAmount = roundMoney(adjustment);
+  const total = roundMoney(count * perDelivery + base + tipAmount - discountAmount + adjustmentAmount);
+
+  return {
+    delivery_count: count,
+    per_delivery: perDelivery,
+    base_amount: base,
+    tip_amount: tipAmount,
+    discount_amount: discountAmount,
+    adjustment_amount: adjustmentAmount,
+    total_amount: total
+  };
+}
+
+async function getCourierDeliveryCount(courierId, date, client = pool) {
+  const q = await client.query(`
+    SELECT COUNT(o.id)::int AS c
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE d.courier_id=$1
+      AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$2::date
+  `, [courierId, date]);
+  return Number(q.rows[0]?.c || 0);
+}
+
+async function buildPaymentRow(courier, payment, date, rule, liveCount = null) {
+  const status = payment?.status || "OPEN";
+  const locked = status === "REVIEWED" || status === "PAID";
+  const count = locked && payment?.delivery_count_snapshot !== null && payment?.delivery_count_snapshot !== undefined
+    ? Number(payment.delivery_count_snapshot)
+    : Number(liveCount ?? await getCourierDeliveryCount(courier.id, date));
+
+  const calc = locked && payment?.total_snapshot !== null && payment?.total_snapshot !== undefined
+    ? {
+        delivery_count: count,
+        per_delivery: Number(payment.per_delivery_snapshot),
+        base_amount: Number(payment.base_snapshot),
+        tip_amount: Number(payment.tip_amount || 0),
+        discount_amount: Number(payment.discount_amount || 0),
+        adjustment_amount: Number(payment.adjustment_amount || 0),
+        total_amount: Number(payment.total_snapshot)
+      }
+    : calculatePaymentAmounts({
+        date,
+        deliveryCount: count,
+        rule,
+        tip: payment?.tip_amount || 0,
+        discount: payment?.discount_amount || 0,
+        adjustment: payment?.adjustment_amount || 0
+      });
+
+  return {
+    id: payment?.id || null,
+    payment_date: date,
+    courier_id: courier.id,
+    courier_name: courier.name,
+    nickname: courier.nickname || null,
+    username: courier.username,
+    pix_key: locked ? (payment?.pix_key_snapshot ?? courier.pix_key ?? null) : (courier.pix_key || null),
+    pix_type: locked ? (payment?.pix_type_snapshot ?? courier.pix_type ?? null) : (courier.pix_type || null),
+    ...calc,
+    payment_method: payment?.payment_method || "",
+    status,
+    status_label: paymentStatusLabel(status),
+    notes: payment?.notes || "",
+    reviewed_at: payment?.reviewed_at || null,
+    paid_at: payment?.paid_at || null,
+    locked,
+    rate_effective_from: rule?.effective_from || null
+  };
+}
+
+async function getPaymentRows(date) {
+  const rule = await getPaymentRateRule(date);
+  const rows = (await pool.query(`
+    WITH deliveries AS (
+      SELECT d.courier_id,COUNT(o.id)::int AS delivery_count
+      FROM dispatches d
+      JOIN dispatch_orders o ON o.dispatch_id=d.id
+      WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+      GROUP BY d.courier_id
+    )
+    SELECT
+      u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,
+      COALESCE(del.delivery_count,0)::int AS live_delivery_count,
+      p.id AS payment_id,p.tip_amount,p.discount_amount,p.adjustment_amount,
+      p.payment_method,p.status,p.notes,
+      p.delivery_count_snapshot,p.per_delivery_snapshot,p.base_snapshot,p.total_snapshot,
+      p.pix_key_snapshot,p.pix_type_snapshot,p.reviewed_at,p.paid_at
+    FROM users u
+    LEFT JOIN deliveries del ON del.courier_id=u.id
+    LEFT JOIN courier_payments p ON p.courier_id=u.id AND p.payment_date=$1::date
+    WHERE u.role='courier'
+      AND (COALESCE(del.delivery_count,0)>0 OR p.id IS NOT NULL)
+    ORDER BY u.name
+  `, [date])).rows;
+
+  const out = [];
+  for (const r of rows) {
+    out.push(await buildPaymentRow(
+      {
+        id: r.id,
+        name: r.name,
+        username: r.username,
+        nickname: r.nickname,
+        pix_key: r.pix_key,
+        pix_type: r.pix_type
+      },
+      r.payment_id ? {
+        id: r.payment_id,
+        tip_amount: r.tip_amount,
+        discount_amount: r.discount_amount,
+        adjustment_amount: r.adjustment_amount,
+        payment_method: r.payment_method,
+        status: r.status,
+        notes: r.notes,
+        delivery_count_snapshot: r.delivery_count_snapshot,
+        per_delivery_snapshot: r.per_delivery_snapshot,
+        base_snapshot: r.base_snapshot,
+        total_snapshot: r.total_snapshot,
+        pix_key_snapshot: r.pix_key_snapshot,
+        pix_type_snapshot: r.pix_type_snapshot,
+        reviewed_at: r.reviewed_at,
+        paid_at: r.paid_at
+      } : null,
+      date,
+      rule,
+      Number(r.live_delivery_count || 0)
+    ));
+  }
+  return { rule, rows: out };
+}
+
 app.get("/api/public/config", asyncRoute(async (req, res) => {
   res.json({
     registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
@@ -2427,6 +2676,37 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
   });
 }));
 
+
+
+app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const date = await getSPDate();
+  const rule = await getPaymentRateRule(date);
+
+  const courier = (await pool.query(`
+    SELECT id,name,username,nickname,pix_key,pix_type
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [req.session.user.id])).rows[0];
+
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const payment = (await pool.query(`
+    SELECT *
+    FROM courier_payments
+    WHERE courier_id=$1 AND payment_date=$2::date
+    LIMIT 1
+  `, [req.session.user.id, date])).rows[0] || null;
+
+  const liveCount = await getCourierDeliveryCount(req.session.user.id, date);
+  const row = await buildPaymentRow(courier, payment, date, rule, liveCount);
+
+  res.json({
+    payment: row,
+    formula: "entregas × valor por entrega + encosta + gorjeta - desconto + ajuste",
+    server_now: new Date().toISOString()
+  });
+}));
 
 app.get("/api/courier/ifood/available", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
@@ -3858,6 +4138,278 @@ app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) =>
   });
 }));
 
+
+app.get("/api/admin/payments", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+  const { rule, rows } = await getPaymentRows(date);
+
+  const summary = rows.reduce((acc, row) => {
+    acc.couriers += 1;
+    acc.deliveries += Number(row.delivery_count || 0);
+    acc.total = roundMoney(acc.total + Number(row.total_amount || 0));
+    if (row.status === "PAID") {
+      acc.paid = roundMoney(acc.paid + Number(row.total_amount || 0));
+      acc.paid_count += 1;
+    } else {
+      acc.pending = roundMoney(acc.pending + Number(row.total_amount || 0));
+    }
+    if (row.status === "REVIEWED") acc.reviewed_count += 1;
+    return acc;
+  }, {
+    couriers: 0,
+    deliveries: 0,
+    total: 0,
+    paid: 0,
+    pending: 0,
+    paid_count: 0,
+    reviewed_count: 0
+  });
+
+  res.json({
+    date,
+    day_group: isFriSun(date) ? "SEX_DOM" : "SEG_QUI",
+    rule,
+    formula: "entregas × valor por entrega + encosta + gorjeta - desconto + ajuste",
+    rows,
+    summary,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/payments/rules", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+  const current = await getPaymentRateRule(date);
+  const history = (await pool.query(`
+    SELECT r.id,r.effective_from,r.per_delivery,r.base_mon_thu,r.base_fri_sun,
+           r.created_at,u.name AS created_by_name
+    FROM payment_rate_rules r
+    LEFT JOIN users u ON u.id=r.created_by
+    ORDER BY r.effective_from DESC,r.id DESC
+    LIMIT 30
+  `)).rows.map(r => ({
+    ...r,
+    per_delivery: Number(r.per_delivery),
+    base_mon_thu: Number(r.base_mon_thu),
+    base_fri_sun: Number(r.base_fri_sun)
+  }));
+
+  res.json({ current, history, date, server_now: new Date().toISOString() });
+}));
+
+app.put("/api/admin/payments/rules", auth, adminOnly, asyncRoute(async (req, res) => {
+  const effectiveFrom = validDate(req.body.effective_from) ? String(req.body.effective_from) : await getSPDate();
+  const perDelivery = parseMoneyValue(req.body.per_delivery, NaN);
+  const baseMonThu = parseMoneyValue(req.body.base_mon_thu, NaN);
+  const baseFriSun = parseMoneyValue(req.body.base_fri_sun, NaN);
+
+  if (![perDelivery, baseMonThu, baseFriSun].every(Number.isFinite)) {
+    return res.status(400).json({ error: "Informe valores válidos para a regra de pagamento." });
+  }
+  if ([perDelivery, baseMonThu, baseFriSun].some(x => x < 0 || x > 100000)) {
+    return res.status(400).json({ error: "Os valores da regra precisam ser positivos e dentro de um limite razoável." });
+  }
+
+  const q = await pool.query(`
+    INSERT INTO payment_rate_rules(
+      effective_from,per_delivery,base_mon_thu,base_fri_sun,created_by
+    )
+    VALUES($1::date,$2,$3,$4,$5)
+    ON CONFLICT(effective_from) DO UPDATE SET
+      per_delivery=EXCLUDED.per_delivery,
+      base_mon_thu=EXCLUDED.base_mon_thu,
+      base_fri_sun=EXCLUDED.base_fri_sun,
+      created_by=EXCLUDED.created_by,
+      created_at=NOW()
+    RETURNING id,effective_from,per_delivery,base_mon_thu,base_fri_sun,created_at
+  `, [effectiveFrom, perDelivery, baseMonThu, baseFriSun, req.session.user.id]);
+
+  await audit(req.session.user.id, "PAYMENT_RULE_UPDATED", "payment_rule", q.rows[0].id, {
+    effective_from: effectiveFrom,
+    per_delivery: perDelivery,
+    base_mon_thu: baseMonThu,
+    base_fri_sun: baseFriSun
+  });
+
+  io.emit("payment:changed");
+  res.json({
+    rule: {
+      ...q.rows[0],
+      per_delivery: Number(q.rows[0].per_delivery),
+      base_mon_thu: Number(q.rows[0].base_mon_thu),
+      base_fri_sun: Number(q.rows[0].base_fri_sun)
+    },
+    message: "Regra de pagamento salva."
+  });
+}));
+
+app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = String(req.params.date || "");
+  const courierId = Number(req.params.courierId);
+  if (!validDate(date)) return res.status(400).json({ error: "Data inválida." });
+  if (!Number.isInteger(courierId) || courierId < 1) return res.status(400).json({ error: "Motoboy inválido." });
+
+  const courier = (await pool.query(`
+    SELECT id,name,username,nickname,pix_key,pix_type
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [courierId])).rows[0];
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const existing = (await pool.query(`
+    SELECT *
+    FROM courier_payments
+    WHERE payment_date=$1::date AND courier_id=$2
+    LIMIT 1
+  `, [date, courierId])).rows[0] || null;
+
+  const tip = parseMoneyValue(req.body.tip_amount, 0);
+  const discount = parseMoneyValue(req.body.discount_amount, 0);
+  const adjustment = parseMoneyValue(req.body.adjustment_amount, 0);
+  const paymentMethod = String(req.body.payment_method || "").trim().slice(0, 40) || null;
+  const notes = String(req.body.notes || "").trim().slice(0, 600) || null;
+  const status = String(req.body.status || "OPEN").trim().toUpperCase();
+
+  if (!["OPEN","REVIEWED","PAID"].includes(status)) {
+    return res.status(400).json({ error: "Status de pagamento inválido." });
+  }
+  if (![tip, discount, adjustment].every(Number.isFinite)) {
+    return res.status(400).json({ error: "Gorjeta, desconto ou ajuste inválido." });
+  }
+  if (tip < 0 || discount < 0) {
+    return res.status(400).json({ error: "Gorjeta e desconto não podem ser negativos. Use Ajuste para correções positivas ou negativas." });
+  }
+  if ([Math.abs(tip), Math.abs(discount), Math.abs(adjustment)].some(x => x > 100000)) {
+    return res.status(400).json({ error: "Valor financeiro fora do limite permitido." });
+  }
+
+  if (existing?.status === "PAID" && status !== "PAID" && req.body.confirm_reopen_paid !== true) {
+    return res.status(409).json({
+      error: "Este pagamento já está marcado como PAGO. Confirme explicitamente para reabrir.",
+      code: "PAYMENT_REOPEN_CONFIRMATION"
+    });
+  }
+
+  const liveCount = await getCourierDeliveryCount(courierId, date);
+  const rule = await getPaymentRateRule(date);
+  const preserveLockedSnapshot = !!existing
+    && ["REVIEWED","PAID"].includes(existing.status)
+    && ["REVIEWED","PAID"].includes(status);
+
+  const finalTip = preserveLockedSnapshot ? Number(existing.tip_amount || 0) : tip;
+  const finalDiscount = preserveLockedSnapshot ? Number(existing.discount_amount || 0) : discount;
+  const finalAdjustment = preserveLockedSnapshot ? Number(existing.adjustment_amount || 0) : adjustment;
+
+  const calc = preserveLockedSnapshot ? {
+    delivery_count: Number(existing.delivery_count_snapshot || 0),
+    per_delivery: Number(existing.per_delivery_snapshot || 0),
+    base_amount: Number(existing.base_snapshot || 0),
+    tip_amount: finalTip,
+    discount_amount: finalDiscount,
+    adjustment_amount: finalAdjustment,
+    total_amount: Number(existing.total_snapshot || 0)
+  } : calculatePaymentAmounts({
+    date,
+    deliveryCount: liveCount,
+    rule,
+    tip: finalTip,
+    discount: finalDiscount,
+    adjustment: finalAdjustment
+  });
+
+  const lock = status === "REVIEWED" || status === "PAID";
+  const reviewedAt = lock ? (existing?.reviewed_at || new Date()) : null;
+  const paidAt = status === "PAID" ? (existing?.paid_at || new Date()) : null;
+
+  const q = await pool.query(`
+    INSERT INTO courier_payments(
+      payment_date,courier_id,tip_amount,discount_amount,adjustment_amount,
+      payment_method,status,notes,
+      delivery_count_snapshot,per_delivery_snapshot,base_snapshot,total_snapshot,
+      pix_key_snapshot,pix_type_snapshot,
+      reviewed_at,reviewed_by,paid_at,paid_by,updated_at
+    )
+    VALUES(
+      $1::date,$2,$3,$4,$5,$6,$7,$8,
+      $9,$10,$11,$12,$13,$14,
+      $15,$16,$17,$18,NOW()
+    )
+    ON CONFLICT(payment_date,courier_id) DO UPDATE SET
+      tip_amount=EXCLUDED.tip_amount,
+      discount_amount=EXCLUDED.discount_amount,
+      adjustment_amount=EXCLUDED.adjustment_amount,
+      payment_method=EXCLUDED.payment_method,
+      status=EXCLUDED.status,
+      notes=EXCLUDED.notes,
+      delivery_count_snapshot=EXCLUDED.delivery_count_snapshot,
+      per_delivery_snapshot=EXCLUDED.per_delivery_snapshot,
+      base_snapshot=EXCLUDED.base_snapshot,
+      total_snapshot=EXCLUDED.total_snapshot,
+      pix_key_snapshot=EXCLUDED.pix_key_snapshot,
+      pix_type_snapshot=EXCLUDED.pix_type_snapshot,
+      reviewed_at=EXCLUDED.reviewed_at,
+      reviewed_by=EXCLUDED.reviewed_by,
+      paid_at=EXCLUDED.paid_at,
+      paid_by=EXCLUDED.paid_by,
+      updated_at=NOW()
+    RETURNING *
+  `, [
+    date,courierId,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,
+    lock ? calc.delivery_count : null,
+    lock ? calc.per_delivery : null,
+    lock ? calc.base_amount : null,
+    lock ? calc.total_amount : null,
+    lock ? (preserveLockedSnapshot ? existing.pix_key_snapshot : courier.pix_key) : null,
+    lock ? (preserveLockedSnapshot ? existing.pix_type_snapshot : courier.pix_type) : null,
+    reviewedAt,
+    (status === "REVIEWED" || status === "PAID") ? req.session.user.id : null,
+    paidAt,
+    status === "PAID" ? req.session.user.id : null
+  ]);
+
+  const row = await buildPaymentRow(courier, q.rows[0], date, rule, liveCount);
+
+  await audit(req.session.user.id, "PAYMENT_UPDATED", "courier_payment", q.rows[0].id, {
+    payment_date: date,
+    courier_id: courierId,
+    courier_name: courier.name,
+    delivery_count: row.delivery_count,
+    total_amount: row.total_amount,
+    status
+  });
+
+  io.emit("payment:changed");
+  res.json({ payment: row, message: "Pagamento atualizado.", server_now: new Date().toISOString() });
+}));
+
+app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+  const { rows } = await getPaymentRows(date);
+
+  const header = [
+    "Data","Motoboy","Apelido","Chave PIX","Tipo PIX","Nº Entregas","Valor por Entrega",
+    "Encosta","Gorjeta","Desconto","Ajuste","Forma PGMT","Status","Total","Observações"
+  ];
+  const lines = [header.map(csvCell).join(";")];
+
+  for (const r of rows) {
+    lines.push([
+      date,r.courier_name,r.nickname||"",r.pix_key||"",r.pix_type||"",
+      r.delivery_count,r.per_delivery,r.base_amount,r.tip_amount,r.discount_amount,
+      r.adjustment_amount,r.payment_method||"",paymentStatusLabel(r.status),
+      r.total_amount,r.notes||""
+    ].map(csvCell).join(";"));
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="despachamoto-pagamentos-${date}.csv"`);
+  res.send("\uFEFF" + lines.join("\r\n"));
+
+  await audit(req.session.user.id, "PAYMENT_REPORT_EXPORTED", "payment", null, {
+    date,
+    rows: rows.length
+  });
+}));
+
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
   const metrics = (await pool.query(`
     SELECT
@@ -3891,7 +4443,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
   `)).rows;
 
   const couriers = (await pool.query(`
-    SELECT u.id,u.name,u.username,u.active,u.approval_status,u.must_change_password,
+    SELECT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.active,u.approval_status,u.must_change_password,
       (
         SELECT COUNT(o.id)
         FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
@@ -3944,6 +4496,9 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
   const name = String(req.body.name || "").trim();
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
+  const nickname = String(req.body.nickname || "").trim().slice(0, 80) || null;
+  const pixKey = String(req.body.pix_key || "").trim().slice(0, 220) || null;
+  const pixType = String(req.body.pix_type || "").trim().slice(0, 40) || null;
 
   if (name.length < 3 || username.length < 3 || password.length < 8) {
     return res.status(400).json({ error: "Preencha nome, usuário e senha de pelo menos 8 caracteres." });
@@ -3951,10 +4506,13 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
 
   try {
     const q = await pool.query(`
-      INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password)
-      VALUES($1,$2,$3,'courier','APPROVED',true,false)
-      RETURNING id,name,username,active,approval_status,must_change_password
-    `, [name, username, await bcrypt.hash(password, 12)]);
+      INSERT INTO users(
+        name,username,password_hash,role,approval_status,active,must_change_password,
+        nickname,pix_key,pix_type
+      )
+      VALUES($1,$2,$3,'courier','APPROVED',true,false,$4,$5,$6)
+      RETURNING id,name,username,nickname,pix_key,pix_type,active,approval_status,must_change_password
+    `, [name, username, await bcrypt.hash(password, 12), nickname, pixKey, pixType]);
 
     await audit(req.session.user.id, "COURIER_CREATED_APPROVED", "user", q.rows[0].id, { username });
     io.emit("courier:changed");
@@ -4005,6 +4563,34 @@ app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (re
 
   await audit(req.session.user.id, "COURIER_REJECTED", "user", q.rows[0].id, {});
   io.emit("courier:changed");
+  res.json({ user: q.rows[0] });
+}));
+
+
+app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (req, res) => {
+  const name = String(req.body.name || "").trim();
+  const nickname = String(req.body.nickname || "").trim().slice(0, 80) || null;
+  const pixKey = String(req.body.pix_key || "").trim().slice(0, 220) || null;
+  const pixType = String(req.body.pix_type || "").trim().slice(0, 40) || null;
+
+  if (name.length < 3) return res.status(400).json({ error: "Informe o nome completo do motoboy." });
+
+  const q = await pool.query(`
+    UPDATE users
+    SET name=$1,nickname=$2,pix_key=$3,pix_type=$4
+    WHERE id=$5 AND role='courier'
+    RETURNING id,name,username,nickname,pix_key,pix_type,active,approval_status
+  `, [name, nickname, pixKey, pixType, req.params.id]);
+
+  if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  await audit(req.session.user.id, "COURIER_PROFILE_UPDATED", "user", q.rows[0].id, {
+    has_pix: !!pixKey,
+    pix_type: pixType
+  });
+
+  io.emit("courier:changed");
+  io.emit("payment:changed");
   res.json({ user: q.rows[0] });
 }));
 

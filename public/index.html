@@ -7,13 +7,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.3.2</title>
+<title>DespachaMoto 2.4.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
 .login{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#111827,#293548);padding:20px}.auth-box{width:min(450px,100%);background:#fff;border-radius:20px;padding:30px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.logo{font-size:25px;font-weight:900}.logo span{color:var(--primary)}.creator-signature{font-size:10px;font-weight:600;letter-spacing:2.2px;color:#94a3b8;margin-top:3px;margin-left:31px;line-height:1.2}.auth-box .creator-signature{margin-left:0;text-align:center;margin-bottom:14px}.side .creator-signature{margin-bottom:22px}
 .tabs{display:flex;background:#f3f4f6;padding:4px;border-radius:11px;margin:20px 0}.tabs button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;cursor:pointer}.tabs .on{background:#fff;font-weight:800;box-shadow:0 1px 5px #0001}
-.form{display:grid;gap:13px}.form label{font-size:13px;font-weight:700}.form input{width:100%;display:block;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;outline:none}.form input:focus{border-color:var(--primary)}
+.form{display:grid;gap:13px}.form label{font-size:13px;font-weight:700}.form input,.form select{width:100%;display:block;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;outline:none;background:#fff}.form input:focus,.form select:focus{border-color:var(--primary)}
 .btn{border:0;border-radius:10px;padding:11px 15px;font-weight:800;cursor:pointer}.btn.primary{background:var(--primary);color:#111827}.btn.outline{background:#fff;border:1px solid var(--line)}.btn.danger{background:#fee2e2;color:#991b1b}.btn.success{background:#dcfce7;color:#166534}.btn:disabled{opacity:.5;cursor:not-allowed}
 .msg{padding:10px;border-radius:9px;margin:10px 0;font-size:13px}.msg.err{background:#fee2e2;color:#991b1b}.msg.ok{background:#dcfce7;color:#166534}.warning{padding:13px;border-radius:11px;background:#fef3c7;color:#92400e;margin-bottom:15px;border:1px solid #fde68a}
 .app{min-height:100vh}.side{position:fixed;inset:0 auto 0 0;width:250px;background:var(--dark);color:white;padding:20px 15px;z-index:8}.side .logo{padding:8px 10px 25px}.nav{display:grid;gap:6px}.nav button{border:0;background:transparent;color:#cbd5e1;text-align:left;padding:12px;border-radius:10px;cursor:pointer}.nav button.active,.nav button:hover{background:#1f2937;color:#fff}
@@ -68,9 +68,10 @@
 
 
 .ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
+.payment-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.payment-toolbar label{font-size:12px;font-weight:800}.payment-toolbar input{display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.payment-formula{padding:12px 14px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px;color:#854d0e;font-size:13px}.payment-input{width:92px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-note{min-width:180px;width:220px;padding:8px;border:1px solid var(--line);border-radius:8px}.payment-select{padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-total{font-size:15px;font-weight:900}.payment-pix{max-width:220px;white-space:normal;line-height:1.35}.payment-locked{background:#f8fafc}.money-positive{color:#166534}.money-negative{color:#991b1b}.payment-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.payment-mini>div{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px}.payment-own-total{font-size:30px;font-weight:900;margin-top:5px}
 
 @media(max-width:1100px){.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:720px){.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -115,6 +116,7 @@
       <button data-page="history">▤ Histórico</button>
       <button data-page="report">▥ Relatório diário</button>
       <button data-page="management">📊 Gestão</button>
+      <button data-page="payments">💰 Pagamentos</button>
       <button data-page="couriers">♙ Motoboys</button>
       <button data-page="alerts">⚙ Alertas</button>
       <button data-page="notifications">🔔 Notificações</button>
@@ -366,12 +368,76 @@
         </div>
       </section>
 
+
+      <section id="payments" class="page">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <h1 class="title">Pagamentos dos motoboys</h1>
+            <p class="muted">Fechamento diário calculado automaticamente pelas entregas registradas no DespachaMoto.</p>
+          </div>
+          <div class="payment-toolbar">
+            <label>Data
+              <input id="paymentDate" type="date" onchange="loadPayments()">
+            </label>
+            <button class="btn primary" onclick="loadPayments()">Atualizar</button>
+            <button class="btn outline" onclick="exportPayments()">Exportar CSV</button>
+          </div>
+        </div>
+
+        <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+          <div class="card"><div class="label">Motoboys</div><div id="payCouriers" class="metric">0</div></div>
+          <div class="card"><div class="label">Entregas</div><div id="payDeliveries" class="metric">0</div></div>
+          <div class="card"><div class="label">Total do dia</div><div id="payTotal" class="metric" style="font-size:24px">R$ 0,00</div></div>
+          <div class="card"><div class="label">Pago</div><div id="payPaid" class="metric" style="font-size:24px">R$ 0,00</div></div>
+          <div class="card"><div class="label">Pendente</div><div id="payPending" class="metric" style="font-size:24px">R$ 0,00</div></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div><b>Regra de pagamento</b><div id="paymentRuleSummary" class="small muted" style="margin-top:4px">Carregando...</div></div>
+          </div>
+          <div style="padding:18px">
+            <div class="payment-formula"><b>Fórmula:</b> Entregas × valor por entrega + encosta + gorjeta − desconto + ajuste.</div>
+            <div class="settings-grid" style="margin-top:14px">
+              <label><b>Valor por entrega</b><input id="paymentPerDelivery" type="number" min="0" step="0.01"></label>
+              <label><b>Encosta Seg–Qui</b><input id="paymentBaseWeekday" type="number" min="0" step="0.01"></label>
+              <label><b>Encosta Sex–Dom</b><input id="paymentBaseWeekend" type="number" min="0" step="0.01"></label>
+            </div>
+            <div class="actions" style="margin-top:13px;align-items:end">
+              <label class="small"><b>Nova regra válida a partir de</b><input id="paymentRuleEffective" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
+              <button class="btn primary" onclick="savePaymentRule()">Salvar nova regra</button>
+            </div>
+            <div id="paymentRuleMsg"></div>
+            <p class="small muted" style="margin-bottom:0">Pagamentos marcados como <b>Conferido</b> ou <b>Pago</b> ficam congelados com a regra e quantidade de entregas daquele fechamento.</p>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top:18px">
+          <div class="section-head">
+            <div><b>Fechamento do dia</b><div id="paymentDayInfo" class="small muted" style="margin-top:4px"></div></div>
+            <button class="btn outline" onclick="loadPayments()">Recalcular abertos</button>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Motoboy</th><th>Entregas</th><th>R$/entrega</th><th>Encosta</th>
+                  <th>Gorjeta</th><th>Desconto</th><th>Ajuste</th><th>Total</th>
+                  <th>PIX</th><th>Forma</th><th>Status</th><th>Observações</th><th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="paymentTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
 <section id="couriers" class="page">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <div><h1 class="title">Motoboys</h1><p class="muted">Aprovação, bloqueio e redefinição de senha.</p></div>
+          <div><h1 class="title">Motoboys</h1><p class="muted">Aprovação, acesso, PIX e dados de pagamento.</p></div>
           <button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button>
         </div>
-        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>Pedidos hoje</th><th>Status operacional</th><th>Conexão</th><th>Última saída</th><th>Aprovação</th><th>Conta</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
+        <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>PIX</th><th>Pedidos hoje</th><th>Status operacional</th><th>Conexão</th><th>Última saída</th><th>Aprovação</th><th>Conta</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
       </section>
 
       <section id="alerts" class="page">
@@ -457,7 +523,7 @@
 <section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
     </div>
   </main>
-  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
+  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="payments">💰<br>Pagto</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
 </div>
 
 
@@ -494,11 +560,27 @@
       <div class="card"><div class="label">Últimos 7 dias</div><div id="statWeek" class="metric">0</div></div>
       <div class="card"><div class="label">Este mês</div><div id="statMonth" class="metric">0</div></div>
     </div>
+    
+    <div id="myPaymentCard" class="card" style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
+        <div><div class="label">Meu pagamento de hoje</div><div id="myPaymentTotal" class="payment-own-total">R$ 0,00</div></div>
+        <span id="myPaymentStatus" class="badge gray">EM ABERTO</span>
+      </div>
+      <div class="payment-mini">
+        <div><div class="label">Entregas</div><b id="myPaymentDeliveries">0</b></div>
+        <div><div class="label">Valor/entrega</div><b id="myPaymentPerDelivery">R$ 0,00</b></div>
+        <div><div class="label">Encosta</div><b id="myPaymentBase">R$ 0,00</b></div>
+        <div><div class="label">Ajustes líquidos</div><b id="myPaymentAdjustments">R$ 0,00</b></div>
+      </div>
+      <div id="myPaymentMessage" class="small muted" style="margin-top:10px">Calculado automaticamente pelas entregas registradas hoje.</div>
+    </div>
     <div class="section"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
   </main>
 </div>
 
-<div id="courierModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
+<div id="courierModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Apelido (opcional)<input id="newNickname"></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><label>Chave PIX (opcional)<input id="newPixKey"></label><label>Tipo de PIX<select id="newPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
+
+<div id="courierProfileModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">Dados do motoboy</h2><div id="editCourierUsername" class="small muted"></div></div><button class="btn outline" onclick="closeCourierProfileModal()">×</button></div><div id="courierProfileMsg"></div><form id="courierProfileForm" class="form" style="margin-top:15px"><input id="editCourierId" type="hidden"><label>Nome<input id="editCourierName" required></label><label>Apelido (opcional)<input id="editCourierNickname"></label><label>Chave PIX<input id="editCourierPixKey"></label><label>Tipo de PIX<select id="editCourierPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><button class="btn primary">Salvar dados</button></form></div></div>
 
 
 <div id="manualDispatchModal" class="modal">
@@ -573,12 +655,13 @@ let notificationState={rows:[],unread:0};
 let isFlushingQueue=false;
 const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v17_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
+let paymentState={date:null,rule:null,rows:[],summary:{}};
 const $=id=>document.getElementById(id);
 
 async function api(url,opt={}){
   const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
   let d={};try{d=await r.json()}catch{}
-  if(!r.ok)throw new Error(d.error||'Erro na operação.');
+  if(!r.ok){const err=new Error(d.error||'Erro na operação.');err.status=r.status;err.code=d.code;err.payload=d;throw err}
   if(d.server_now)syncServerTime(d.server_now);
   return d;
 }
@@ -599,6 +682,8 @@ function isoDateLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padSta
 function addDaysIso(iso,days){const [y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+days);return isoDateLocal(dt)}
 function firstDayMonthIso(iso){const [y,m]=iso.split('-').map(Number);return `${y}-${String(m).padStart(2,'0')}-01`}
 function prevMonthRange(iso){const [y,m]=iso.split('-').map(Number);const first=new Date(y,m-2,1);const last=new Date(y,m-1,0);return [isoDateLocal(first),isoDateLocal(last)]}
+function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function moneyNumber(v){const n=Number(String(v??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100)/100:0}
 
 
 async function loadPublicConfig(){
@@ -998,7 +1083,7 @@ async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}loca
 function showApp(){
   $('loginScreen').classList.add('hidden');
   if(me.role==='admin'){
-    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
+    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();if($('paymentDate'))$('paymentDate').value=spToday();if($('paymentRuleEffective'))$('paymentRuleEffective').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
     $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();renderOfflineQueueStatus();loadCourier().then(flushOfflineQueue);
   }
@@ -1062,10 +1147,14 @@ function renderCouriers(){
 
     const statusLabel={NA_RUA:'NA RUA',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
     const last=x.last_departure?localDate(x.last_departure):'Nunca';
+    const pix=x.pix_key
+      ? `<div class="small"><b>${escapeHtml(x.pix_type||'PIX')}</b><br>${escapeHtml(x.pix_key)}</div>`
+      : '<span class="badge yellow">NÃO CADASTRADO</span>';
 
     return `<tr>
-      <td><b>${escapeHtml(x.name)}</b></td>
+      <td><b>${escapeHtml(x.name)}</b>${x.nickname?`<div class="small muted">${escapeHtml(x.nickname)}</div>`:''}</td>
       <td>${escapeHtml(x.username)}</td>
+      <td>${pix}</td>
       <td>${x.today_count}</td>
       <td><span class="team-status ${x.operational_status}">${statusLabel}</span></td>
       <td><span class="conn-dot">${x.is_online?'🟢 Online':'⚪ Offline'}</span></td>
@@ -1073,9 +1162,9 @@ function renderCouriers(){
       <td>${approvalBadge(x.approval_status)}</td>
       <td><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVA':'INATIVA'}</span></td>
       <td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td>
-      <td><div class="actions">${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button></div></td>
+      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button></div></td>
     </tr>`;
-  }).join('')||empty(10)
+  }).join('')||empty(11)
 }
 async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/approve',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
@@ -1091,6 +1180,151 @@ async function resetCourierPassword(id,name){
     const d=await api('/api/admin/couriers/'+id+'/reset-password',{method:'POST',body:JSON.stringify({new_password:p1})});
     alert(d.message);await loadAdmin();
   }catch(err){alert(err.message)}
+}
+
+
+function paymentBadgeClass(status){return status==='PAID'?'green':status==='REVIEWED'?'blue':'gray'}
+function paymentStatusText(status){return status==='PAID'?'PAGO':status==='REVIEWED'?'CONFERIDO':'EM ABERTO'}
+function paymentStatusOptions(current){
+  return [
+    ['OPEN','Em aberto'],
+    ['REVIEWED','Conferido'],
+    ['PAID','Pago']
+  ].map(([v,l])=>`<option value="${v}" ${current===v?'selected':''}>${l}</option>`).join('');
+}
+function paymentMethodOptions(current){
+  const opts=[['','—'],['PIX','PIX'],['DINHEIRO','Dinheiro'],['OUTRO','Outro']];
+  return opts.map(([v,l])=>`<option value="${v}" ${current===v?'selected':''}>${l}</option>`).join('');
+}
+async function copyPix(value){
+  if(!value)return;
+  try{await navigator.clipboard.writeText(value);alert('Chave PIX copiada.')}
+  catch{prompt('Copie a chave PIX:',value)}
+}
+function previewPaymentRow(courierId){
+  const row=paymentState.rows.find(x=>Number(x.courier_id)===Number(courierId));
+  if(!row||row.locked)return;
+  const tip=moneyNumber($(`payTip${courierId}`)?.value);
+  const discount=Math.max(0,moneyNumber($(`payDiscount${courierId}`)?.value));
+  const adjustment=moneyNumber($(`payAdjustment${courierId}`)?.value);
+  const total=Math.round((row.delivery_count*row.per_delivery+row.base_amount+tip-discount+adjustment)*100)/100;
+  if($(`payTotalRow${courierId}`))$(`payTotalRow${courierId}`).textContent=brl(total);
+}
+function renderPayments(){
+  const d=paymentState;
+  $('payCouriers').textContent=d.summary.couriers||0;
+  $('payDeliveries').textContent=d.summary.deliveries||0;
+  $('payTotal').textContent=brl(d.summary.total);
+  $('payPaid').textContent=brl(d.summary.paid);
+  $('payPending').textContent=brl(d.summary.pending);
+  $('paymentRuleSummary').textContent=`Vigente desde ${String(d.rule?.effective_from||'').slice(0,10).split('-').reverse().join('/')} • ${brl(d.rule?.per_delivery)} por entrega • Encosta ${brl(d.rule?.base_mon_thu)} Seg–Qui / ${brl(d.rule?.base_fri_sun)} Sex–Dom`;
+  $('paymentDayInfo').textContent=`${d.date.split('-').reverse().join('/')} • ${d.day_group==='SEX_DOM'?'Encosta de sexta a domingo':'Encosta de segunda a quinta'} • ${d.rows.length} motoboy(s) com fechamento`;
+  $('paymentPerDelivery').value=Number(d.rule?.per_delivery||0).toFixed(2);
+  $('paymentBaseWeekday').value=Number(d.rule?.base_mon_thu||0).toFixed(2);
+  $('paymentBaseWeekend').value=Number(d.rule?.base_fri_sun||0).toFixed(2);
+
+  $('paymentTable').innerHTML=d.rows.map(row=>{
+    const disabled=row.locked?'disabled':'';
+    const lockedClass=row.locked?'payment-locked':'';
+    const pix=row.pix_key
+      ? `<div class="payment-pix"><b>${escapeHtml(row.pix_type||'PIX')}</b><br>${escapeHtml(row.pix_key)}<br><button type="button" class="btn outline" style="padding:6px 8px;margin-top:5px" onclick="copyPix(decodeURIComponent('${encodeURIComponent(row.pix_key)}'))">Copiar</button></div>`
+      : `<div><span class="badge yellow">SEM PIX</span><div class="small muted" style="margin-top:5px">Cadastre em Motoboys → Dados / PIX</div></div>`;
+
+    return `<tr class="${lockedClass}">
+      <td><b>${escapeHtml(row.courier_name)}</b>${row.nickname?`<div class="small muted">${escapeHtml(row.nickname)}</div>`:''}</td>
+      <td><b>${row.delivery_count}</b>${row.locked?'<div class="small muted">congelado</div>':'<div class="small muted">automático</div>'}</td>
+      <td>${brl(row.per_delivery)}</td>
+      <td>${brl(row.base_amount)}</td>
+      <td><input id="payTip${row.courier_id}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow(${row.courier_id})"></td>
+      <td><input id="payDiscount${row.courier_id}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow(${row.courier_id})"></td>
+      <td><input id="payAdjustment${row.courier_id}" class="payment-input" type="number" step="0.01" value="${Number(row.adjustment_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow(${row.courier_id})"></td>
+      <td><span id="payTotalRow${row.courier_id}" class="payment-total">${brl(row.total_amount)}</span></td>
+      <td>${pix}</td>
+      <td><select id="payMethod${row.courier_id}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td>
+      <td><select id="payStatus${row.courier_id}" class="payment-select">${paymentStatusOptions(row.status)}</select><div style="margin-top:5px"><span class="badge ${paymentBadgeClass(row.status)}">${paymentStatusText(row.status)}</span></div></td>
+      <td><input id="payNotes${row.courier_id}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td>
+      <td><button class="btn primary" onclick="savePaymentRow(${row.courier_id})">Salvar</button></td>
+    </tr>`;
+  }).join('')||empty(13);
+}
+async function loadPayments(){
+  if(!me||me.role!=='admin')return;
+  const date=$('paymentDate')?.value||spToday();
+  if($('paymentDate'))$('paymentDate').value=date;
+  try{
+    paymentState=await api('/api/admin/payments?date='+encodeURIComponent(date));
+    renderPayments();
+  }catch(err){
+    $('paymentTable').innerHTML=`<tr><td colspan="13"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`;
+  }
+}
+async function savePaymentRule(){
+  const payload={
+    effective_from:$('paymentRuleEffective').value||spToday(),
+    per_delivery:moneyNumber($('paymentPerDelivery').value),
+    base_mon_thu:moneyNumber($('paymentBaseWeekday').value),
+    base_fri_sun:moneyNumber($('paymentBaseWeekend').value)
+  };
+  if(!confirm(`Salvar esta regra a partir de ${payload.effective_from.split('-').reverse().join('/')}?`))return;
+  try{
+    const d=await api('/api/admin/payments/rules',{method:'PUT',body:JSON.stringify(payload)});
+    message('paymentRuleMsg',d.message||'Regra salva.','ok');
+    await loadPayments();
+  }catch(err){message('paymentRuleMsg',err.message,'err')}
+}
+async function savePaymentRow(courierId,confirmReopen=false){
+  const current=paymentState.rows.find(x=>Number(x.courier_id)===Number(courierId));
+  if(!current)return;
+  const status=$(`payStatus${courierId}`).value;
+  if(current.status==='OPEN'&&status==='REVIEWED'&&!confirm('Conferir este pagamento? A quantidade de entregas e os valores serão congelados.'))return;
+  if(current.status!=='PAID'&&status==='PAID'&&!confirm('Marcar este pagamento como PAGO? O fechamento ficará congelado.'))return;
+  if(current.status==='PAID'&&status!=='PAID'&&!confirmReopen){
+    if(!confirm('Este pagamento já está PAGO. Deseja reabrir para correção?'))return;
+    confirmReopen=true;
+  }
+
+  const payload={
+    tip_amount:moneyNumber($(`payTip${courierId}`).value),
+    discount_amount:moneyNumber($(`payDiscount${courierId}`).value),
+    adjustment_amount:moneyNumber($(`payAdjustment${courierId}`).value),
+    payment_method:$(`payMethod${courierId}`).value,
+    status,
+    notes:$(`payNotes${courierId}`).value,
+    confirm_reopen_paid:confirmReopen
+  };
+
+  try{
+    await api(`/api/admin/payments/${paymentState.date}/${courierId}`,{method:'PUT',body:JSON.stringify(payload)});
+    await loadPayments();
+  }catch(err){
+    if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(courierId,true);
+    alert(err.message);
+  }
+}
+function exportPayments(){
+  const date=$('paymentDate')?.value||spToday();
+  location.href='/api/admin/payments.csv?date='+encodeURIComponent(date);
+}
+async function loadMyPayment(){
+  if(!me||me.role!=='courier'||!$('myPaymentCard'))return;
+  try{
+    const d=await api('/api/courier/payment/today');
+    const p=d.payment;
+    $('myPaymentTotal').textContent=brl(p.total_amount);
+    $('myPaymentDeliveries').textContent=p.delivery_count;
+    $('myPaymentPerDelivery').textContent=brl(p.per_delivery);
+    $('myPaymentBase').textContent=brl(p.base_amount);
+    const net=Number(p.tip_amount||0)-Number(p.discount_amount||0)+Number(p.adjustment_amount||0);
+    $('myPaymentAdjustments').textContent=brl(net);
+    $('myPaymentAdjustments').className=net<0?'money-negative':net>0?'money-positive':'';
+    $('myPaymentStatus').className=`badge ${paymentBadgeClass(p.status)}`;
+    $('myPaymentStatus').textContent=paymentStatusText(p.status);
+    $('myPaymentMessage').textContent=p.locked
+      ? `Fechamento ${paymentStatusText(p.status).toLowerCase()}. Os valores estão congelados.`
+      : 'Valor parcial: atualiza automaticamente conforme novas entregas são registradas.';
+  }catch(err){
+    $('myPaymentMessage').textContent='Pagamento indisponível no momento.';
+  }
 }
 
 let courierActiveDispatch=null;
@@ -1120,6 +1354,7 @@ async function loadCourier(){
     $('currentDepartureNote')?.remove();
   }
 
+  loadMyPayment();
 }
 async function depart(e){
   e.preventDefault();
@@ -2028,7 +2263,11 @@ const auditNames={
   PERIOD_REPORT_EXPORTED:'Relatório por período exportado',
   MANUAL_DEPARTURE_REGISTERED:'Saída manual registrada pelo administrador',
   NOTIFICATIONS_MARKED_READ:'Notificações marcadas como lidas',
-  NOTIFICATION_SETTINGS_UPDATED:'Configurações de notificações alteradas'
+  NOTIFICATION_SETTINGS_UPDATED:'Configurações de notificações alteradas',
+  COURIER_PROFILE_UPDATED:'Dados / PIX do motoboy atualizados',
+  PAYMENT_RULE_UPDATED:'Regra de pagamento atualizada',
+  PAYMENT_UPDATED:'Pagamento de motoboy atualizado',
+  PAYMENT_REPORT_EXPORTED:'Relatório de pagamentos exportado'
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
@@ -2037,6 +2276,10 @@ function friendlyAuditDetails(x){
   if(x.action==='FULL_HISTORY_EXPORTED')return `${d.rows||0} registros exportados`;
   if(x.action==='PASSWORD_RESET_BY_ADMIN')return `Usuário: ${d.target_username||'—'}`;
   if(x.action==='MANUAL_DEPARTURE_REGISTERED')return `${d.courier_name||'Motoboy'} • ${(d.order_numbers||[]).join(', ')} • ${d.reason||''}`;
+  if(x.action==='PAYMENT_UPDATED')return `${d.courier_name||'Motoboy'} • ${d.delivery_count||0} entrega(s) • ${brl(d.total_amount||0)} • ${paymentStatusText(d.status||'OPEN')}`;
+  if(x.action==='PAYMENT_RULE_UPDATED')return `${brl(d.per_delivery||0)}/entrega • ${brl(d.base_mon_thu||0)} Seg–Qui • ${brl(d.base_fri_sun||0)} Sex–Dom`;
+  if(x.action==='COURIER_PROFILE_UPDATED')return d.has_pix?`PIX ${d.pix_type||''} atualizado`:'Dados do motoboy atualizados';
+  if(x.action==='PAYMENT_REPORT_EXPORTED')return `${d.rows||0} pagamento(s) exportado(s) em ${d.date||''}`;
   return '';
 }
 async function loadAudit(){
@@ -2046,13 +2289,59 @@ async function loadAudit(){
 
 function openCourierModal(){$('courierModal').style.display='grid';$('courierModalMsg').innerHTML='';$('newName').focus()}
 function closeCourierModal(){$('courierModal').style.display='none'}
-async function createCourier(e){e.preventDefault();try{await api('/api/admin/couriers',{method:'POST',body:JSON.stringify({name:$('newName').value,username:$('newUser').value,password:$('newPass').value})});$('courierForm').reset();message('courierModalMsg','Motoboy cadastrado.','ok');await loadAdmin();setTimeout(closeCourierModal,600)}catch(err){message('courierModalMsg',err.message,'err')}}
+async function createCourier(e){
+  e.preventDefault();
+  try{
+    await api('/api/admin/couriers',{method:'POST',body:JSON.stringify({
+      name:$('newName').value,
+      nickname:$('newNickname').value,
+      username:$('newUser').value,
+      password:$('newPass').value,
+      pix_key:$('newPixKey').value,
+      pix_type:$('newPixType').value
+    })});
+    $('courierForm').reset();
+    message('courierModalMsg','Motoboy cadastrado.','ok');
+    await loadAdmin();
+    setTimeout(closeCourierModal,600);
+  }catch(err){message('courierModalMsg',err.message,'err')}
+}
+function openCourierProfileModal(id){
+  const x=dashboard?.couriers?.find(c=>Number(c.id)===Number(id));
+  if(!x)return;
+  $('editCourierId').value=x.id;
+  $('editCourierName').value=x.name||'';
+  $('editCourierNickname').value=x.nickname||'';
+  $('editCourierPixKey').value=x.pix_key||'';
+  $('editCourierPixType').value=x.pix_type||'';
+  $('editCourierUsername').textContent='Usuário: '+x.username;
+  $('courierProfileMsg').innerHTML='';
+  $('courierProfileModal').style.display='grid';
+  $('editCourierName').focus();
+}
+function closeCourierProfileModal(){$('courierProfileModal').style.display='none'}
+async function saveCourierProfile(e){
+  e.preventDefault();
+  const id=$('editCourierId').value;
+  try{
+    await api('/api/admin/couriers/'+id+'/profile',{method:'PATCH',body:JSON.stringify({
+      name:$('editCourierName').value,
+      nickname:$('editCourierNickname').value,
+      pix_key:$('editCourierPixKey').value,
+      pix_type:$('editCourierPixType').value
+    })});
+    message('courierProfileMsg','Dados salvos.','ok');
+    await loadAdmin();
+    if($('payments')?.classList.contains('active'))await loadPayments();
+    setTimeout(closeCourierProfileModal,500);
+  }catch(err){message('courierProfileMsg',err.message,'err')}
+}
 
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',payments:'Pagamentos',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
   else if(b.dataset.page==='operations')loadOperations();
   else if(b.dataset.page==='ifood')loadIfoodStatus();
@@ -2060,6 +2349,7 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   else if(b.dataset.page==='report')loadReport();
   else if(b.dataset.page==='wallboard'){loadAdmin();renderWallboard();}
   else if(b.dataset.page==='management')loadManagement();
+  else if(b.dataset.page==='payments')loadPayments();
   else if(b.dataset.page==='notifications'){loadNotifications();loadNotificationSettings();}
   else if(b.dataset.page==='history')loadHistory();
   else if(b.dataset.page==='security')loadSecurity();
@@ -2070,6 +2360,7 @@ $('loginForm').onsubmit=login;
 $('registerForm').onsubmit=register;
 $('departureForm').onsubmit=depart;
 $('courierForm').onsubmit=createCourier;
+$('courierProfileForm').onsubmit=saveCourierProfile;
 $('passwordForm').onsubmit=changePassword;
 $('manualDispatchForm').onsubmit=submitManualDispatch;
 $('manualCourier').onchange=updateManualActiveInfo;
@@ -2081,6 +2372,10 @@ socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',()=>{if(me?.role==='admin')loadAdmin();else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
+socket.on('payment:changed',()=>{
+  if(me?.role==='admin'&&$('payments')?.classList.contains('active'))loadPayments();
+  if(me?.role==='courier')loadMyPayment();
+});
 socket.on('ifood:changed',()=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
 });

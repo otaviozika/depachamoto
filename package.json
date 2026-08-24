@@ -1,6 +1,6 @@
 {
   "name": "despachamoto-v1-online",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,7 +11,8 @@
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
     "selftest:brutal": "node scripts/selftest-brutal.js",
-    "loadtest:brutal": "node scripts/loadtest-brutal.js"
+    "loadtest:brutal": "node scripts/loadtest-brutal.js",
+    "selftest:payments": "node scripts/selftest-payments.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
