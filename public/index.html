@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.5.2</title>
+<title>DespachaMoto 2.5.3</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -96,6 +96,102 @@
 
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.wall-summary-clean{grid-template-columns:1fr}.wall-order-line,.wall-feed-head{grid-template-columns:1fr 1fr}.wall-feed-head div:nth-child(3),.wall-feed-head div:nth-child(4){display:none}.wall-order-line>div:nth-child(3),.wall-order-line>div:nth-child(4){font-size:12px}.pix-self-grid{grid-template-columns:1fr}.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
+
+/* v2.5.3 — Dashboard administrativo no padrão visual KDS */
+#adminApp{--bg:#05070a;--card:#0b0f14;--text:#f3f4f6;--muted:#8b98aa;--line:#252b33;--shadow:none;background:#05070a;color:#f3f4f6;min-height:100vh}
+#adminApp .admin-side{width:240px;background:#05070a;border-right:1px solid #20252c;padding:18px 10px 14px;display:flex;flex-direction:column;overflow:hidden}
+#adminApp .admin-brand{padding:8px 12px 12px;border-bottom:1px solid #15191f;margin-bottom:10px}
+#adminApp .admin-brand .logo{padding:0;font-size:22px;white-space:nowrap}
+#adminApp .admin-brand .creator-signature{margin:4px 0 0 31px;color:#596474;letter-spacing:1.6px}
+#adminApp .admin-nav{gap:3px;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#252b33 transparent}
+#adminApp .admin-nav button{display:flex;align-items:center;gap:11px;min-height:44px;color:#9ca3af;border:1px solid transparent;border-radius:9px;padding:10px 12px;font-weight:650;white-space:nowrap}
+#adminApp .admin-nav button span{overflow:hidden;text-overflow:ellipsis}
+#adminApp .admin-nav button:hover{background:#0d1117;color:#f8fafc;border-color:#20262e}
+#adminApp .admin-nav button.active{background:linear-gradient(90deg,#2b2105,#251b04);border-color:#7c5a05;color:#fbbf24;box-shadow:inset 0 0 18px rgba(245,158,11,.04)}
+#adminApp .admin-side-bottom{margin-top:auto;display:grid;gap:9px;padding-top:12px}
+#adminApp .side-kds-shortcut,#adminApp .side-user-card{width:100%;border:1px solid #252b33;border-radius:11px;background:#090d12;color:#e5e7eb;padding:12px;display:flex;align-items:center;gap:11px;text-align:left}
+#adminApp .side-kds-shortcut{cursor:pointer}
+#adminApp .side-kds-shortcut:hover{border-color:#5c4711;background:#0f1114}
+#adminApp .side-kds-shortcut b,#adminApp .side-user-card b{display:block;font-size:13px}
+#adminApp .side-kds-shortcut small,#adminApp .side-user-card small{display:block;margin-top:4px;color:#7f8b9b;font-size:10px}
+#adminApp .side-kds-shortcut small{color:#22c55e}
+#adminApp .side-kds-shortcut small i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px}
+#adminApp .side-kds-icon,#adminApp .side-user-shield{width:30px;height:30px;border:1px solid #374151;border-radius:8px;display:grid;place-items:center;color:#aeb7c4;flex:0 0 auto}
+#adminApp .side-user-copy{min-width:0}.side-user-copy b,.side-user-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#adminApp .main{margin-left:240px;background:#05070a;min-height:100vh}
+#adminApp .admin-top{height:72px;background:rgba(5,7,10,.96);border-bottom:1px solid #20252c;padding:0 22px;backdrop-filter:blur(12px)}
+#adminApp .admin-top-page{color:#e5e7eb;font-size:13px}
+#adminApp .admin-top-actions{align-items:center;gap:8px}
+#adminApp .admin-top .btn.outline{background:#090d12;border-color:#252b33;color:#e5e7eb}
+#adminApp .admin-top .btn.outline:hover{background:#11161d;border-color:#3a424c}
+#adminApp .manual-dispatch-top{box-shadow:0 0 0 1px rgba(245,158,11,.18) inset}
+#adminApp .admin-top-user{color:#d1d5db;font-size:13px;padding:0 5px}
+#adminApp .logout-top{margin-left:2px}
+#adminApp .connection-pill.online{background:#062c1a;color:#4ade80;border:1px solid #14532d}
+#adminApp .connection-pill.offline{background:#2b0b0b;color:#f87171;border:1px solid #7f1d1d}
+#adminApp .connection-pill.syncing{background:#2a2108;color:#fbbf24;border:1px solid #854d0e}
+#adminApp .bell-count{border-color:#05070a}
+#adminApp .content{max-width:1600px;padding:22px 18px 26px}
+#adminApp .title{color:#f8fafc}
+#adminApp .muted{color:#8b98aa}
+#adminApp .card,#adminApp .section,#adminApp .comparison-card,#adminApp .monitor-box,#adminApp .ops-card,#adminApp .team-card{background:linear-gradient(135deg,#0d1116,#090c10);border-color:#252b33;box-shadow:none;color:#e5e7eb}
+#adminApp .section-head{border-bottom-color:#252b33}
+#adminApp .table th{background:#0a0e13;color:#8b98aa;border-bottom-color:#252b33}
+#adminApp .table td{border-bottom-color:#232830;color:#e5e7eb}
+#adminApp .table tbody tr:hover td{background:#0d1218}
+#adminApp input,#adminApp select,#adminApp textarea{background:#0a0e13!important;border-color:#303640!important;color:#f3f4f6!important}
+#adminApp input::placeholder,#adminApp textarea::placeholder{color:#667085}
+#adminApp .btn.outline{background:#0a0e13;border-color:#303640;color:#e5e7eb}
+#adminApp .warning{background:#2a2108;color:#fcd34d;border-color:#624a08}
+#adminApp .notification-panel{background:#090d12;border-color:#252b33;color:#e5e7eb}
+#adminApp .notification-head,#adminApp .notification-item{border-bottom-color:#252b33}
+#adminApp .notification-item.unread{background:#211a07}
+#adminApp .notification-item:hover{background:#0f141a}
+#adminApp .dashboard-page{min-height:calc(100vh - 120px)}
+#adminApp .dashboard-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:6px}
+#adminApp .dashboard-heading .title{font-size:30px;letter-spacing:-.5px}
+#adminApp .dashboard-heading p{margin:7px 0 0}
+#adminApp .dashboard-clock-card{display:flex;align-items:center;gap:12px;min-width:220px;padding:11px 15px;border:1px solid #252b33;border-radius:12px;background:linear-gradient(135deg,#0e1319,#090c10)}
+#adminApp .dashboard-clock-icon{width:34px;height:34px;display:grid;place-items:center;border:1px solid #374151;border-radius:50%;color:#9ca3af;font-size:18px}
+#adminApp .dashboard-clock-card b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+#adminApp .dashboard-clock-card small{display:block;color:#8b98aa;font-size:10px;margin-top:3px}
+#adminApp .dashboard-metrics{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:18px 0 14px}
+#adminApp .dashboard-metric-card{min-height:148px;padding:17px 18px;display:flex;flex-direction:column;justify-content:flex-start;position:relative;overflow:hidden}
+#adminApp .dashboard-metric-card:after{content:"";position:absolute;inset:auto -35px -55px auto;width:110px;height:110px;border-radius:50%;background:color-mix(in srgb,var(--metric-color) 9%,transparent);filter:blur(2px)}
+#adminApp .dashboard-metric-label{display:flex;align-items:center;gap:8px;color:#c4cad3;font-size:12px;font-weight:700;min-height:22px}
+#adminApp .dashboard-metric-label span{color:var(--metric-color)}
+#adminApp .dashboard-metric-card .metric{font-size:40px;color:var(--metric-color);margin-top:9px;line-height:1;font-variant-numeric:tabular-nums;position:relative;z-index:1}
+#adminApp .dashboard-metric-note{font-size:11px;color:#9aa4b2;margin-top:10px;position:relative;z-index:1}
+#adminApp .metric-yellow{--metric-color:#fbbf24}#adminApp .metric-orange{--metric-color:#f97316}#adminApp .metric-green{--metric-color:#22c55e}#adminApp .metric-blue{--metric-color:#3b82f6}#adminApp .metric-purple{--metric-color:#8b5cf6}#adminApp .metric-amber{--metric-color:#f59e0b}
+#adminApp .dashboard-grid{grid-template-columns:1.45fr .85fr;gap:14px;align-items:stretch}
+#adminApp .dashboard-panel{border-radius:13px}
+#adminApp .dashboard-panel .section-head{padding:17px 18px}
+#adminApp .dashboard-live-panel{min-height:515px}
+#adminApp .dashboard-live-panel .table-wrap{min-height:445px}
+#adminApp .dashboard-recent-panel{min-height:515px;display:flex;flex-direction:column}
+#adminApp .dashboard-recent-panel .table-wrap{flex:1}
+#adminApp .dashboard-live-badge{display:inline-flex;padding:5px 8px;border-radius:8px;background:#2b0c0c;border:1px solid #6b1919;color:#fb6a58;font-size:10px;font-weight:900}
+#adminApp .dashboard-empty-road{min-height:345px;display:grid;place-items:center;text-align:center;color:#7f8b9b;padding:30px}
+#adminApp .dashboard-empty-road .road-mark{font-size:54px;color:#6b7280;line-height:1;margin-bottom:12px}
+#adminApp .dashboard-empty-road b{display:block;color:#e5e7eb;font-size:15px;margin-bottom:6px}
+#adminApp .dashboard-empty-road small{display:block;color:#7f8b9b}
+#adminApp .dashboard-recent-panel .order-chip{background:#241b04;color:#fbbf24;border:1px solid #5f4708}
+#adminApp .dashboard-history-link{border:0;border-top:1px solid #252b33;background:#080c11;color:#fbbf24;font-weight:800;padding:14px;cursor:pointer;width:100%}
+#adminApp .dashboard-history-link:hover{background:#0e1318}
+#adminApp .dashboard-footer{margin-top:16px;min-height:55px;border:1px solid #20262e;border-radius:11px;background:#090d12;display:grid;grid-template-columns:1fr 1.4fr .7fr .8fr;align-items:center;gap:10px;padding:0 16px;color:#8b98aa;font-size:11px}
+#adminApp .dashboard-footer span:nth-child(2),#adminApp .dashboard-footer span:nth-child(3){text-align:center}
+#adminApp .dashboard-footer span:last-child{text-align:right}
+#adminApp .footer-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:7px;box-shadow:0 0 10px rgba(34,197,94,.3)}
+#adminApp .footer-safe{color:#9ca3af}
+#adminApp .payment-formula{background:#211a07;border-color:#624a08;color:#fcd34d}
+#adminApp .payment-mini>div,#adminApp .payment-locked{background:#0a0e13;border-color:#252b33}
+#adminApp .pix-pending-row{background:#211a07}#adminApp .pix-verified-row{background:#061d12}
+#adminApp .quick-paste{background:#0a0e13;border-color:#3a424c;color:#e5e7eb}
+#adminApp .conflict-critical{background:#240b0f}#adminApp .conflict-warning{background:#211a07}
+#adminApp .search-result{border-bottom-color:#252b33}
+@media(max-width:1250px){#adminApp .dashboard-metrics{grid-template-columns:repeat(3,1fr)}#adminApp .dashboard-grid{grid-template-columns:1fr}}
+@media(max-width:900px){#adminApp .admin-top-user{display:none}#adminApp .admin-top-actions{gap:5px}#adminApp .admin-top .btn{padding:9px 10px}#adminApp .dashboard-footer{grid-template-columns:1fr 1fr}#adminApp .dashboard-footer span,#adminApp .dashboard-footer span:nth-child(2),#adminApp .dashboard-footer span:nth-child(3),#adminApp .dashboard-footer span:last-child{text-align:left}}
+@media(max-width:720px){#adminApp .admin-side{display:none}#adminApp .main{margin-left:0}#adminApp .admin-top{padding:0 10px}#adminApp .admin-top-page{display:none}#adminApp .admin-top-actions{width:100%;justify-content:flex-end}#adminApp .dashboard-heading{display:grid}#adminApp .dashboard-clock-card{min-width:0;width:100%}#adminApp .dashboard-metrics{grid-template-columns:repeat(2,1fr)}#adminApp .dashboard-metric-card{min-height:126px;padding:14px}#adminApp .dashboard-metric-card .metric{font-size:34px}#adminApp .dashboard-live-panel,#adminApp .dashboard-recent-panel{min-height:0}#adminApp .dashboard-live-panel .table-wrap{min-height:0}#adminApp .dashboard-footer{grid-template-columns:1fr}.manual-dispatch-top{display:none}}
 </style>
 </head>
 <body>
@@ -128,58 +224,78 @@
 </div>
 
 <div id="adminApp" class="app hidden">
-  <aside class="side">
-    <div class="logo">🛵 Despacha<span>Moto</span></div>
-    <div class="creator-signature">Create by. Hernandes</div>
-    <nav class="nav">
-      <button data-page="dashboard" class="active">▦ Dashboard</button>
-      <button data-page="operations">⚡ Operação</button>
-      <button data-page="ifood">🍔 iFood</button>
-      <button data-page="road">◷ Quem está na rua</button>
-      <button data-page="wallboard">🖥️ Modo telão</button>
-      <button data-page="history">▤ Histórico</button>
-      <button data-page="report">▥ Relatório diário</button>
-      <button data-page="management">📊 Gestão</button>
-      <button data-page="payments">💰 Pagamentos</button>
-      <button data-page="couriers">♙ Motoboys</button>
-      <button data-page="alerts">⚙ Alertas</button>
-      <button data-page="notifications">🔔 Notificações</button>
-      <button data-page="conflicts">⚠ Conflitos</button>
-      <button data-page="security">🔒 Segurança</button>
-      <button data-page="audit">◉ Auditoria</button>
+  <aside class="side admin-side">
+    <div class="admin-brand"><div class="logo">🛵 Despacha<span>Moto</span></div><div class="creator-signature">Create by. Hernandes</div></div>
+    <nav class="nav admin-nav">
+      <button data-page="dashboard" class="active">▦ <span>Dashboard</span></button>
+      <button data-page="operations">⚡ <span>Operação</span></button>
+      <button data-page="ifood">▣ <span>Pedidos iFood</span></button>
+      <button data-page="road">◷ <span>Quem está na rua</span></button>
+      <button data-page="history">↶ <span>Histórico</span></button>
+      <button data-page="report">▥ <span>Relatório diário</span></button>
+      <button data-page="management">📊 <span>Gestão</span></button>
+      <button data-page="payments">◉ <span>Financeiro</span></button>
+      <button data-page="couriers">♙ <span>Motoboys</span></button>
+      <button data-page="alerts">⚙ <span>Alertas</span></button>
+      <button data-page="notifications">♢ <span>Notificações</span></button>
+      <button data-page="conflicts">⚠ <span>Conflitos</span></button>
+      <button data-page="security">⚙ <span>Segurança</span></button>
+      <button data-page="audit">▧ <span>Auditoria</span></button>
     </nav>
+    <div class="admin-side-bottom">
+      <button class="side-kds-shortcut" data-page="wallboard" type="button">
+        <span class="side-kds-icon">⛶</span><span><b>Modo telão</b><small><i></i> Ativado</small></span>
+      </button>
+      <div class="side-user-card"><span class="side-user-shield">◇</span><span class="side-user-copy"><b id="adminSideName">Administrador</b><small id="adminSideUser">admin</small></span></div>
+    </div>
   </aside>
   <main class="main">
-    <div class="top">
-      <b id="pageTitle">Dashboard</b>
-      <div class="actions">
+    <div class="top admin-top">
+      <div class="admin-top-page"><b id="pageTitle">Dashboard</b></div>
+      <div class="actions admin-top-actions">
         <span class="connection-pill online connectionStatus">🟢 Online</span>
-        <button class="btn primary" onclick="openManualDispatchModal()">+ Saída manual</button>
+        <button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()">+ Saída manual</button>
         <div class="bell-wrap">
-          <button class="btn outline bell-btn" onclick="toggleNotificationPanel()">🔔<span id="notificationCount" class="bell-count hidden">0</span></button>
+          <button class="btn outline bell-btn" aria-label="Notificações" onclick="toggleNotificationPanel()">♢<span id="notificationCount" class="bell-count hidden">0</span></button>
         </div>
         <button id="installBtnAdmin" class="btn outline hidden" onclick="installApp()">Instalar app</button>
         <button class="btn outline" onclick="openPasswordModal()">Minha senha</button>
-        <span id="adminName"></span>
-        <button class="btn outline" onclick="logout()">Sair</button>
+        <span id="adminName" class="admin-top-user"></span>
+        <button class="btn outline logout-top" onclick="logout()">↪ Sair</button>
       </div>
     </div>
     <div class="content">
       <div id="adminPasswordWarning" class="warning hidden"><b>Atenção:</b> sua senha administrativa ainda é a senha padrão. Troque em <b>Minha senha</b>.</div>
 
-      <section id="dashboard" class="page active">
-        <h1 class="title">Central de despacho</h1><p class="muted">Acompanhe a operação em tempo real.</p>
-        <div class="cards">
-          <div class="card"><div class="label">Motoboys ativos</div><div id="mActive" class="metric">0</div></div>
-          <div class="card"><div class="label">🟠 Na rua</div><div id="mRoad" class="metric">0</div></div>
-          <div class="card"><div class="label">🟢 Disponíveis</div><div id="mAvailable" class="metric">0</div></div>
-          <div class="card"><div class="label">📦 Pedidos hoje</div><div id="mToday" class="metric">0</div></div>
-          <div class="card"><div class="label">📦 Pedidos na rua</div><div id="mProgress" class="metric">0</div></div>
-          <div class="card"><div class="label">🟡 Cadastros pendentes</div><div id="mPending" class="metric">0</div></div>
+      <section id="dashboard" class="page active dashboard-page">
+        <div class="dashboard-heading">
+          <div><h1 class="title">Central de despacho</h1><p class="muted">Acompanhe a operação em tempo real.</p></div>
+          <div class="dashboard-clock-card"><span class="dashboard-clock-icon">◷</span><div><b id="dashboardClockTime">--:--:--</b><small id="dashboardClockDate">--/--/----</small></div></div>
         </div>
-        <div class="grid">
-          <div class="section"><div class="section-head"><b>Quem está na rua agora</b><span class="badge orange">AO VIVO</span></div><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Saída</th><th>Tempo</th><th>Ação</th></tr></thead><tbody id="roadDash"></tbody></table></div></div>
-          <div class="section"><div class="section-head"><b>Últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
+        <div class="cards dashboard-metrics">
+          <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Online agora</div></div>
+          <div class="card dashboard-metric-card metric-orange"><div class="dashboard-metric-label"><span>●</span> Na rua</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em entrega</div></div>
+          <div class="card dashboard-metric-card metric-green"><div class="dashboard-metric-label"><span>●</span> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Aguardando</div></div>
+          <div class="card dashboard-metric-card metric-blue"><div class="dashboard-metric-label"><span>▣</span> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Recebidos</div></div>
+          <div class="card dashboard-metric-card metric-purple"><div class="dashboard-metric-label"><span>▰</span> Pedidos na rua</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Em entrega</div></div>
+          <div class="card dashboard-metric-card metric-amber"><div class="dashboard-metric-label"><span>◷</span> Cadastros pendentes</div><div id="mPending" class="metric">0</div><div class="dashboard-metric-note">Aguardando aprovação</div></div>
+        </div>
+        <div class="grid dashboard-grid">
+          <div class="section dashboard-panel dashboard-live-panel">
+            <div class="section-head"><b>Quem está na rua agora</b><span class="dashboard-live-badge">AO VIVO</span></div>
+            <div class="table-wrap"><table class="table dashboard-road-table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Saída</th><th>Tempo</th><th>Ação</th></tr></thead><tbody id="roadDash"></tbody></table></div>
+          </div>
+          <div class="section dashboard-panel dashboard-recent-panel">
+            <div class="section-head"><b>Últimas saídas</b></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th></tr></thead><tbody id="recentTable"></tbody></table></div>
+            <button class="dashboard-history-link" type="button" onclick="document.querySelector('[data-page=&quot;history&quot;]').click()">Ver todas as saídas ›</button>
+          </div>
+        </div>
+        <div class="dashboard-footer">
+          <span><i class="footer-dot"></i> Integração iFood</span>
+          <span>Atualização em tempo real ↻</span>
+          <span>Versão 2.5.3</span>
+          <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
 
@@ -1185,7 +1301,7 @@ async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}loca
 function showApp(){
   $('loginScreen').classList.add('hidden');
   if(me.role==='admin'){
-    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();if($('paymentDate'))$('paymentDate').value=spToday();if($('paymentRuleEffective'))$('paymentRuleEffective').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
+    $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;if($('adminSideName'))$('adminSideName').textContent=me.name||'Administrador';if($('adminSideUser'))$('adminSideUser').textContent=me.username||'admin';$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();if($('paymentDate'))$('paymentDate').value=spToday();if($('paymentRuleEffective'))$('paymentRuleEffective').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
     $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();renderOfflineQueueStatus();loadCourier().then(flushOfflineQueue);
   }
@@ -1199,12 +1315,13 @@ async function loadAdmin(){
   const m=dashboard.metrics;
   $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
   $('alertAttention').value=alertSettings.attention;$('alertDelayed').value=alertSettings.delayed;$('alertCritical').value=alertSettings.critical;
-  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();
+  renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();renderDashboardClock();
 }
 function renderRoad(){
   const a=dashboard.active;
-  $('roadDash').innerHTML=a.map(x=>`<tr><td><b>${escapeHtml(x.courier_name)}</b></td><td>${ordersHtml(x)}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('')||empty(5);
-  $('roadTable').innerHTML=a.map(x=>`<tr><td><b>${escapeHtml(x.courier_name)}</b></td><td>${ordersHtml(x)}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('')||empty(5);
+  const rows=a.map(x=>`<tr><td><b>${escapeHtml(x.courier_name)}</b></td><td>${ordersHtml(x)}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('');
+  $('roadDash').innerHTML=rows||`<tr><td colspan="5"><div class="dashboard-empty-road"><div><div class="road-mark">╱┊╲</div><b>Nenhum registro.</b><small>No momento, não há motoboys em entrega.</small></div></div></td></tr>`;
+  $('roadTable').innerHTML=rows||empty(5);
 }
 function renderRecent(){$('recentTable').innerHTML=dashboard.recent.slice(0,8).map(x=>`<tr><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localTime(x.departed_at)}</td></tr>`).join('')||empty(3)}
 async function loadHistory(){
@@ -2027,6 +2144,11 @@ function renderKdsList(id,rows,stage,emptyText){
   const el=$(id);if(!el)return;
   el.innerHTML=rows.map(x=>kdsOrderCard(x,stage)).join('')||`<div class="kds-empty">${escapeHtml(emptyText)}</div>`;
 }
+function renderDashboardClock(){
+  const now=new Date(serverNowMs());
+  if($('dashboardClockTime'))$('dashboardClockTime').textContent=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if($('dashboardClockDate'))$('dashboardClockDate').textContent=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',weekday:'long'});
+}
 function renderKdsClock(){
   const now=new Date(serverNowMs());
   if($('kdsClockTime'))$('kdsClockTime').textContent=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -2794,7 +2916,7 @@ socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotific
 socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
 socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
 
-setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('wallboard')?.classList.contains('active'))renderKdsClock();},1000);
+setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active'))renderKdsClock();},1000);
 setInterval(()=>{if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard()},15000);
 setInterval(()=>{if(me)heartbeat();},20000);
 

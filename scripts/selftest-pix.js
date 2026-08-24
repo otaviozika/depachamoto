@@ -62,7 +62,7 @@ for (const token of requiredHtml) {
 
 console.log(JSON.stringify({
   result: "PASS",
-  version: "2.5.2",
+  version: "2.5.3",
   checks: {
     courierSelfPix: true,
     adminVerification: true,
