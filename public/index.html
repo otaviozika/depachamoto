@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.3.1</title>
+<title>DespachaMoto 2.3.2</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -476,28 +476,9 @@
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
     <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre os pedidos que está levando.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
-    
-    <div id="ifoodCourierCard" class="card">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-        <div>
-          <h2 style="margin:0">🍔 Pedidos iFood disponíveis</h2>
-          <div class="small muted">Somente entrega própria. Toque em Adicionar ou digite o número abaixo.</div>
-        </div>
-        <button type="button" class="btn outline" onclick="loadCourierIfoodOrders()">Atualizar</button>
-      </div>
-
-      <div class="ifood-search">
-        <input id="courierIfoodSearch" placeholder="Buscar pedido iFood, ex.: 9240" oninput="scheduleCourierIfoodSearch()">
-        <button type="button" class="btn outline" onclick="loadCourierIfoodOrders()">Buscar</button>
-      </div>
-
-      <div id="courierIfoodInfo" class="small muted" style="margin-top:9px"></div>
-      <div id="courierIfoodQueue" class="ifood-queue"></div>
-    </div>
-
-<div id="departureCard" class="card">
+    <div id="departureCard" class="card">
       <h2 style="margin-top:0">Registrar saída</h2>
-      <p class="muted">Informe de 1 a 5 pedidos. Escolha na fila do iFood ou digite o número do pedido.</p>
+      <p class="muted">Informe de 1 a 5 pedidos. Digite o número de cada pedido.</p>
       <form id="departureForm" class="form">
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
@@ -760,7 +741,6 @@ function getOrderValues(){return[...document.querySelectorAll('.order-input')].m
 
 
 
-let courierIfoodSearchTimer=null;
 const ifoodFieldTimers=new WeakMap();
 
 function normalizedUiOrder(v){
@@ -768,73 +748,6 @@ function normalizedUiOrder(v){
   if(!x)return '';
   if(!x.startsWith('#'))x='#'+x;
   return x;
-}
-
-function selectedLocalOrdersSet(){
-  return new Set(getOrderValues().map(x=>normalizedUiOrder(x).toLowerCase()));
-}
-
-function scheduleCourierIfoodSearch(){
-  clearTimeout(courierIfoodSearchTimer);
-  courierIfoodSearchTimer=setTimeout(loadCourierIfoodOrders,250);
-}
-
-async function loadCourierIfoodOrders(){
-  if(me?.role!=='courier')return;
-  const q=String($('courierIfoodSearch')?.value||'').trim();
-
-  try{
-    const d=await api(`/api/courier/ifood/available?q=${encodeURIComponent(q)}&limit=30`);
-    const selected=selectedLocalOrdersSet();
-    const rows=(d.orders||[]).filter(x=>!selected.has(('#'+x.displayId).toLowerCase()));
-
-    $('courierIfoodInfo').textContent=
-      `${rows.length} entrega(s) própria(s) disponível(is)`+
-      (d.partnerDeliveryCount?` • ${d.partnerDeliveryCount} entrega(s) parceira(s) iFood fora da seleção`:'');
-
-    $('courierIfoodQueue').innerHTML=rows.slice(0,20).map(x=>`
-      <div class="ifood-order-card">
-        <div>
-          <div class="ifood-order-main">
-            <span class="ifood-order-number">#${escapeHtml(x.displayId||'—')}</span>
-            <span class="badge green">ENTREGA PRÓPRIA</span>
-            ${x.isTest?'<span class="badge yellow">TESTE</span>':''}
-          </div>
-          <div class="small muted" style="margin-top:5px">
-            ${escapeHtml(x.status||'—')} • ${x.lastEventAt?localDate(x.lastEventAt):x.orderCreatedAt?localDate(x.orderCreatedAt):'—'}
-          </div>
-        </div>
-        <button type="button" class="btn primary" onclick='addIfoodOrderToDeparture(${JSON.stringify(x.displayId)})'>Adicionar</button>
-      </div>`).join('')||'<div class="empty">Nenhuma entrega própria disponível.</div>';
-  }catch(err){
-    $('courierIfoodInfo').textContent='';
-    $('courierIfoodQueue').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
-  }
-}
-
-function addIfoodOrderToDeparture(displayId){
-  const value=normalizedUiOrder(displayId);
-  const existing=[...document.querySelectorAll('.order-input')];
-
-  if(existing.some(x=>normalizedUiOrder(x.value).toLowerCase()===value.toLowerCase())){
-    return message('departureMsg',`${value} já está nesta saída.`,'err');
-  }
-
-  let target=existing.find(x=>!x.value.trim());
-
-  if(!target){
-    if(existing.length>=5){
-      return message('departureMsg','Você já adicionou 5 pedidos nesta saída.','err');
-    }
-    addOrderField();
-    const now=[...document.querySelectorAll('.order-input')];
-    target=now[now.length-1];
-  }
-
-  target.value=value;
-  target.dispatchEvent(new Event('input',{bubbles:true}));
-  message('departureMsg',`${value} adicionado à saída.`,'ok');
-  loadCourierIfoodOrders();
 }
 
 function scheduleIfoodFieldLookup(input){
@@ -1207,7 +1120,6 @@ async function loadCourier(){
     $('currentDepartureNote')?.remove();
   }
 
-  loadCourierIfoodOrders().catch(()=>{});
 }
 async function depart(e){
   e.preventDefault();
@@ -2171,7 +2083,6 @@ socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
 socket.on('ifood:changed',()=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
-  if(me?.role==='courier')loadCourierIfoodOrders();
 });
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
