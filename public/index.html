@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.4.1</title>
+<title>DespachaMoto 2.5.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -41,6 +41,14 @@
 .ifood-order-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ifood-order-number{font-size:18px;font-weight:900;color:var(--navy)}
 .ifood-search{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px}
+.delivery-list{display:grid;gap:10px;margin-top:12px}
+.delivery-item{border:1px solid var(--line);border-radius:13px;padding:14px;background:#fff;display:grid;gap:10px}
+.delivery-item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.delivery-order{font-size:20px;font-weight:900}
+.delivery-meta{font-size:12px;color:var(--muted);margin-top:3px}
+.delivery-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.delivery-section-label{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-top:12px}
+.delivery-code-input{font-size:28px!important;text-align:center;letter-spacing:7px;font-weight:900}
 .order-validation{grid-column:1/-1;font-size:12px;min-height:16px;margin-top:-3px}
 .order-validation.ok{color:#15803d}
 .order-validation.warn{color:#a16207}
@@ -542,6 +550,16 @@
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
     <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre os pedidos que está levando.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
+    <div id="courierDeliveriesCard" class="card hidden" style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0">📦 Minhas entregas iFood</h2>
+          <div class="small muted" style="margin-top:4px">Confirme a entrega usando o código/localizador informado pelo cliente.</div>
+        </div>
+        <button type="button" class="btn outline" onclick="loadCourierDeliveries()">Atualizar</button>
+      </div>
+      <div id="courierDeliveriesList" class="delivery-list"></div>
+    </div>
     <div id="departureCard" class="card">
       <h2 style="margin-top:0">Registrar saída</h2>
       <p class="muted">Informe de 1 a 5 pedidos. Digite o número de cada pedido.</p>
@@ -603,6 +621,28 @@
     </div>
     <div class="section"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
   </main>
+</div>
+
+<div id="deliveryConfirmModal" class="modal">
+  <div class="modal-box" style="max-width:430px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h2 style="margin:0">Confirmar entrega</h2>
+        <div id="deliveryConfirmOrderLabel" class="small muted" style="margin-top:4px">Pedido</div>
+      </div>
+      <button type="button" class="btn outline" onclick="closeDeliveryConfirmModal()">×</button>
+    </div>
+    <div class="warning" style="margin-top:16px">
+      Peça ao cliente o código/localizador da entrega e digite abaixo. O DespachaMoto enviará a confirmação diretamente ao iFood.
+    </div>
+    <form id="deliveryConfirmForm" class="form">
+      <label>Código do cliente
+        <input id="deliveryConfirmCode" class="delivery-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
+      </label>
+      <button id="deliveryConfirmBtn" type="submit" class="btn success">✅ Confirmar entrega</button>
+    </form>
+    <div id="deliveryConfirmMsg"></div>
+  </div>
 </div>
 
 <div id="courierModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Apelido (opcional)<input id="newNickname"></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><div class="small muted">PIX é opcional. Se o Admin cadastrar aqui, a chave já será considerada verificada.</div><label>Titular do PIX<input id="newPixHolder"></label><label>Chave PIX<input id="newPixKey"></label><label>Tipo de PIX<select id="newPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
@@ -1430,6 +1470,116 @@ async function saveMyPix(e){
   }
 }
 
+let deliveryConfirmationTarget=null;
+
+function courierDeliveryBadge(x){
+  const s=String(x?.state||'').toUpperCase();
+  if(s==='CONCLUDED')return '<span class="badge green">CONCLUÍDA</span>';
+  if(s==='VERIFIED')return '<span class="badge green">CÓDIGO VALIDADO</span>';
+  if(s==='WAITING_CODE')return '<span class="badge orange">AGUARDANDO CÓDIGO</span>';
+  if(s==='FAILED')return '<span class="badge red">CÓDIGO NÃO VALIDADO</span>';
+  if(s==='PROCESSING')return '<span class="badge yellow">CONFIRMANDO</span>';
+  if(s==='DISPATCH_FAILED')return '<span class="badge red">ERRO NO DESPACHO</span>';
+  if(s==='CANCELLED')return '<span class="badge red">CANCELADO</span>';
+  return '<span class="badge gray">AGUARDANDO iFOOD</span>';
+}
+
+function courierDeliveryRow(x){
+  const display='#'+escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
+  const canConfirm=x.can_confirm===true;
+  const btn=canConfirm
+    ? `<button type="button" class="btn success" onclick='openDeliveryConfirmModal(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
+    : '';
+
+  return `<div class="delivery-item">
+    <div class="delivery-item-head">
+      <div>
+        <div class="delivery-order">${display}</div>
+        <div class="delivery-meta">Saída ${x.departed_at?localTime(x.departed_at):'—'}</div>
+      </div>
+      ${courierDeliveryBadge(x)}
+    </div>
+    <div class="small">${escapeHtml(x.message||'')}</div>
+    <div class="delivery-actions">${btn}</div>
+  </div>`;
+}
+
+async function loadCourierDeliveries(){
+  if(!me||me.role!=='courier'||!$('courierDeliveriesCard'))return;
+  try{
+    const d=await api('/api/courier/ifood/deliveries');
+    const current=d.current||[];
+    const pending=d.pending||[];
+    const hasAny=current.length||pending.length;
+
+    $('courierDeliveriesCard').classList.toggle('hidden',!hasAny);
+    if(!hasAny){
+      $('courierDeliveriesList').innerHTML='';
+      return;
+    }
+
+    let out='';
+    if(current.length){
+      out+=`<div class="delivery-section-label">Com você agora</div>${current.map(courierDeliveryRow).join('')}`;
+    }
+    if(pending.length){
+      out+=`<div class="delivery-section-label">Pendentes de confirmação</div>
+        <div class="small muted" style="margin-bottom:6px">Pedidos de saídas anteriores de hoje que ainda precisam de confirmação.</div>
+        ${pending.map(courierDeliveryRow).join('')}`;
+    }
+    $('courierDeliveriesList').innerHTML=out;
+  }catch(err){
+    $('courierDeliveriesCard').classList.remove('hidden');
+    $('courierDeliveriesList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function openDeliveryConfirmModal(orderId,displayId){
+  deliveryConfirmationTarget={orderId:String(orderId||''),displayId:String(displayId||'')};
+  $('deliveryConfirmOrderLabel').textContent='Pedido #'+String(displayId||'').replace(/^#/,'');
+  $('deliveryConfirmCode').value='';
+  message('deliveryConfirmMsg','','');
+  $('deliveryConfirmModal').style.display='grid';
+  setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
+}
+
+function closeDeliveryConfirmModal(){
+  $('deliveryConfirmModal').style.display='none';
+  deliveryConfirmationTarget=null;
+  message('deliveryConfirmMsg','','');
+}
+
+async function submitDeliveryConfirmation(e){
+  e.preventDefault();
+  if(!deliveryConfirmationTarget)return;
+
+  const code=String($('deliveryConfirmCode').value||'').replace(/\D/g,'');
+  if(!/^\d{4,8}$/.test(code)){
+    return message('deliveryConfirmMsg','Digite o código do cliente usando somente 4 a 8 números.','err');
+  }
+
+  const btn=$('deliveryConfirmBtn');
+  btn.disabled=true;
+  message('deliveryConfirmMsg','Enviando confirmação ao iFood...','');
+
+  try{
+    const d=await api(`/api/courier/ifood/orders/${encodeURIComponent(deliveryConfirmationTarget.orderId)}/verify-delivery`,{
+      method:'POST',
+      body:JSON.stringify({code})
+    });
+
+    message('deliveryConfirmMsg',d.message||'Entrega confirmada.','ok');
+    $('deliveryConfirmCode').value='';
+    await loadCourierDeliveries();
+    setTimeout(()=>closeDeliveryConfirmModal(),1100);
+  }catch(err){
+    message('deliveryConfirmMsg',err.message,'err');
+    await loadCourierDeliveries().catch(()=>{});
+  }finally{
+    btn.disabled=false;
+  }
+}
+
 let courierActiveDispatch=null;
 async function loadCourier(){
   const d=await api('/api/courier/dashboard');
@@ -1459,6 +1609,7 @@ async function loadCourier(){
 
   loadMyPayment();
   loadMyPix();
+  loadCourierDeliveries();
 }
 async function depart(e){
   e.preventDefault();
@@ -1849,6 +2000,16 @@ function ifoodDispatchBadge(value){
   return '—';
 }
 
+function ifoodDeliveryConfirmationBadge(value,orderStatus){
+  const order=String(orderStatus||'').toUpperCase();
+  const s=String(value||'').toUpperCase();
+  if(['CONCLUDED','DELIVERED'].includes(order)||s==='CONCLUDED')return '<span class="badge green">ENTREGA CONCLUÍDA</span>';
+  if(s==='VERIFIED')return '<span class="badge green">CÓDIGO VALIDADO</span>';
+  if(s==='PROCESSING')return '<span class="badge yellow">CONFIRMANDO ENTREGA</span>';
+  if(s==='FAILED')return '<span class="badge red">FALHA NA CONFIRMAÇÃO</span>';
+  return '';
+}
+
 async function loadIfoodStatus(){
   if(me?.role!=='admin')return;
 
@@ -2008,9 +2169,14 @@ async function loadIfoodStatus(){
           button=`<button class="btn danger" style="margin-top:6px" onclick='retryIfoodDispatch(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
         }
 
-        action=`<div style="display:grid;gap:5px">${local}${dispatch}${button}${
+        const deliveryConfirm=ifoodDeliveryConfirmationBadge(x.delivery_confirmation_status,x.status);
+        action=`<div style="display:grid;gap:5px">${local}${dispatch}${deliveryConfirm}${button}${
           x.dispatch_last_error
             ? `<span class="small" style="color:#b91c1c;max-width:240px;white-space:normal">${escapeHtml(x.dispatch_last_error)}</span>`
+            : ''
+        }${
+          x.delivery_confirmation_error
+            ? `<span class="small" style="color:#b91c1c;max-width:240px;white-space:normal">${escapeHtml(x.delivery_confirmation_error)}</span>`
             : ''
         }</div>`;
       }else if(canConfirmTest){
@@ -2493,6 +2659,7 @@ $('departureForm').onsubmit=depart;
 $('courierForm').onsubmit=createCourier;
 $('courierProfileForm').onsubmit=saveCourierProfile;
 $('myPixForm').onsubmit=saveMyPix;
+$('deliveryConfirmForm').onsubmit=submitDeliveryConfirmation;
 $('passwordForm').onsubmit=changePassword;
 $('manualDispatchForm').onsubmit=submitManualDispatch;
 $('manualCourier').onchange=updateManualActiveInfo;
@@ -2514,6 +2681,11 @@ socket.on('pix:changed',d=>{
 });
 socket.on('ifood:changed',()=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
+  if(me?.role==='courier')loadCourierDeliveries();
+});
+socket.on('delivery:changed',d=>{
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
+  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))loadCourierDeliveries();
 });
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
