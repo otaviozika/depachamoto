@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.5.1</title>
+<title>DespachaMoto 2.5.2</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -73,7 +73,22 @@
 
 .connection-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:900}.connection-pill.online{background:#dcfce7;color:#166534}.connection-pill.offline{background:#fee2e2;color:#991b1b}.connection-pill.syncing{background:#fef3c7;color:#92400e}
 .queue-box{padding:12px 14px;border-radius:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;margin-bottom:14px}.success-confirm{padding:14px;border-radius:12px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;margin:12px 0}.wall-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}.wall-card{background:#111827;color:#fff;border-radius:18px;padding:22px;box-shadow:var(--shadow)}.wall-card .wall-time{font-size:42px;font-weight:900;font-variant-numeric:tabular-nums}.wall-orders{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.wall-order{background:#f59e0b;color:#111827;padding:7px 10px;border-radius:9px;font-weight:900}.wall-name{font-size:24px;font-weight:900}
-.wall-summary-clean{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0 28px}.wall-metric-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow)}.wall-metric-label{font-size:13px;font-weight:900;letter-spacing:.55px;color:#475569}.wall-metric-value{font-size:52px;line-height:1;font-weight:950;font-variant-numeric:tabular-nums;margin-top:12px}.wall-metric-note{font-size:12px;color:var(--muted);margin-top:8px}.wall-order-feed{margin-top:8px}.wall-order-line{display:grid;grid-template-columns:minmax(100px,.65fr) minmax(130px,.8fr) minmax(140px,1fr) minmax(90px,.6fr);gap:14px;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}.wall-order-line:last-child{border-bottom:0}.wall-order-id{font-size:18px;font-weight:900}.wall-feed-head{display:grid;grid-template-columns:minmax(100px,.65fr) minmax(130px,.8fr) minmax(140px,1fr) minmax(90px,.6fr);gap:14px;padding:11px 18px;background:#fafbfc;border-bottom:1px solid var(--line);font-size:11px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.45px}.wall-status{display:inline-flex;width:max-content;max-width:100%;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.wall-status.preparing{background:#fef3c7;color:#854d0e}.wall-status.road{background:#ffedd5;color:#9a3412}.wall-status.confirmed{background:#dcfce7;color:#166534}.wall-status.cancelled{background:#fee2e2;color:#991b1b}.wall-status.received{background:#eef2f7;color:#475569}.wall-feed-empty{text-align:center;padding:34px 18px;color:var(--muted)}.monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
+.wall-summary-clean{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0 28px}.wall-metric-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow)}.wall-metric-label{font-size:13px;font-weight:900;letter-spacing:.55px;color:#475569}.wall-metric-value{font-size:52px;line-height:1;font-weight:950;font-variant-numeric:tabular-nums;margin-top:12px}.wall-metric-note{font-size:12px;color:var(--muted);margin-top:8px}.wall-order-feed{margin-top:8px}.wall-order-line{display:grid;grid-template-columns:minmax(100px,.65fr) minmax(130px,.8fr) minmax(140px,1fr) minmax(90px,.6fr);gap:14px;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}.wall-order-line:last-child{border-bottom:0}.wall-order-id{font-size:18px;font-weight:900}.wall-feed-head{display:grid;grid-template-columns:minmax(100px,.65fr) minmax(130px,.8fr) minmax(140px,1fr) minmax(90px,.6fr);gap:14px;padding:11px 18px;background:#fafbfc;border-bottom:1px solid var(--line);font-size:11px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.45px}.wall-status{display:inline-flex;width:max-content;max-width:100%;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.wall-status.preparing{background:#fef3c7;color:#854d0e}.wall-status.road{background:#ffedd5;color:#9a3412}.wall-status.confirmed{background:#dcfce7;color:#166534}.wall-status.cancelled{background:#fee2e2;color:#991b1b}.wall-status.received{background:#eef2f7;color:#475569}.wall-feed-empty{text-align:center;padding:34px 18px;color:var(--muted)}
+/* v2.5.2 — KDS iFood */
+#wallboard.kds-page{background:#05070a;color:#f8fafc;border-radius:20px;padding:18px;overflow:hidden;min-height:calc(100vh - 125px)}
+.kds-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;padding:2px 4px 16px;border-bottom:1px solid #20242b}
+.kds-brand{font-size:24px;font-weight:950;white-space:nowrap}.kds-brand span{color:#f59e0b}.kds-mode{text-align:center;font-size:24px;font-weight:950;letter-spacing:.3px}.kds-mode span{color:#ef4444}.kds-right{justify-self:end;display:flex;align-items:center;gap:14px}.kds-clock{text-align:right;font-variant-numeric:tabular-nums}.kds-clock-time{font-size:24px;font-weight:950;line-height:1}.kds-clock-date{font-size:11px;color:#94a3b8;margin-top:5px}.kds-online{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;border:1px solid #14532d;background:#052e16;color:#4ade80;font-size:11px;font-weight:950}.kds-online.offline{border-color:#7f1d1d;background:#2b0b0b;color:#f87171}
+.kds-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;height:calc(100vh - 220px);min-height:510px;padding-top:16px}
+.kds-column{min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid #292e36;border-radius:15px;background:#0a0d11}.kds-column.prep{--kds-accent:#fbbf24}.kds-column.road{--kds-accent:#3b82f6}.kds-column.confirmed{--kds-accent:#22c55e}
+.kds-column-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #20242b;flex:0 0 auto}.kds-column-title{min-width:0;display:flex;align-items:center;gap:10px;color:var(--kds-accent);font-size:17px;font-weight:950;letter-spacing:.2px}.kds-column-icon{font-size:24px}.kds-column-count{color:var(--kds-accent);font-size:34px;line-height:1;font-weight:950;font-variant-numeric:tabular-nums}
+.kds-list{overflow-y:auto;overscroll-behavior:contain;padding:10px 12px 14px;display:grid;gap:9px;align-content:start;scrollbar-width:thin;scrollbar-color:#374151 transparent}.kds-list::-webkit-scrollbar{width:7px}.kds-list::-webkit-scrollbar-thumb{background:#374151;border-radius:999px}.kds-list::-webkit-scrollbar-track{background:transparent}
+.kds-order-card{position:relative;border:1px solid #272c33;border-left:4px solid var(--kds-accent);border-radius:11px;padding:13px 14px;background:linear-gradient(135deg,#101419,#0b0e12);min-width:0}.kds-order-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.kds-order-number{color:var(--kds-accent);font-size:21px;font-weight:950;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kds-order-time{font-size:13px;color:#e5e7eb;font-variant-numeric:tabular-nums;white-space:nowrap}.kds-order-main{font-size:13px;color:#f3f4f6;font-weight:800;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kds-order-sub{font-size:11px;color:#9ca3af;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kds-order-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}.kds-source{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}.kds-stage{display:inline-flex;padding:5px 8px;border:1px solid color-mix(in srgb,var(--kds-accent) 38%,transparent);background:color-mix(in srgb,var(--kds-accent) 10%,transparent);border-radius:7px;color:var(--kds-accent);font-size:10px;font-weight:950;white-space:nowrap}.kds-empty{padding:30px 14px;text-align:center;color:#64748b;font-size:13px}
+.kds-fullscreen-btn{background:#f59e0b!important;color:#111827!important}.kds-footer{display:flex;justify-content:center;gap:10px;align-items:center;color:#64748b;font-size:10px;padding-top:9px}.kds-footer-dot{color:#22c55e}
+#wallboard:fullscreen{display:block!important;background:#05070a!important;border-radius:0!important;padding:18px!important;overflow:hidden!important;width:100vw;height:100vh}#wallboard:fullscreen .kds-board{height:calc(100vh - 104px);min-height:0}#wallboard:fullscreen .kds-fullscreen-btn{display:none}#wallboard:fullscreen .kds-footer{display:none}
+@media(max-width:1050px){.kds-top{grid-template-columns:1fr auto}.kds-mode{display:none}.kds-board{gap:10px}.kds-column-title{font-size:14px}.kds-column-count{font-size:28px}.kds-order-number{font-size:18px}}
+@media(max-width:760px){#wallboard.kds-page{overflow:visible;min-height:0}.kds-top{grid-template-columns:1fr}.kds-right{justify-self:start}.kds-board{grid-template-columns:1fr;height:auto;min-height:0}.kds-column{height:62vh;min-height:420px}#wallboard:fullscreen{overflow:auto!important;height:100vh}#wallboard:fullscreen .kds-board{height:auto}.kds-brand{font-size:20px}}
+
+.monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
 
 
 .ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
@@ -260,17 +275,32 @@
 <section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
       
-      <section id="wallboard" class="page">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div><h1 class="title">Modo telão</h1><p class="muted">iFood em tempo real, com somente o essencial na tela.</p></div>
-          <button class="btn primary" onclick="enterWallFullscreen()">⛶ Tela cheia</button>
+      <section id="wallboard" class="page kds-page">
+        <div class="kds-top">
+          <div class="kds-brand">🛵 Despacha<span>Moto</span></div>
+          <div class="kds-mode">MODO TELÃO – <span>iFOOD</span></div>
+          <div class="kds-right">
+            <div class="kds-clock"><div id="kdsClockTime" class="kds-clock-time">--:--:--</div><div id="kdsClockDate" class="kds-clock-date">--/--/----</div></div>
+            <span id="kdsConnection" class="kds-online">● ONLINE</span>
+            <button class="btn kds-fullscreen-btn" type="button" onclick="enterWallFullscreen()">⛶ Tela cheia</button>
+          </div>
         </div>
-        <div id="wallSummary" class="wall-summary-clean"></div>
-        <div class="section wall-order-feed">
-          <div class="section-head"><div><b>Pedidos iFood de hoje</b><div class="small muted" style="margin-top:4px">Todos os pedidos recebidos aparecem aqui e a página continua para baixo.</div></div><span class="badge orange">AO VIVO</span></div>
-          <div class="wall-feed-head"><div>Pedido</div><div>Status</div><div>Entrega</div><div>Horário</div></div>
-          <div id="wallIfoodOrders"></div>
+
+        <div class="kds-board">
+          <section class="kds-column prep">
+            <div class="kds-column-head"><div class="kds-column-title"><span class="kds-column-icon">♨</span><span>PEDIDOS EM PREPARO</span></div><div id="kdsPreparingCount" class="kds-column-count">0</div></div>
+            <div id="kdsPreparingList" class="kds-list"><div class="kds-empty">Nenhum pedido em preparo.</div></div>
+          </section>
+          <section class="kds-column road">
+            <div class="kds-column-head"><div class="kds-column-title"><span class="kds-column-icon">🛵</span><span>PEDIDOS NA RUA</span></div><div id="kdsRoadCount" class="kds-column-count">0</div></div>
+            <div id="kdsRoadList" class="kds-list"><div class="kds-empty">Nenhum pedido na rua.</div></div>
+          </section>
+          <section class="kds-column confirmed">
+            <div class="kds-column-head"><div class="kds-column-title"><span class="kds-column-icon">✓</span><span>PEDIDOS CONFIRMADOS</span></div><div id="kdsConfirmedCount" class="kds-column-count">0</div></div>
+            <div id="kdsConfirmedList" class="kds-list"><div class="kds-empty">Nenhum pedido confirmado.</div></div>
+          </section>
         </div>
+        <div class="kds-footer"><span>Atualização automática</span><span>↻</span><span class="kds-footer-dot">●</span><span>Conectado ao iFood</span></div>
       </section>
 
 <section id="history" class="page">
@@ -1961,34 +1991,67 @@ function showBrowserNotification(n){
 }
 
 
-function wallboardStatus(row){
-  const s=String(row?.operational_status||'RECEIVED').toUpperCase();
-  if(s==='ON_ROAD')return {label:'NA RUA',cls:'road'};
-  if(s==='PREPARING')return {label:'EM PREPARO',cls:'preparing'};
-  if(s==='CONCLUDED')return {label:'CONCLUÍDO',cls:'confirmed'};
-  if(s==='CANCELLED')return {label:'CANCELADO',cls:'cancelled'};
-  return {label:'RECEBIDO',cls:'received'};
+function kdsTimestamp(row,stage){
+  if(stage==='CONFIRMED')return row.concluded_at||row.verified_at||row.last_event_at||row.updated_at||row.order_created_at;
+  if(stage==='ON_ROAD')return row.departed_at||row.last_event_at||row.updated_at||row.order_created_at;
+  return row.order_created_at||row.last_event_at||row.updated_at;
+}
+function kdsSortTime(row,stage){
+  const value=Date.parse(kdsTimestamp(row,stage)||'');
+  return Number.isFinite(value)?value:0;
+}
+function kdsSourceLabel(row){
+  return String(row.delivered_by||'').toUpperCase()==='IFOOD'?'ENTREGA IFOOD':'ENTREGA PRÓPRIA';
+}
+function kdsPrimaryText(row,stage){
+  if(stage==='PREPARING')return row.merchant_name||'Pedido iFood';
+  if(row.courier_name)return row.courier_name;
+  return String(row.delivered_by||'').toUpperCase()==='IFOOD'?'Entrega pelo iFood':'Motoboy ainda não identificado';
+}
+function kdsSecondaryText(row,stage){
+  if(stage==='PREPARING')return kdsSourceLabel(row);
+  if(row.merchant_name)return row.merchant_name;
+  return kdsSourceLabel(row);
+}
+function kdsOrderCard(row,stage){
+  const labels={PREPARING:'EM PREPARO',ON_ROAD:'NA RUA',CONFIRMED:'CONFIRMADO'};
+  const when=kdsTimestamp(row,stage);
+  return `<article class="kds-order-card">
+    <div class="kds-order-top"><div class="kds-order-number">#${escapeHtml(row.display_id||row.order_id||'—')}</div><div class="kds-order-time">${when?localTime(when):'—'}</div></div>
+    <div class="kds-order-main">${escapeHtml(kdsPrimaryText(row,stage))}</div>
+    <div class="kds-order-sub">${escapeHtml(kdsSecondaryText(row,stage))}</div>
+    <div class="kds-order-foot"><span class="kds-source">iFood</span><span class="kds-stage">${labels[stage]}</span></div>
+  </article>`;
+}
+function renderKdsList(id,rows,stage,emptyText){
+  const el=$(id);if(!el)return;
+  el.innerHTML=rows.map(x=>kdsOrderCard(x,stage)).join('')||`<div class="kds-empty">${escapeHtml(emptyText)}</div>`;
+}
+function renderKdsClock(){
+  const now=new Date(serverNowMs());
+  if($('kdsClockTime'))$('kdsClockTime').textContent=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if($('kdsClockDate'))$('kdsClockDate').textContent=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  if($('kdsConnection')){
+    const online=navigator.onLine;
+    $('kdsConnection').textContent=online?'● ONLINE':'● OFFLINE';
+    $('kdsConnection').classList.toggle('offline',!online);
+  }
 }
 function renderWallboard(){
-  if(!wallboardData||!$('wallSummary')||!$('wallIfoodOrders'))return;
-  const m=wallboardData.metrics||{};
-  $('wallSummary').innerHTML=`
-    <div class="wall-metric-card"><div><div class="wall-metric-label">PEDIDOS</div><div class="wall-metric-note">Em preparo</div></div><div class="wall-metric-value">${Number(m.preparing||0)}</div></div>
-    <div class="wall-metric-card"><div><div class="wall-metric-label">PEDIDOS NA RUA</div><div class="wall-metric-note">Em entrega</div></div><div class="wall-metric-value">${Number(m.onRoad||0)}</div></div>
-    <div class="wall-metric-card"><div><div class="wall-metric-label">PEDIDOS CONFIRMADOS</div><div class="wall-metric-note">Confirmados hoje</div></div><div class="wall-metric-value">${Number(m.confirmedToday||0)}</div></div>`;
-
+  if(!wallboardData)return;
   const rows=wallboardData.orders||[];
-  $('wallIfoodOrders').innerHTML=rows.map(x=>{
-    const st=wallboardStatus(x);
-    const delivery=x.courier_name?escapeHtml(x.courier_name):(String(x.delivered_by||'').toUpperCase()==='IFOOD'?'Entrega iFood':'—');
-    const when=x.last_event_at||x.order_created_at||x.updated_at;
-    return `<div class="wall-order-line">
-      <div><div class="wall-order-id">#${escapeHtml(x.display_id||x.order_id||'—')}</div></div>
-      <div><span class="wall-status ${st.cls}">${st.label}</span></div>
-      <div>${delivery}</div>
-      <div>${when?localTime(when):'—'}</div>
-    </div>`;
-  }).join('')||'<div class="wall-feed-empty">Nenhum pedido iFood recebido hoje.</div>';
+  const preparing=rows.filter(x=>x.operational_status==='PREPARING').sort((a,b)=>kdsSortTime(a,'PREPARING')-kdsSortTime(b,'PREPARING'));
+  const road=rows.filter(x=>x.operational_status==='ON_ROAD').sort((a,b)=>kdsSortTime(a,'ON_ROAD')-kdsSortTime(b,'ON_ROAD'));
+  const confirmed=rows.filter(x=>x.operational_status==='CONFIRMED').sort((a,b)=>kdsSortTime(b,'CONFIRMED')-kdsSortTime(a,'CONFIRMED'));
+
+  if($('kdsPreparingCount'))$('kdsPreparingCount').textContent=preparing.length;
+  if($('kdsRoadCount'))$('kdsRoadCount').textContent=road.length;
+  if($('kdsConfirmedCount'))$('kdsConfirmedCount').textContent=confirmed.length;
+
+  renderKdsList('kdsPreparingList',preparing,'PREPARING','Nenhum pedido em preparo.');
+  renderKdsList('kdsRoadList',road,'ON_ROAD','Nenhum pedido na rua.');
+  renderKdsList('kdsConfirmedList',confirmed,'CONFIRMED','Nenhum pedido confirmado.');
+  renderKdsClock();
 }
 async function loadWallboard(){
   if(me?.role!=='admin')return;
@@ -1996,7 +2059,7 @@ async function loadWallboard(){
     wallboardData=await api('/api/admin/wallboard');
     renderWallboard();
   }catch(err){
-    if($('wallIfoodOrders'))$('wallIfoodOrders').innerHTML=`<div class="wall-feed-empty">${escapeHtml(err.message)}</div>`;
+    ['kdsPreparingList','kdsRoadList','kdsConfirmedList'].forEach(id=>{if($(id))$(id).innerHTML=`<div class="kds-empty">${escapeHtml(err.message)}</div>`});
   }
 }
 async function enterWallFullscreen(){
@@ -2731,7 +2794,7 @@ socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotific
 socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
 socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
 
-setInterval(()=>document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs)),1000);
+setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('wallboard')?.classList.contains('active'))renderKdsClock();},1000);
 setInterval(()=>{if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard()},15000);
 setInterval(()=>{if(me)heartbeat();},20000);
 

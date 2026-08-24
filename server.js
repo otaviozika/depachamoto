@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.5.1";
+const VERSION = "2.5.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -4442,79 +4442,70 @@ app.post("/api/admin/conflicts/:id/resolve", auth, adminOnly, asyncRoute(async (
 
 
 app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => {
-  const metrics = (await pool.query(`
-    WITH today_orders AS (
+  const orders = (await pool.query(`
+    WITH bounds AS (
       SELECT
-        o.order_id,o.status,o.order_created_at,o.updated_at,
-        l.ifood_dispatch_status
-      FROM ifood_orders o
-      LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
-      WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date =
-            (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+        (date_trunc('day', NOW() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo') AS start_at,
+        ((date_trunc('day', NOW() AT TIME ZONE 'America/Sao_Paulo') + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo') AS end_at
     )
     SELECT
-      COUNT(*) FILTER (
-        WHERE UPPER(COALESCE(status,'')) IN (
-          'CONFIRMED','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP'
-        )
-        AND UPPER(COALESCE(ifood_dispatch_status,'')) NOT IN ('API_ACCEPTED','DISPATCHED','CONCLUDED')
-      )::int AS preparing,
-      COUNT(*) FILTER (
-        WHERE UPPER(COALESCE(status,'')) NOT IN ('CANCELLED','ORDER_CANCELLED','CONCLUDED','DELIVERED')
-          AND (
-            UPPER(COALESCE(status,''))='DISPATCHED'
-            OR UPPER(COALESCE(ifood_dispatch_status,'')) IN ('API_ACCEPTED','DISPATCHED')
-          )
-      )::int AS on_road,
-      COUNT(*) FILTER (
-        WHERE UPPER(COALESCE(status,'')) IN (
-          'CONFIRMED','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED',
-          'READY_TO_PICKUP','DISPATCHED','CONCLUDED','DELIVERED'
-        )
-      )::int AS confirmed_today,
-      COUNT(*)::int AS total_today
-    FROM today_orders
-  `)).rows[0] || {};
-
-  const orders = (await pool.query(`
-    SELECT
-      o.order_id,o.display_id,o.status,o.order_type,o.delivered_by,o.sales_channel,
-      o.order_created_at,o.last_event_at,o.updated_at,
+      o.order_id,
+      o.display_id,
+      o.status,
+      o.delivered_by,
+      o.order_created_at,
+      o.last_event_at,
+      o.updated_at,
+      m.name AS merchant_name,
       l.ifood_dispatch_status,
       d.status AS local_dispatch_status,
+      d.departed_at,
       u.name AS courier_name,
+      dc.status AS delivery_confirmation_status,
+      dc.verified_at,
+      dc.concluded_at,
       CASE
         WHEN UPPER(COALESCE(o.status,'')) IN ('CANCELLED','ORDER_CANCELLED') THEN 'CANCELLED'
-        WHEN UPPER(COALESCE(o.status,'')) IN ('CONCLUDED','DELIVERED')
-          OR UPPER(COALESCE(l.ifood_dispatch_status,''))='CONCLUDED' THEN 'CONCLUDED'
+        WHEN UPPER(COALESCE(dc.status,'')) IN ('VERIFIED','CONCLUDED')
+          OR UPPER(COALESCE(o.status,'')) IN ('CONCLUDED','DELIVERED')
+          OR UPPER(COALESCE(l.ifood_dispatch_status,''))='CONCLUDED' THEN 'CONFIRMED'
         WHEN UPPER(COALESCE(o.status,''))='DISPATCHED'
-          OR UPPER(COALESCE(l.ifood_dispatch_status,'')) IN ('API_ACCEPTED','DISPATCHED') THEN 'ON_ROAD'
-        WHEN UPPER(COALESCE(o.status,'')) IN (
-          'CONFIRMED','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED','READY_TO_PICKUP'
-        ) THEN 'PREPARING'
-        ELSE 'RECEIVED'
+          OR UPPER(COALESCE(l.ifood_dispatch_status,'')) IN ('API_ACCEPTED','DISPATCHED')
+          OR UPPER(COALESCE(d.status,''))='ON_ROAD' THEN 'ON_ROAD'
+        ELSE 'PREPARING'
       END AS operational_status
     FROM ifood_orders o
+    CROSS JOIN bounds b
+    LEFT JOIN ifood_merchants m ON m.merchant_id=o.merchant_id
     LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+    LEFT JOIN ifood_delivery_confirmations dc ON dc.ifood_order_id=o.order_id
     LEFT JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN users u ON u.id=d.courier_id
-    WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date =
-          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    WHERE (
+      o.order_created_at >= b.start_at AND o.order_created_at < b.end_at
+    ) OR (
+      o.order_created_at IS NULL AND o.updated_at >= b.start_at AND o.updated_at < b.end_at
+    )
     ORDER BY COALESCE(o.last_event_at,o.order_created_at,o.updated_at) DESC
   `)).rows;
 
+  // KDS: cancelados deixam o quadro operacional, mas continuam preservados no histórico/iFood.
+  const visibleOrders = orders.filter(x => x.operational_status !== 'CANCELLED');
+  const preparing = visibleOrders.filter(x => x.operational_status === 'PREPARING').length;
+  const onRoad = visibleOrders.filter(x => x.operational_status === 'ON_ROAD').length;
+  const confirmed = visibleOrders.filter(x => x.operational_status === 'CONFIRMED').length;
+
   res.json({
     metrics: {
-      preparing: Number(metrics.preparing || 0),
-      onRoad: Number(metrics.on_road || 0),
-      confirmedToday: Number(metrics.confirmed_today || 0),
-      totalToday: Number(metrics.total_today || 0)
+      preparing,
+      onRoad,
+      confirmedToday: confirmed,
+      totalToday: visibleOrders.length
     },
-    orders,
+    orders: visibleOrders,
     server_now: new Date().toISOString()
   });
 }));
-
 
 app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) => {
   const merchants = (await pool.query(`
