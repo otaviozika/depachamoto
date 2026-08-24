@@ -4,7 +4,7 @@ const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8")
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 
 const checks = {
-  version: server.includes('const VERSION = "2.5.0";'),
+  version: server.includes('const VERSION = "2.5.1";'),
   table: server.includes("CREATE TABLE IF NOT EXISTS ifood_delivery_confirmations"),
   courierListEndpoint: server.includes('/api/courier/ifood/deliveries'),
   verifyEndpoint: server.includes('/api/courier/ifood/orders/:orderId/verify-delivery'),

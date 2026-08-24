@@ -1,6 +1,6 @@
 {
   "name": "despachamoto-v1-online",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,7 +14,8 @@
     "loadtest:brutal": "node scripts/loadtest-brutal.js",
     "selftest:payments": "node scripts/selftest-payments.js",
     "selftest:pix": "node scripts/selftest-pix.js",
-    "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js"
+    "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js",
+    "selftest:wallboard": "node scripts/selftest-wallboard.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

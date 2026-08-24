@@ -1,0 +1,15 @@
+DespachaMoto v2.5.1 — Validação Modo telão iFood
+==========================================================
+
+server-syntax: PASS
+frontend-syntax: PASS
+service-worker-syntax: PASS
+selftest-wallboard: PASS
+selftest-delivery-confirmation: PASS
+selftest-pix: PASS
+selftest-payments: PASS
+
+Modo telão: 3 indicadores iFood + lista completa dos pedidos iFood do dia.
+Sem migração de banco.
+Sem novas variáveis obrigatórias.
+Base utilizada: DespachaMoto v2.5.0 validada.
