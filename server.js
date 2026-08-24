@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.5.3";
+const VERSION = "2.5.4";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -641,7 +641,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function auth(req, res, next) {
-  if (!req.session.user) return res.status(401).json({ error: "Não autenticado." });
+  if (!req.session.user) return res.status(401).json({ error: "Não autenticado.", code: "SESSION_EXPIRED" });
   next();
 }
 function adminOnly(req, res, next) {

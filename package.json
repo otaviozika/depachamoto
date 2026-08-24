@@ -1,6 +1,6 @@
 {
   "name": "despachamoto-v1-online",
-  "version": "2.5.3",
+  "version": "2.5.4",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,8 @@
     "selftest:pix": "node scripts/selftest-pix.js",
     "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js",
     "selftest:wallboard": "node scripts/selftest-wallboard.js",
-    "selftest:dashboard-theme": "node scripts/selftest-dashboard-theme.js"
+    "selftest:dashboard-theme": "node scripts/selftest-dashboard-theme.js",
+    "selftest:session-expiry": "node scripts/selftest-session-expiry.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -1,4 +1,4 @@
-const CACHE = "despachamoto-v2.5.3-dark-dashboard";
+const CACHE = "despachamoto-v2.5.4-session-expiry";
 const STATIC = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", event => {
