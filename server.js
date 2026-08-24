@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.4.0";
+const VERSION = "2.4.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -124,6 +124,47 @@ ADD COLUMN IF NOT EXISTS pix_key TEXT;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS pix_type TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_holder_name TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_status TEXT NOT NULL DEFAULT 'NONE';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_verified_at TIMESTAMPTZ;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pix_updated_at TIMESTAMPTZ;
+
+UPDATE users
+SET pix_status='VERIFIED',
+    pix_verified_at=COALESCE(pix_verified_at,NOW()),
+    pix_updated_at=COALESCE(pix_updated_at,NOW())
+WHERE role='courier'
+  AND pix_key IS NOT NULL
+  AND BTRIM(pix_key)<>''
+  AND COALESCE(pix_status,'NONE')='NONE';
+
+CREATE TABLE IF NOT EXISTS courier_pix_history (
+  id BIGSERIAL PRIMARY KEY,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pix_key TEXT,
+  pix_type TEXT,
+  pix_holder_name TEXT,
+  pix_status TEXT NOT NULL,
+  source TEXT NOT NULL,
+  changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  verified_at TIMESTAMPTZ,
+  verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS courier_pix_history_courier_idx
+ON courier_pix_history(courier_id,changed_at DESC);
 
 CREATE TABLE IF NOT EXISTS dispatches (
   id BIGSERIAL PRIMARY KEY,
@@ -297,6 +338,8 @@ CREATE TABLE IF NOT EXISTS courier_payments (
   total_snapshot NUMERIC(12,2),
   pix_key_snapshot TEXT,
   pix_type_snapshot TEXT,
+  pix_holder_name_snapshot TEXT,
+  pix_status_snapshot TEXT,
   reviewed_at TIMESTAMPTZ,
   reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   paid_at TIMESTAMPTZ,
@@ -305,6 +348,12 @@ CREATE TABLE IF NOT EXISTS courier_payments (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(payment_date,courier_id)
 );
+
+ALTER TABLE courier_payments
+ADD COLUMN IF NOT EXISTS pix_holder_name_snapshot TEXT;
+
+ALTER TABLE courier_payments
+ADD COLUMN IF NOT EXISTS pix_status_snapshot TEXT;
 
 CREATE INDEX IF NOT EXISTS courier_payments_date_idx
 ON courier_payments(payment_date DESC);
@@ -571,7 +620,7 @@ function courierOnly(req, res, next) {
 }
 async function currentUser(userId) {
   const q = await pool.query(
-    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash,nickname,pix_key,pix_type FROM users WHERE id=$1",
+    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash,nickname,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_verified_by,pix_updated_at FROM users WHERE id=$1",
     [userId]
   );
   return q.rows[0] || null;
@@ -2317,6 +2366,62 @@ function paymentStatusLabel(status) {
   return status === "PAID" ? "PAGO" : status === "REVIEWED" ? "CONFERIDO" : "EM ABERTO";
 }
 
+const PIX_TYPES = new Set(["CPF","Celular","E-mail","Chave aleatória"]);
+
+function normalizePixInput(body = {}) {
+  const key = String(body.pix_key || "").trim().slice(0, 220);
+  const type = String(body.pix_type || "").trim().slice(0, 40);
+  const holder = String(body.pix_holder_name || "").trim().slice(0, 160);
+
+  const hasAny = !!(key || type || holder);
+  if (!hasAny) return { pix_key: null, pix_type: null, pix_holder_name: null, empty: true };
+
+  if (!key || !type || !holder) {
+    throw Object.assign(new Error("Informe titular, tipo de chave e chave PIX."), { status: 400 });
+  }
+  if (!PIX_TYPES.has(type)) {
+    throw Object.assign(new Error("Tipo de chave PIX inválido."), { status: 400 });
+  }
+  if (holder.length < 3) {
+    throw Object.assign(new Error("Informe o nome do titular do PIX."), { status: 400 });
+  }
+  if (key.length < 3) {
+    throw Object.assign(new Error("Informe uma chave PIX válida."), { status: 400 });
+  }
+
+  return { pix_key: key, pix_type: type, pix_holder_name: holder, empty: false };
+}
+
+function normalizedPixStatus(value, hasKey = false) {
+  const status = String(value || "").trim().toUpperCase();
+  if (["NONE","PENDING","VERIFIED"].includes(status)) return status;
+  return hasKey ? "VERIFIED" : "NONE";
+}
+
+function pixStatusLabel(status) {
+  return status === "VERIFIED" ? "VERIFICADO" : status === "PENDING" ? "AGUARDANDO CONFIRMAÇÃO" : "NÃO CADASTRADO";
+}
+
+async function savePixHistory({
+  courierId,
+  pixKey = null,
+  pixType = null,
+  holderName = null,
+  status = "NONE",
+  source,
+  changedBy = null,
+  verifiedAt = null,
+  verifiedBy = null
+}) {
+  await pool.query(`
+    INSERT INTO courier_pix_history(
+      courier_id,pix_key,pix_type,pix_holder_name,pix_status,source,
+      changed_by,verified_at,verified_by
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+  `, [courierId,pixKey,pixType,holderName,status,source,changedBy,verifiedAt,verifiedBy]);
+}
+
 function isFriSun(date) {
   const d = new Date(`${date}T12:00:00Z`).getUTCDay();
   return d === 5 || d === 6 || d === 0;
@@ -2385,6 +2490,7 @@ async function getCourierDeliveryCount(courierId, date, client = pool) {
 async function buildPaymentRow(courier, payment, date, rule, liveCount = null) {
   const status = payment?.status || "OPEN";
   const locked = status === "REVIEWED" || status === "PAID";
+  const pixLocked = status === "PAID";
   const count = locked && payment?.delivery_count_snapshot !== null && payment?.delivery_count_snapshot !== undefined
     ? Number(payment.delivery_count_snapshot)
     : Number(liveCount ?? await getCourierDeliveryCount(courier.id, date));
@@ -2408,6 +2514,12 @@ async function buildPaymentRow(courier, payment, date, rule, liveCount = null) {
         adjustment: payment?.adjustment_amount || 0
       });
 
+  const currentPixStatus = normalizedPixStatus(courier.pix_status, !!courier.pix_key);
+  const lockedPixStatus = normalizedPixStatus(
+    payment?.pix_status_snapshot,
+    !!payment?.pix_key_snapshot
+  );
+
   return {
     id: payment?.id || null,
     payment_date: date,
@@ -2415,8 +2527,13 @@ async function buildPaymentRow(courier, payment, date, rule, liveCount = null) {
     courier_name: courier.name,
     nickname: courier.nickname || null,
     username: courier.username,
-    pix_key: locked ? (payment?.pix_key_snapshot ?? courier.pix_key ?? null) : (courier.pix_key || null),
-    pix_type: locked ? (payment?.pix_type_snapshot ?? courier.pix_type ?? null) : (courier.pix_type || null),
+    pix_key: pixLocked ? (payment?.pix_key_snapshot ?? courier.pix_key ?? null) : (courier.pix_key || null),
+    pix_type: pixLocked ? (payment?.pix_type_snapshot ?? courier.pix_type ?? null) : (courier.pix_type || null),
+    pix_holder_name: pixLocked
+      ? (payment?.pix_holder_name_snapshot ?? courier.pix_holder_name ?? null)
+      : (courier.pix_holder_name || null),
+    pix_status: pixLocked ? lockedPixStatus : currentPixStatus,
+    pix_status_label: pixStatusLabel(pixLocked ? lockedPixStatus : currentPixStatus),
     ...calc,
     payment_method: payment?.payment_method || "",
     status,
@@ -2440,12 +2557,12 @@ async function getPaymentRows(date) {
       GROUP BY d.courier_id
     )
     SELECT
-      u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,
+      u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,u.pix_status,
       COALESCE(del.delivery_count,0)::int AS live_delivery_count,
       p.id AS payment_id,p.tip_amount,p.discount_amount,p.adjustment_amount,
       p.payment_method,p.status,p.notes,
       p.delivery_count_snapshot,p.per_delivery_snapshot,p.base_snapshot,p.total_snapshot,
-      p.pix_key_snapshot,p.pix_type_snapshot,p.reviewed_at,p.paid_at
+      p.pix_key_snapshot,p.pix_type_snapshot,p.pix_holder_name_snapshot,p.pix_status_snapshot,p.reviewed_at,p.paid_at
     FROM users u
     LEFT JOIN deliveries del ON del.courier_id=u.id
     LEFT JOIN courier_payments p ON p.courier_id=u.id AND p.payment_date=$1::date
@@ -2463,7 +2580,9 @@ async function getPaymentRows(date) {
         username: r.username,
         nickname: r.nickname,
         pix_key: r.pix_key,
-        pix_type: r.pix_type
+        pix_type: r.pix_type,
+        pix_holder_name: r.pix_holder_name,
+        pix_status: r.pix_status
       },
       r.payment_id ? {
         id: r.payment_id,
@@ -2479,6 +2598,8 @@ async function getPaymentRows(date) {
         total_snapshot: r.total_snapshot,
         pix_key_snapshot: r.pix_key_snapshot,
         pix_type_snapshot: r.pix_type_snapshot,
+        pix_holder_name_snapshot: r.pix_holder_name_snapshot,
+        pix_status_snapshot: r.pix_status_snapshot,
         reviewed_at: r.reviewed_at,
         paid_at: r.paid_at
       } : null,
@@ -2684,7 +2805,7 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req, 
   const rule = await getPaymentRateRule(date);
 
   const courier = (await pool.query(`
-    SELECT id,name,username,nickname,pix_key,pix_type
+    SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status
     FROM users
     WHERE id=$1 AND role='courier'
   `, [req.session.user.id])).rows[0];
@@ -2704,6 +2825,162 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req, 
   res.json({
     payment: row,
     formula: "entregas × valor por entrega + encosta + gorjeta - desconto + ajuste",
+    server_now: new Date().toISOString()
+  });
+}));
+
+
+app.get("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const date = await getSPDate();
+
+  const courier = (await pool.query(`
+    SELECT id,name,username,pix_key,pix_type,pix_holder_name,pix_status,
+           pix_verified_at,pix_updated_at
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [req.session.user.id])).rows[0];
+
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const paidToday = (await pool.query(`
+    SELECT EXISTS(
+      SELECT 1 FROM courier_payments
+      WHERE courier_id=$1 AND payment_date=$2::date AND status='PAID'
+    ) AS paid
+  `, [req.session.user.id, date])).rows[0]?.paid === true;
+
+  const status = normalizedPixStatus(courier.pix_status, !!courier.pix_key);
+
+  res.json({
+    pix: {
+      pix_key: courier.pix_key || "",
+      pix_type: courier.pix_type || "",
+      pix_holder_name: courier.pix_holder_name || "",
+      status,
+      status_label: pixStatusLabel(status),
+      verified_at: courier.pix_verified_at || null,
+      updated_at: courier.pix_updated_at || null,
+      can_edit: !paidToday,
+      locked_reason: paidToday
+        ? "O pagamento de hoje já foi marcado como PAGO. O PIX poderá ser alterado a partir do próximo dia."
+        : null
+    },
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.put("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const date = await getSPDate();
+
+  const paidToday = (await pool.query(`
+    SELECT EXISTS(
+      SELECT 1 FROM courier_payments
+      WHERE courier_id=$1 AND payment_date=$2::date AND status='PAID'
+    ) AS paid
+  `, [req.session.user.id, date])).rows[0]?.paid === true;
+
+  if (paidToday) {
+    return res.status(409).json({
+      error: "O pagamento de hoje já foi marcado como PAGO. Você poderá alterar o PIX a partir do próximo dia.",
+      code: "PIX_LOCKED_TODAY"
+    });
+  }
+
+  const pix = normalizePixInput(req.body);
+  const current = (await pool.query(`
+    SELECT id,name,username,pix_key,pix_type,pix_holder_name,pix_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [req.session.user.id])).rows[0];
+
+  if (!current) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const unchanged =
+    String(current.pix_key || "") === String(pix.pix_key || "") &&
+    String(current.pix_type || "") === String(pix.pix_type || "") &&
+    String(current.pix_holder_name || "") === String(pix.pix_holder_name || "");
+
+  if (unchanged) {
+    const currentStatus = normalizedPixStatus(current.pix_status, !!current.pix_key);
+    return res.json({
+      pix: {
+        pix_key: current.pix_key || "",
+        pix_type: current.pix_type || "",
+        pix_holder_name: current.pix_holder_name || "",
+        status: currentStatus,
+        status_label: pixStatusLabel(currentStatus),
+        can_edit: true
+      },
+      message: currentStatus === "VERIFIED"
+        ? "Seu PIX já está confirmado."
+        : currentStatus === "PENDING"
+          ? "Seu PIX já está aguardando confirmação do administrador."
+          : "Nenhum PIX cadastrado.",
+      server_now: new Date().toISOString()
+    });
+  }
+
+  const newStatus = pix.empty ? "NONE" : "PENDING";
+  const q = await pool.query(`
+    UPDATE users
+    SET pix_key=$1,
+        pix_type=$2,
+        pix_holder_name=$3,
+        pix_status=$4,
+        pix_verified_at=NULL,
+        pix_verified_by=NULL,
+        pix_updated_at=NOW()
+    WHERE id=$5 AND role='courier'
+    RETURNING id,name,username,pix_key,pix_type,pix_holder_name,pix_status,
+              pix_verified_at,pix_updated_at
+  `, [pix.pix_key,pix.pix_type,pix.pix_holder_name,newStatus,req.session.user.id]);
+
+  await savePixHistory({
+    courierId: current.id,
+    pixKey: pix.pix_key,
+    pixType: pix.pix_type,
+    holderName: pix.pix_holder_name,
+    status: newStatus,
+    source: "COURIER",
+    changedBy: current.id
+  });
+
+  await audit(current.id, pix.empty ? "COURIER_PIX_REMOVED" : "COURIER_PIX_SUBMITTED", "user", current.id, {
+    pix_type: pix.pix_type,
+    pix_status: newStatus
+  });
+
+  if (!pix.empty) {
+    await createNotification({
+      type: "PIX_PENDING",
+      severity: "info",
+      title: "PIX aguardando confirmação",
+      message: `${current.name} cadastrou ou alterou a chave PIX. Confira os dados antes do pagamento.`,
+      courierId: current.id,
+      uniqueKey: `pix-pending:${current.id}:${Date.now()}`
+    });
+  }
+
+  io.emit("courier:changed");
+  io.emit("payment:changed");
+  io.emit("pix:changed", { courier_id: current.id });
+
+  res.json({
+    pix: {
+      pix_key: q.rows[0].pix_key || "",
+      pix_type: q.rows[0].pix_type || "",
+      pix_holder_name: q.rows[0].pix_holder_name || "",
+      status: newStatus,
+      status_label: pixStatusLabel(newStatus),
+      verified_at: null,
+      updated_at: q.rows[0].pix_updated_at,
+      can_edit: true
+    },
+    message: pix.empty
+      ? "PIX removido."
+      : "PIX enviado. Aguarde a confirmação do administrador antes de ele ser usado para pagamento.",
     server_now: new Date().toISOString()
   });
 }));
@@ -4249,7 +4526,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
   if (!Number.isInteger(courierId) || courierId < 1) return res.status(400).json({ error: "Motoboy inválido." });
 
   const courier = (await pool.query(`
-    SELECT id,name,username,nickname,pix_key,pix_type
+    SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status
     FROM users
     WHERE id=$1 AND role='courier'
   `, [courierId])).rows[0];
@@ -4291,15 +4568,15 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
 
   const liveCount = await getCourierDeliveryCount(courierId, date);
   const rule = await getPaymentRateRule(date);
-  const preserveLockedSnapshot = !!existing
+  const preserveFinancialSnapshot = !!existing
     && ["REVIEWED","PAID"].includes(existing.status)
     && ["REVIEWED","PAID"].includes(status);
 
-  const finalTip = preserveLockedSnapshot ? Number(existing.tip_amount || 0) : tip;
-  const finalDiscount = preserveLockedSnapshot ? Number(existing.discount_amount || 0) : discount;
-  const finalAdjustment = preserveLockedSnapshot ? Number(existing.adjustment_amount || 0) : adjustment;
+  const finalTip = preserveFinancialSnapshot ? Number(existing.tip_amount || 0) : tip;
+  const finalDiscount = preserveFinancialSnapshot ? Number(existing.discount_amount || 0) : discount;
+  const finalAdjustment = preserveFinancialSnapshot ? Number(existing.adjustment_amount || 0) : adjustment;
 
-  const calc = preserveLockedSnapshot ? {
+  const calc = preserveFinancialSnapshot ? {
     delivery_count: Number(existing.delivery_count_snapshot || 0),
     per_delivery: Number(existing.per_delivery_snapshot || 0),
     base_amount: Number(existing.base_snapshot || 0),
@@ -4316,22 +4593,57 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
     adjustment: finalAdjustment
   });
 
+  const currentPixStatus = normalizedPixStatus(courier.pix_status, !!courier.pix_key);
+  const existingPaidSnapshotStatus = normalizedPixStatus(existing?.pix_status_snapshot, !!existing?.pix_key_snapshot);
+  const preservingPaidPix = existing?.status === "PAID" && status === "PAID";
+
+  if (
+    status === "PAID" &&
+    String(paymentMethod || "").toUpperCase() === "PIX" &&
+    !(
+      preservingPaidPix
+        ? existingPaidSnapshotStatus === "VERIFIED" && !!existing?.pix_key_snapshot
+        : currentPixStatus === "VERIFIED" && !!courier.pix_key && !!courier.pix_type && !!courier.pix_holder_name
+    )
+  ) {
+    return res.status(409).json({
+      error: "O PIX deste motoboy ainda não foi confirmado. Confirme a chave em Motoboys antes de marcar o pagamento PIX como PAGO.",
+      code: "PIX_NOT_VERIFIED"
+    });
+  }
+
   const lock = status === "REVIEWED" || status === "PAID";
   const reviewedAt = lock ? (existing?.reviewed_at || new Date()) : null;
   const paidAt = status === "PAID" ? (existing?.paid_at || new Date()) : null;
+
+  const pixSnapshot = lock
+    ? preservingPaidPix
+      ? {
+          key: existing.pix_key_snapshot,
+          type: existing.pix_type_snapshot,
+          holder: existing.pix_holder_name_snapshot,
+          status: existingPaidSnapshotStatus
+        }
+      : {
+          key: courier.pix_key,
+          type: courier.pix_type,
+          holder: courier.pix_holder_name,
+          status: currentPixStatus
+        }
+    : { key: null, type: null, holder: null, status: null };
 
   const q = await pool.query(`
     INSERT INTO courier_payments(
       payment_date,courier_id,tip_amount,discount_amount,adjustment_amount,
       payment_method,status,notes,
       delivery_count_snapshot,per_delivery_snapshot,base_snapshot,total_snapshot,
-      pix_key_snapshot,pix_type_snapshot,
+      pix_key_snapshot,pix_type_snapshot,pix_holder_name_snapshot,pix_status_snapshot,
       reviewed_at,reviewed_by,paid_at,paid_by,updated_at
     )
     VALUES(
       $1::date,$2,$3,$4,$5,$6,$7,$8,
-      $9,$10,$11,$12,$13,$14,
-      $15,$16,$17,$18,NOW()
+      $9,$10,$11,$12,$13,$14,$15,$16,
+      $17,$18,$19,$20,NOW()
     )
     ON CONFLICT(payment_date,courier_id) DO UPDATE SET
       tip_amount=EXCLUDED.tip_amount,
@@ -4346,6 +4658,8 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
       total_snapshot=EXCLUDED.total_snapshot,
       pix_key_snapshot=EXCLUDED.pix_key_snapshot,
       pix_type_snapshot=EXCLUDED.pix_type_snapshot,
+      pix_holder_name_snapshot=EXCLUDED.pix_holder_name_snapshot,
+      pix_status_snapshot=EXCLUDED.pix_status_snapshot,
       reviewed_at=EXCLUDED.reviewed_at,
       reviewed_by=EXCLUDED.reviewed_by,
       paid_at=EXCLUDED.paid_at,
@@ -4358,10 +4672,12 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
     lock ? calc.per_delivery : null,
     lock ? calc.base_amount : null,
     lock ? calc.total_amount : null,
-    lock ? (preserveLockedSnapshot ? existing.pix_key_snapshot : courier.pix_key) : null,
-    lock ? (preserveLockedSnapshot ? existing.pix_type_snapshot : courier.pix_type) : null,
+    pixSnapshot.key,
+    pixSnapshot.type,
+    pixSnapshot.holder,
+    pixSnapshot.status,
     reviewedAt,
-    (status === "REVIEWED" || status === "PAID") ? req.session.user.id : null,
+    lock ? req.session.user.id : null,
     paidAt,
     status === "PAID" ? req.session.user.id : null
   ]);
@@ -4374,7 +4690,9 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
     courier_name: courier.name,
     delivery_count: row.delivery_count,
     total_amount: row.total_amount,
-    status
+    status,
+    payment_method: paymentMethod,
+    pix_status: row.pix_status
   });
 
   io.emit("payment:changed");
@@ -4386,14 +4704,14 @@ app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req, res) 
   const { rows } = await getPaymentRows(date);
 
   const header = [
-    "Data","Motoboy","Apelido","Chave PIX","Tipo PIX","Nº Entregas","Valor por Entrega",
+    "Data","Motoboy","Apelido","Titular PIX","Chave PIX","Tipo PIX","Status PIX","Nº Entregas","Valor por Entrega",
     "Encosta","Gorjeta","Desconto","Ajuste","Forma PGMT","Status","Total","Observações"
   ];
   const lines = [header.map(csvCell).join(";")];
 
   for (const r of rows) {
     lines.push([
-      date,r.courier_name,r.nickname||"",r.pix_key||"",r.pix_type||"",
+      date,r.courier_name,r.nickname||"",r.pix_holder_name||"",r.pix_key||"",r.pix_type||"",r.pix_status_label||"",
       r.delivery_count,r.per_delivery,r.base_amount,r.tip_amount,r.discount_amount,
       r.adjustment_amount,r.payment_method||"",paymentStatusLabel(r.status),
       r.total_amount,r.notes||""
@@ -4443,7 +4761,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
   `)).rows;
 
   const couriers = (await pool.query(`
-    SELECT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.active,u.approval_status,u.must_change_password,
+    SELECT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,u.pix_status,u.pix_verified_at,u.pix_updated_at,u.active,u.approval_status,u.must_change_password,
       (
         SELECT COUNT(o.id)
         FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
@@ -4497,8 +4815,9 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const nickname = String(req.body.nickname || "").trim().slice(0, 80) || null;
-  const pixKey = String(req.body.pix_key || "").trim().slice(0, 220) || null;
-  const pixType = String(req.body.pix_type || "").trim().slice(0, 40) || null;
+  const pix = normalizePixInput(req.body);
+  const pixStatus = pix.empty ? "NONE" : "VERIFIED";
+  const verifiedAt = pix.empty ? null : new Date();
 
   if (name.length < 3 || username.length < 3 || password.length < 8) {
     return res.status(400).json({ error: "Preencha nome, usuário e senha de pelo menos 8 caracteres." });
@@ -4508,14 +4827,37 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
     const q = await pool.query(`
       INSERT INTO users(
         name,username,password_hash,role,approval_status,active,must_change_password,
-        nickname,pix_key,pix_type
+        nickname,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_verified_by,pix_updated_at
       )
-      VALUES($1,$2,$3,'courier','APPROVED',true,false,$4,$5,$6)
-      RETURNING id,name,username,nickname,pix_key,pix_type,active,approval_status,must_change_password
-    `, [name, username, await bcrypt.hash(password, 12), nickname, pixKey, pixType]);
+      VALUES($1,$2,$3,'courier','APPROVED',true,false,$4,$5,$6,$7,$8,$9,$10,NOW())
+      RETURNING id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status,
+                pix_verified_at,active,approval_status,must_change_password
+    `, [
+      name, username, await bcrypt.hash(password, 12), nickname,
+      pix.pix_key, pix.pix_type, pix.pix_holder_name, pixStatus,
+      verifiedAt, pix.empty ? null : req.session.user.id
+    ]);
 
-    await audit(req.session.user.id, "COURIER_CREATED_APPROVED", "user", q.rows[0].id, { username });
+    if (!pix.empty) {
+      await savePixHistory({
+        courierId: q.rows[0].id,
+        pixKey: pix.pix_key,
+        pixType: pix.pix_type,
+        holderName: pix.pix_holder_name,
+        status: "VERIFIED",
+        source: "ADMIN_CREATED",
+        changedBy: req.session.user.id,
+        verifiedAt,
+        verifiedBy: req.session.user.id
+      });
+    }
+
+    await audit(req.session.user.id, "COURIER_CREATED_APPROVED", "user", q.rows[0].id, {
+      username,
+      pix_status: pixStatus
+    });
     io.emit("courier:changed");
+    io.emit("payment:changed");
     res.status(201).json({ user: q.rows[0] });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Esse usuário já existe." });
@@ -4570,28 +4912,120 @@ app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (re
 app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (req, res) => {
   const name = String(req.body.name || "").trim();
   const nickname = String(req.body.nickname || "").trim().slice(0, 80) || null;
-  const pixKey = String(req.body.pix_key || "").trim().slice(0, 220) || null;
-  const pixType = String(req.body.pix_type || "").trim().slice(0, 40) || null;
+  const pix = normalizePixInput(req.body);
 
   if (name.length < 3) return res.status(400).json({ error: "Informe o nome completo do motoboy." });
 
+  const existing = (await pool.query(`
+    SELECT id,pix_key,pix_type,pix_holder_name,pix_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [req.params.id])).rows[0];
+  if (!existing) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const pixChanged =
+    String(existing.pix_key || "") !== String(pix.pix_key || "") ||
+    String(existing.pix_type || "") !== String(pix.pix_type || "") ||
+    String(existing.pix_holder_name || "") !== String(pix.pix_holder_name || "");
+
+  const newPixStatus = pix.empty
+    ? "NONE"
+    : pixChanged ? "VERIFIED" : normalizedPixStatus(existing.pix_status, !!existing.pix_key);
+
   const q = await pool.query(`
     UPDATE users
-    SET name=$1,nickname=$2,pix_key=$3,pix_type=$4
-    WHERE id=$5 AND role='courier'
-    RETURNING id,name,username,nickname,pix_key,pix_type,active,approval_status
-  `, [name, nickname, pixKey, pixType, req.params.id]);
+    SET name=$1,
+        nickname=$2,
+        pix_key=$3,
+        pix_type=$4,
+        pix_holder_name=$5,
+        pix_status=$6,
+        pix_verified_at=CASE WHEN $7::boolean THEN $8 ELSE pix_verified_at END,
+        pix_verified_by=CASE WHEN $7::boolean THEN $9 ELSE pix_verified_by END,
+        pix_updated_at=CASE WHEN $7::boolean THEN NOW() ELSE pix_updated_at END
+    WHERE id=$10 AND role='courier'
+    RETURNING id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status,
+              pix_verified_at,pix_updated_at,active,approval_status
+  `, [
+    name,nickname,pix.pix_key,pix.pix_type,pix.pix_holder_name,newPixStatus,
+    pixChanged, pix.empty ? null : new Date(), pix.empty ? null : req.session.user.id,
+    req.params.id
+  ]);
 
-  if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
+  if (pixChanged) {
+    await savePixHistory({
+      courierId: q.rows[0].id,
+      pixKey: pix.pix_key,
+      pixType: pix.pix_type,
+      holderName: pix.pix_holder_name,
+      status: newPixStatus,
+      source: "ADMIN_EDIT",
+      changedBy: req.session.user.id,
+      verifiedAt: pix.empty ? null : new Date(),
+      verifiedBy: pix.empty ? null : req.session.user.id
+    });
+  }
 
   await audit(req.session.user.id, "COURIER_PROFILE_UPDATED", "user", q.rows[0].id, {
-    has_pix: !!pixKey,
-    pix_type: pixType
+    has_pix: !!pix.pix_key,
+    pix_type: pix.pix_type,
+    pix_status: newPixStatus,
+    pix_changed: pixChanged
   });
 
   io.emit("courier:changed");
   io.emit("payment:changed");
+  io.emit("pix:changed", { courier_id: q.rows[0].id });
   res.json({ user: q.rows[0] });
+}));
+
+app.post("/api/admin/couriers/:id/pix/verify", auth, adminOnly, asyncRoute(async (req, res) => {
+  const courier = (await pool.query(`
+    SELECT id,name,username,pix_key,pix_type,pix_holder_name,pix_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+  `, [req.params.id])).rows[0];
+
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+  if (!courier.pix_key || !courier.pix_type || !courier.pix_holder_name) {
+    return res.status(400).json({ error: "O motoboy ainda não cadastrou todos os dados do PIX." });
+  }
+
+  const verifiedAt = new Date();
+  const q = await pool.query(`
+    UPDATE users
+    SET pix_status='VERIFIED',
+        pix_verified_at=$1,
+        pix_verified_by=$2,
+        pix_updated_at=COALESCE(pix_updated_at,NOW())
+    WHERE id=$3 AND role='courier'
+    RETURNING id,name,username,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_updated_at
+  `, [verifiedAt, req.session.user.id, courier.id]);
+
+  await savePixHistory({
+    courierId: courier.id,
+    pixKey: courier.pix_key,
+    pixType: courier.pix_type,
+    holderName: courier.pix_holder_name,
+    status: "VERIFIED",
+    source: "ADMIN_VERIFIED",
+    changedBy: req.session.user.id,
+    verifiedAt,
+    verifiedBy: req.session.user.id
+  });
+
+  await audit(req.session.user.id, "COURIER_PIX_VERIFIED", "user", courier.id, {
+    pix_type: courier.pix_type
+  });
+
+  io.emit("courier:changed");
+  io.emit("payment:changed");
+  io.emit("pix:changed", { courier_id: courier.id });
+
+  res.json({
+    user: q.rows[0],
+    message: "PIX confirmado. A chave já pode ser usada nos pagamentos."
+  });
 }));
 
 app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(async (req, res) => {
