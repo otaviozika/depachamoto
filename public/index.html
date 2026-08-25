@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 2.6.1</title>
+<title>DespacheFull 2.7.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -71,6 +71,9 @@
 .switch-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.switch{width:48px;height:28px;border-radius:999px;background:#cbd5e1;position:relative;cursor:pointer;border:0}.switch:after{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.15s}.switch.on{background:#16a34a}.switch.on:after{left:23px}
 .manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.manual-orders{display:grid;gap:8px}.origin-admin{background:#dbeafe;color:#1d4ed8}.origin-courier{background:#eef2f7;color:#475569}
 .current-active-note{padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;margin-bottom:12px}
+.sla-badge{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900}.sla-badge.NORMAL{background:#dcfce7;color:#166534}.sla-badge.ATTENTION{background:#fef9c3;color:#854d0e}.sla-badge.DELAYED{background:#ffedd5;color:#9a3412}.sla-badge.CRITICAL{background:#fee2e2;color:#991b1b}.stage-badge{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900}.stage-badge.EN_ROUTE{background:#ffedd5;color:#9a3412}.stage-badge.RETURNING{background:#dbeafe;color:#1d4ed8}.op-progress{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.return-hero{background:linear-gradient(135deg,#0f3b66,#1d4ed8)!important}.exception-list{display:grid;gap:10px;padding:15px}.exception-item{border:1px solid var(--line);border-radius:12px;padding:13px;display:grid;grid-template-columns:1.4fr .8fr .8fr auto;gap:12px;align-items:center}.exception-item.CRITICAL{border-color:#fecaca;background:#fff7f7}.exception-item.DELAYED{border-color:#fed7aa;background:#fffaf5}.exception-item.ATTENTION{border-color:#fde68a;background:#fffdf3}.sla-settings-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.sla-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.sla-kpi{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+@media(max-width:900px){.exception-item{grid-template-columns:1fr 1fr}.sla-settings-grid{grid-template-columns:repeat(2,1fr)}.sla-kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.exception-item{grid-template-columns:1fr}.sla-settings-grid,.sla-kpis{grid-template-columns:1fr}}
 
 
 .connection-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:900}.connection-pill.online{background:#dcfce7;color:#166534}.connection-pill.offline{background:#fee2e2;color:#991b1b}.connection-pill.syncing{background:#fef3c7;color:#92400e}
@@ -93,13 +96,13 @@
 .monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
 
 
-.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
+.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
 .payment-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.payment-toolbar label{font-size:12px;font-weight:800}.payment-toolbar input{display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.payment-formula{padding:12px 14px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px;color:#854d0e;font-size:13px}.payment-input{width:92px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-note{min-width:180px;width:220px;padding:8px;border:1px solid var(--line);border-radius:8px}.payment-select{padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-total{font-size:15px;font-weight:900}.payment-pix{max-width:220px;white-space:normal;line-height:1.35}.payment-locked{background:#f8fafc}.money-positive{color:#166534}.money-negative{color:#991b1b}.payment-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.payment-mini>div{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px}.payment-own-total{font-size:30px;font-weight:900;margin-top:5px}.pix-self-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pix-self-grid label{font-size:12px;font-weight:800}.pix-self-grid input,.pix-self-grid select{display:block;width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.pix-status-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.pix-holder{font-weight:800}.pix-pending-row{background:#fffbeb}.pix-verified-row{background:#f0fdf4}
 
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.wall-summary-clean{grid-template-columns:1fr}.wall-order-line,.wall-feed-head{grid-template-columns:1fr 1fr}.wall-feed-head div:nth-child(3),.wall-feed-head div:nth-child(4){display:none}.wall-order-line>div:nth-child(3),.wall-order-line>div:nth-child(4){font-size:12px}.pix-self-grid{grid-template-columns:1fr}.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 
-/* v2.6.1 — Logo oficial DespacheFull + preservação integral das funções v2.6.0 */
+/* v2.7.0 — Controle de tempo operacional, retorno e SLA dinâmico */
 #adminApp{--bg:#05070a;--card:#0b0f14;--text:#f3f4f6;--muted:#8b98aa;--line:#252b33;--shadow:none;background:#05070a;color:#f3f4f6;min-height:100vh}
 #adminApp .admin-side{width:240px;background:#05070a;border-right:1px solid #20252c;padding:18px 10px 14px;display:flex;flex-direction:column;overflow:hidden}
 #adminApp .admin-brand{padding:8px 12px 12px;border-bottom:1px solid #15191f;margin-bottom:10px}
@@ -276,16 +279,16 @@
         </div>
         <div class="cards dashboard-metrics">
           <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Online agora</div></div>
-          <div class="card dashboard-metric-card metric-orange"><div class="dashboard-metric-label"><span>●</span> Na rua</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em entrega</div></div>
+          <div class="card dashboard-metric-card metric-orange"><div class="dashboard-metric-label"><span>●</span> Fora da loja</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em rota + retornando</div></div>
           <div class="card dashboard-metric-card metric-green"><div class="dashboard-metric-label"><span>●</span> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Aguardando</div></div>
           <div class="card dashboard-metric-card metric-blue"><div class="dashboard-metric-label"><span>▣</span> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Recebidos</div></div>
-          <div class="card dashboard-metric-card metric-purple"><div class="dashboard-metric-label"><span>▰</span> Pedidos na rua</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Em entrega</div></div>
+          <div class="card dashboard-metric-card metric-purple"><div class="dashboard-metric-label"><span>▰</span> Pedidos ativos</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Saídas ainda abertas</div></div>
           <div class="card dashboard-metric-card metric-amber"><div class="dashboard-metric-label"><span>◷</span> Cadastros pendentes</div><div id="mPending" class="metric">0</div><div class="dashboard-metric-note">Aguardando aprovação</div></div>
         </div>
         <div class="grid dashboard-grid">
           <div class="section dashboard-panel dashboard-live-panel">
             <div class="section-head"><b>Quem está na rua agora</b><span class="dashboard-live-badge">AO VIVO</span></div>
-            <div class="table-wrap"><table class="table dashboard-road-table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Saída</th><th>Tempo</th><th>Ação</th></tr></thead><tbody id="roadDash"></tbody></table></div>
+            <div class="table-wrap"><table class="table dashboard-road-table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Etapa</th><th>Progresso</th><th>Tempo</th><th>SLA</th><th>Ação</th></tr></thead><tbody id="roadDash"></tbody></table></div>
           </div>
           <div class="section dashboard-panel dashboard-recent-panel">
             <div class="section-head"><b>Últimas saídas</b></div>
@@ -296,7 +299,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 2.6.1</span>
+          <span>Versão 2.7.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -306,6 +309,11 @@
         <h1 class="title">Operação em tempo real</h1>
         <p class="muted">Visão rápida para horários de pico com muitos motoboys.</p>
         <div id="peakStrip" class="peak-strip" style="margin-top:18px"></div>
+        <div id="timeKpis" class="sla-kpis" style="margin-top:12px"></div>
+        <div class="section" style="margin-top:18px">
+          <div class="section-head"><div><b>⚠ Exceções de tempo</b><div class="small muted">Mostra somente quem atingiu atenção, atraso ou crítico.</div></div><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
+          <div id="operationalExceptions" class="exception-list"></div>
+        </div>
         <div class="analytics-grid">
           <div class="section">
             <div class="section-head"><b>Equipe agora</b><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
@@ -390,7 +398,7 @@
   </div>
 </section>
 
-<section id="road" class="page"><h1 class="title">Quem está na rua</h1><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Horário</th><th>Tempo na rua</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
+<section id="road" class="page"><h1 class="title">Quem está na rua</h1><p class="muted">Acompanhe rota, retorno, progresso de entregas e SLA em tempo real.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Etapa</th><th>Progresso</th><th>Tempo</th><th>SLA</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
 
       
       <section id="wallboard" class="page kds-page">
@@ -439,7 +447,7 @@
           </div>
           <div class="table-wrap">
             <table class="table">
-              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Origem</th><th>Saída</th><th>Status</th></tr></thead>
+              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Origem</th><th>Saída</th><th>Etapa / Status</th></tr></thead>
               <tbody id="historyTable"></tbody>
             </table>
           </div>
@@ -602,15 +610,25 @@
       </section>
 
       <section id="alerts" class="page">
-        <h1 class="title">Alertas de tempo</h1>
-        <div class="section" style="margin-top:18px;max-width:760px"><div style="padding:20px">
-          <div class="settings-grid">
-            <label><b>Atenção (min)</b><input id="alertAttention" type="number" min="1"></label>
-            <label><b>Demorado (min)</b><input id="alertDelayed" type="number" min="2"></label>
-            <label><b>Crítico (min)</b><input id="alertCritical" type="number" min="3"></label>
+        <h1 class="title">SLA e alertas de tempo</h1>
+        <p class="muted">A meta da rota muda automaticamente conforme a quantidade de pedidos. Atenção começa em 80% da meta.</p>
+        <div class="section" style="margin-top:18px;max-width:980px"><div style="padding:20px">
+          <h3 style="margin-top:0">Meta de rota por quantidade de pedidos</h3>
+          <div class="sla-settings-grid">
+            <label><b>1 pedido</b><input id="slaRoute1" type="number" min="5" max="180"></label>
+            <label><b>2 pedidos</b><input id="slaRoute2" type="number" min="5" max="180"></label>
+            <label><b>3 pedidos</b><input id="slaRoute3" type="number" min="5" max="180"></label>
+            <label><b>4 pedidos</b><input id="slaRoute4" type="number" min="5" max="180"></label>
+            <label><b>5 pedidos</b><input id="slaRoute5" type="number" min="5" max="180"></label>
           </div>
+          <div class="settings-grid" style="margin-top:16px">
+            <label><b>Meta de retorno (min)</b><input id="slaReturn" type="number" min="3" max="120"></label>
+            <label><b>Crítico após a meta + (min)</b><input id="slaCriticalOver" type="number" min="1" max="120"></label>
+          </div>
+          <div class="small muted" style="margin-top:12px">Exemplo: rota de 3 pedidos com meta 35 min → atenção a partir de 28 min, atrasado após 35 min e crítico após a margem configurada.</div>
           <div id="settingsMsg"></div>
-          <button class="btn primary" style="margin-top:15px" onclick="saveAlertSettings()">Salvar alertas</button>
+          <button class="btn primary" style="margin-top:15px" onclick="saveOperationalSla()">Salvar SLA operacional</button>
+          <div class="hidden"><input id="alertAttention"><input id="alertDelayed"><input id="alertCritical"></div>
         </div></div>
       </section>
 
@@ -869,6 +887,7 @@
 <script>
 let me=null,dashboard=null,wallboardData=null,serverOffsetMs=0,deferredInstallPrompt=null;
 let alertSettings={attention:40,delayed:50,critical:60};
+let operationalSla={route:{1:25,2:30,3:35,4:40,5:45},returnMinutes:15,criticalOverMinutes:15};
 let securityState={registrationEnabled:true,adminPasswordLooksDefault:false};
 let notificationSettings={attention:true,delayed:true,critical:true,registration:true,sound:true};
 let notificationState={rows:[],unread:0};
@@ -1349,16 +1368,45 @@ function showApp(){
 async function loadAdmin(){
   dashboard=await api('/api/admin/dashboard');
   alertSettings=dashboard.alerts||alertSettings;
+  operationalSla=dashboard.operationalSla||operationalSla;
   const m=dashboard.metrics;
   $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
-  $('alertAttention').value=alertSettings.attention;$('alertDelayed').value=alertSettings.delayed;$('alertCritical').value=alertSettings.critical;
+  if($('alertAttention'))$('alertAttention').value=alertSettings.attention;if($('alertDelayed'))$('alertDelayed').value=alertSettings.delayed;if($('alertCritical'))$('alertCritical').value=alertSettings.critical;
+  for(let i=1;i<=5;i++){if($('slaRoute'+i))$('slaRoute'+i).value=operationalSla.route?.[i]??operationalSla.route?.[String(i)]??''}
+  if($('slaReturn'))$('slaReturn').value=operationalSla.returnMinutes??15;
+  if($('slaCriticalOver'))$('slaCriticalOver').value=operationalSla.criticalOverMinutes??15;
   renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();renderDashboardClock();
 }
+function operationalStageLabel(stage){return stage==='RETURNING'?'RETORNANDO':'EM ROTA'}
+function slaStateLabel(state){return {NORMAL:'NORMAL',ATTENTION:'ATENÇÃO',DELAYED:'ATRASADO',CRITICAL:'CRÍTICO'}[state]||state}
+function dispatchProgressText(x){
+  const total=Number(x.total_orders||x.order_numbers?.length||1);
+  const tracked=Number(x.trackable_orders||0);
+  const delivered=Number(x.delivered_orders||0);
+  if(tracked===total&&total>0)return `${delivered}/${total} entregues`;
+  if(tracked>0)return `${delivered}/${tracked} iFood • ${total} total`;
+  return `${total} pedido(s) • manual`;
+}
+function dispatchActionHtml(x){
+  if(x.operational_stage==='RETURNING')return `<button class="btn success" onclick="releaseDispatch(${x.id})">✓ Chegou</button>`;
+  return `<button class="btn outline" onclick="adminStartReturn(${x.id})">↩ Iniciar retorno</button>`;
+}
 function renderRoad(){
-  const a=dashboard.active;
-  const rows=a.map(x=>`<tr><td><b>${escapeHtml(x.courier_name)}</b></td><td>${ordersHtml(x)}</td><td>${localTime(x.departed_at)}</td><td><b class="live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</b></td><td><button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar</button></td></tr>`).join('');
-  $('roadDash').innerHTML=rows||`<tr><td colspan="5"><div class="dashboard-empty-road"><div><div class="road-mark">╱┊╲</div><b>Nenhum registro.</b><small>No momento, não há motoboys em entrega.</small></div></div></td></tr>`;
-  $('roadTable').innerHTML=rows||empty(5);
+  const a=dashboard.active||[];
+  const rows=a.map(x=>{
+    const stageStart=x.operational_stage==='RETURNING'?(x.returning_at||x.departed_at):x.departed_at;
+    return `<tr>
+      <td><b>${escapeHtml(x.courier_name)}</b><div class="small muted">Saiu ${localTime(x.departed_at)}</div></td>
+      <td>${ordersHtml(x)}</td>
+      <td><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></td>
+      <td>${escapeHtml(dispatchProgressText(x))}</td>
+      <td><b class="live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</b><div class="small muted">Total ${x.total_elapsed_minutes||0} min</div></td>
+      <td><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><div class="small muted">${x.stage_elapsed_minutes||0}/${x.sla_minutes||'—'} min</div></td>
+      <td>${dispatchActionHtml(x)}</td>
+    </tr>`;
+  }).join('');
+  $('roadDash').innerHTML=rows||`<tr><td colspan="7"><div class="dashboard-empty-road"><div><div class="road-mark">╱┊╲</div><b>Nenhum registro.</b><small>No momento, não há motoboys em entrega ou retorno.</small></div></div></td></tr>`;
+  $('roadTable').innerHTML=rows||empty(7);
 }
 function renderRecent(){$('recentTable').innerHTML=dashboard.recent.slice(0,8).map(x=>`<tr><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localTime(x.departed_at)}</td></tr>`).join('')||empty(3)}
 async function loadHistory(){
@@ -1379,7 +1427,7 @@ async function loadHistory(){
   try{
     const d=await api('/api/admin/history?'+p.toString());
     historyState={...historyState,...d.pagination};
-    $('historyTable').innerHTML=d.rows.map(x=>`<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(6);
+    $('historyTable').innerHTML=d.rows.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td></tr>`}).join('')||empty(6);
     $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
     $('historyPrev').disabled=historyState.page<=1;
     $('historyNext').disabled=historyState.page>=historyState.pages;
@@ -1403,7 +1451,7 @@ function renderCouriers(){
     else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button>`;
     else accessActions=`<button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button>`;
 
-    const statusLabel={NA_RUA:'NA RUA',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+    const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
     const last=x.last_departure?localDate(x.last_departure):'Nunca';
     const pixStatus=x.pix_status||(x.pix_key?'VERIFIED':'NONE');
     const pix=x.pix_key
@@ -1442,7 +1490,8 @@ async function verifyCourierPix(id){
 }
 async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/approve',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
-async function releaseDispatch(id){if(!confirm('Liberar este motoboy para uma nova saída?'))return;try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
+async function adminStartReturn(id){if(!confirm('Confirmar que este motoboy terminou as entregas e iniciou o retorno para a loja?'))return;try{await api('/api/admin/dispatches/'+id+'/start-return',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_RETURN_START'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
+async function releaseDispatch(id){if(!confirm('Confirmar que o motoboy chegou à loja e está disponível novamente?'))return;try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_ARRIVAL'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
 async function toggleCourier(id,active){try{await api('/api/admin/couriers/'+id,{method:'PATCH',body:JSON.stringify({active})});await loadAdmin()}catch(err){alert(err.message)}}
 async function resetCourierPassword(id,name){
   const p1=prompt(`Digite uma senha temporária para ${name} (mínimo 8 caracteres):`);
@@ -1759,7 +1808,7 @@ async function submitDeliveryConfirmation(e){
 
     message('deliveryConfirmMsg',d.message||'Entrega confirmada.','ok');
     $('deliveryConfirmCode').value='';
-    await loadCourierDeliveries();
+    await loadCourier();
     setTimeout(()=>closeDeliveryConfirmModal(),1100);
   }catch(err){
     message('deliveryConfirmMsg',err.message,'err');
@@ -1777,13 +1826,19 @@ async function loadCourier(){
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
   $('departureSubmit').disabled=!!d.mustChangePassword;
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
-  $('myHistory').innerHTML=d.recent.map(x=>`<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></td></tr>`).join('')||empty(3);
+  $('myHistory').innerHTML=d.recent.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span></td></tr>`}).join('')||empty(3);
 
   $('departureCard').classList.remove('hidden');
   if(!$('orderFields').querySelector('.order-row'))resetOrderFields();
 
   if(d.active){
-    $('activeDispatch').innerHTML=`<div class="hero"><h2>🟠 Você está na rua</h2>${ordersHtml(d.active)}<div style="margin-top:14px">Saiu às <b>${localTime(d.active.departed_at)}</b></div><div style="margin-top:8px">Tempo na rua<div class="big live" data-start-ms="${Date.parse(d.active.departed_at)}">${elapsedFromMs(Date.parse(d.active.departed_at))}</div></div></div>`;
+    const x=d.active;
+    const returning=x.operational_stage==='RETURNING';
+    const stageStart=returning?(x.returning_at||x.departed_at):x.departed_at;
+    const action=returning
+      ? `<button class="btn primary" style="margin-top:16px" onclick="arriveAtStore(${x.id})">✓ Cheguei na loja</button>`
+      : `<button class="btn outline" style="margin-top:16px" onclick="startMyReturn(${x.id})">↩ Todos entregues — iniciar retorno</button>`;
+    $('activeDispatch').innerHTML=`<div class="hero ${returning?'return-hero':''}"><h2>${returning?'🔵 Retornando para a loja':'🟠 Em rota'}</h2>${ordersHtml(x)}<div class="op-progress"><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div><div style="margin-top:14px">${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></div><div style="margin-top:8px">${returning?'Tempo de retorno':'Tempo de rota'}<div class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</div></div><div class="small" style="margin-top:8px">Meta desta etapa: <b>${x.sla_minutes} min</b> • Tempo total fora: ${x.total_elapsed_minutes} min</div>${action}</div>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');
       note.id='currentDepartureNote';
@@ -1800,6 +1855,21 @@ async function loadCourier(){
   loadMyPix();
   loadCourierDeliveries();
 }
+async function startMyReturn(id){
+  if(!confirm('Confirmar que você terminou todas as entregas desta saída e está retornando para a loja?'))return;
+  try{
+    await api('/api/courier/dispatches/'+id+'/start-return',{method:'POST'});
+    await loadCourier();
+  }catch(err){alert(err.message)}
+}
+async function arriveAtStore(id){
+  if(!confirm('Confirmar que você já chegou à loja? Isso encerra o tempo fora e deixa você disponível.'))return;
+  try{
+    await api('/api/courier/dispatches/'+id+'/arrive',{method:'POST'});
+    await loadCourier();
+  }catch(err){alert(err.message)}
+}
+
 async function depart(e){
   e.preventDefault();
   message('departureMsg','','');
@@ -2639,19 +2709,29 @@ function timeSince(iso){
 async function loadOperations(){
   if(me?.role!=='admin')return;
   try{
-    if(!dashboard)await loadAdmin();
+    await loadAdmin();
     const p=await api('/api/admin/peak');
     $('peakStrip').innerHTML=`
       <div class="peak-item"><div class="label">Pedidos 15 min</div><div class="metric">${p.orders.last15}</div></div>
       <div class="peak-item"><div class="label">Pedidos 30 min</div><div class="metric">${p.orders.last30}</div></div>
       <div class="peak-item"><div class="label">Pedidos 60 min</div><div class="metric">${p.orders.last60}</div></div>
-      <div class="peak-item"><div class="label">Na rua</div><div class="metric">${p.team.on_road}</div></div>
-      <div class="peak-item"><div class="label">Disponíveis</div><div class="metric">${p.team.available}</div></div>
-      <div class="peak-item"><div class="label">Offline</div><div class="metric">${p.team.offline}</div></div>`;
+      <div class="peak-item"><div class="label">Em rota</div><div class="metric">${p.team.en_route??0}</div></div>
+      <div class="peak-item"><div class="label">Retornando</div><div class="metric">${p.team.returning??0}</div></div>
+      <div class="peak-item"><div class="label">Disponíveis</div><div class="metric">${p.team.available}</div></div>`;
+
+    const tm=dashboard.timeMetrics||{};
+    $('timeKpis').innerHTML=`
+      <div class="sla-kpi"><div class="label">Média rota hoje</div><div class="metric">${tm.avgRouteMinutes||0}<span class="small"> min</span></div></div>
+      <div class="sla-kpi"><div class="label">Média retorno hoje</div><div class="metric">${tm.avgReturnMinutes||0}<span class="small"> min</span></div></div>
+      <div class="sla-kpi"><div class="label">Tempo total médio</div><div class="metric">${tm.avgTotalMinutes||0}<span class="small"> min</span></div></div>
+      <div class="sla-kpi"><div class="label">Dentro do SLA</div><div class="metric">${tm.withinSlaPercent===null?'—':tm.withinSlaPercent+'%'}</div><div class="small muted">${tm.measured||0} rota(s) medida(s)</div></div>`;
+
+    const exceptions=dashboard.exceptions||[];
+    $('operationalExceptions').innerHTML=exceptions.map(x=>`<div class="exception-item ${x.sla_state}"><div><b>${escapeHtml(x.courier_name)}</b><div class="small muted">${escapeHtml(dispatchProgressText(x))}</div></div><div><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div><div><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><div class="small muted">${x.stage_elapsed_minutes}/${x.sla_minutes} min</div></div><div>${dispatchActionHtml(x)}</div></div>`).join('')||'<div class="empty">✓ Nenhuma exceção de tempo agora.</div>';
 
     $('teamNow').innerHTML=dashboard.couriers.filter(x=>x.approval_status==='APPROVED').map(x=>{
-      const label={NA_RUA:'NA RUA',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
-      const detail=x.operational_status==='DISPONIVEL'?`Última saída há ${timeSince(x.last_departure)}`:(x.is_online?'Conectado':'Sem presença recente');
+      const label={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+      const detail=x.operational_status==='DISPONIVEL'?`Última saída há ${timeSince(x.last_departure)}`:(x.operational_status==='RETORNANDO'?'Em retorno para a loja':(x.is_online?'Conectado':'Sem presença recente'));
       return `<div class="team-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${escapeHtml(x.name)}</b><span class="team-status ${x.operational_status}">${label}</span></div><div class="small muted" style="margin-top:7px">${detail}</div><div class="small" style="margin-top:5px">${x.today_count} pedido(s) hoje</div></div>`;
     }).join('')||'<div class="empty">Nenhum motoboy.</div>';
   }catch(err){alert(err.message)}
@@ -2711,6 +2791,14 @@ async function saveAlertSettings(){
   try{
     const d=await api('/api/admin/settings/alerts',{method:'PUT',body:JSON.stringify({attention:Number($('alertAttention').value),delayed:Number($('alertDelayed').value),critical:Number($('alertCritical').value)})});
     alertSettings=d.alerts;message('settingsMsg','Alertas atualizados.','ok');
+  }catch(err){message('settingsMsg',err.message,'err')}
+}
+async function saveOperationalSla(){
+  try{
+    const route={};for(let i=1;i<=5;i++)route[i]=Number($('slaRoute'+i).value);
+    const d=await api('/api/admin/settings/operational-sla',{method:'PUT',body:JSON.stringify({route,returnMinutes:Number($('slaReturn').value),criticalOverMinutes:Number($('slaCriticalOver').value)})});
+    operationalSla=d.sla;message('settingsMsg','SLA operacional atualizado. Novas saídas usarão estas metas.','ok');
+    await loadAdmin();
   }catch(err){message('settingsMsg',err.message,'err')}
 }
 
@@ -2780,6 +2868,9 @@ const auditNames={
   DEPARTURE_REGISTERED:'Saída registrada',
   COURIER_RELEASED:'Motoboy liberado para nova saída',
   ALERT_SETTINGS_UPDATED:'Configuração de alertas alterada',
+  OPERATIONAL_SLA_UPDATED:'SLA operacional alterado',
+  DISPATCH_RETURN_STARTED:'Retorno iniciado',
+  DISPATCH_RETURN_COMPLETED:'Retorno concluído',
   PUBLIC_REGISTRATION_SETTING_CHANGED:'Configuração de cadastro público alterada',
   FULL_HISTORY_EXPORTED:'Backup completo exportado',
   PERIOD_REPORT_EXPORTED:'Relatório por período exportado',
@@ -2920,9 +3011,9 @@ const socket=io();
 socket.on('connect',()=>{updateConnectionState();if(me?.role==='courier')flushOfflineQueue()});
 socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')});
 socket.on('server:time',d=>syncServerTime(d.now));
-socket.on('dispatch:changed',()=>{if(me?.role==='admin'){loadAdmin();if($('wallboard')?.classList.contains('active'))loadWallboard();}else if(me?.role==='courier')loadCourier()});
+socket.on('dispatch:changed',()=>{if(me?.role==='admin'){loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();});if($('wallboard')?.classList.contains('active'))loadWallboard();}else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
-socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin()});
+socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();})});
 socket.on('payment:changed',()=>{
   if(me?.role==='admin'&&$('payments')?.classList.contains('active'))loadPayments();
   if(me?.role==='courier'){loadMyPayment();loadMyPix();}

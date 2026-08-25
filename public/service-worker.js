@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v2.6.1-logo";
+const CACHE = "despachefull-v2.7.0-operational-time";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {

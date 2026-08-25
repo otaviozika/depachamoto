@@ -1,4 +1,6 @@
-# DespachaMoto 1.7 — Controle Operacional Inteligente
+# DespacheFull 2.7.0 — Controle de Tempo Operacional
+
+> Base oficial: rebranding da versão DespachaMoto v2.5.4. Banco de dados, integrações, regras operacionais, iFood, pagamentos, PIX, KDS e histórico permanecem compatíveis.
 
 Perfis continuam sendo SOMENTE:
 - Admin
@@ -6,7 +8,16 @@ Perfis continuam sendo SOMENTE:
 
 Nenhum login de operador foi adicionado.
 
-## Principais novidades
+## Principais recursos
+
+- ciclo EM ROTA → RETORNANDO → DISPONÍVEL;
+- SLA dinâmico de 1 a 5 pedidos + SLA de retorno;
+- transição automática para retorno quando todas as entregas iFood rastreáveis forem resolvidas;
+- botão `Cheguei na loja` para encerrar o tempo fora;
+- painel de exceções por tempo;
+- médias de rota, retorno, tempo total e aderência ao SLA;
+
+## Recursos preservados
 
 - trava transacional contra pedido ativo duplicado;
 - proteção para duas requisições simultâneas tentarem usar o mesmo pedido;

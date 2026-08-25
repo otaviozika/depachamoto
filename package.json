@@ -1,6 +1,6 @@
 {
   "name": "despachefull",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -18,7 +18,8 @@
     "selftest:wallboard": "node scripts/selftest-wallboard.js",
     "selftest:dashboard-theme": "node scripts/selftest-dashboard-theme.js",
     "selftest:session-expiry": "node scripts/selftest-session-expiry.js",
-    "selftest:rebrand": "node scripts/selftest-rebrand.js"
+    "selftest:rebrand": "node scripts/selftest-rebrand.js",
+    "selftest:operational-time": "node scripts/selftest-operational-time.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

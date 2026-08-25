@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.6.1";
+const VERSION = "2.7.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -204,6 +204,35 @@ ADD COLUMN IF NOT EXISTS closed_reason TEXT;
 
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS client_token TEXT;
+
+-- v2.7: ciclo operacional da rota e snapshots de SLA.
+-- Mantemos status ON_ROAD/RELEASED para compatibilidade com todas as versões anteriores.
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS operational_stage TEXT NOT NULL DEFAULT 'EN_ROUTE';
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS returning_at TIMESTAMPTZ;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS returned_at TIMESTAMPTZ;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS returned_by INTEGER REFERENCES users(id);
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS return_source TEXT;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS return_reason TEXT;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS route_sla_minutes INTEGER;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS return_sla_minutes INTEGER;
+
+-- Histórico antigo continua válido: saídas já liberadas são consideradas concluídas.
+UPDATE dispatches
+SET operational_stage='COMPLETED',
+    returned_at=COALESCE(returned_at,released_at),
+    return_source=COALESCE(return_source,'LEGACY')
+WHERE status='RELEASED' AND operational_stage<>'COMPLETED';
+
+CREATE INDEX IF NOT EXISTS dispatches_active_stage_idx
+ON dispatches(operational_stage,departed_at DESC) WHERE status='ON_ROAD';
 
 CREATE TABLE IF NOT EXISTS dispatch_orders (
   id BIGSERIAL PRIMARY KEY,
@@ -592,6 +621,13 @@ INSERT INTO app_settings(setting_key,setting_value) VALUES
   ('alert_attention_minutes','40'),
   ('alert_delayed_minutes','50'),
   ('alert_critical_minutes','60'),
+  ('route_sla_1_minutes','25'),
+  ('route_sla_2_minutes','30'),
+  ('route_sla_3_minutes','35'),
+  ('route_sla_4_minutes','40'),
+  ('route_sla_5_minutes','45'),
+  ('return_sla_minutes','15'),
+  ('sla_critical_over_minutes','15'),
   ('public_registration_enabled','true'),
   ('notify_attention','true'),
   ('notify_delayed','true'),
@@ -1963,6 +1999,14 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
               updated_at=NOW()
           WHERE ifood_order_id=$1
         `, [String(event.orderId)]);
+
+        const linkedDispatch = (await pool.query(
+          "SELECT dispatch_id FROM ifood_dispatch_links WHERE ifood_order_id=$1",
+          [String(event.orderId)]
+        )).rows[0];
+        if (linkedDispatch?.dispatch_id) {
+          await maybeAutoMarkDispatchReturning(linkedDispatch.dispatch_id, { source: "AUTO_IFOOD_CONCLUDED" });
+        }
       }
 
       if (event.orderId && dispatchLifecycle === "CANCELLED") {
@@ -2327,8 +2371,13 @@ async function closeActiveDispatch(client, courierId, releasedBy, reason, closed
   const q = await client.query(`
     UPDATE dispatches
     SET status='RELEASED',
+        operational_stage='COMPLETED',
         released_at=$1::timestamptz,
+        returned_at=COALESCE(returned_at,$1::timestamptz),
         released_by=$2,
+        returned_by=COALESCE(returned_by,$2),
+        return_source=COALESCE(return_source,'AUTO_CLOSE'),
+        return_reason=COALESCE(return_reason,$3),
         closed_reason=$3
     WHERE id=$4 AND status='ON_ROAD'
     RETURNING *
@@ -2351,6 +2400,9 @@ async function createDispatchTransaction({
   departedAt = null,
   ifoodLinks = []
 }) {
+  const operationalSla = await getOperationalSlaSettings();
+  const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
+  const returnSlaMinutes = operationalSla.returnMinutes;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -2385,10 +2437,12 @@ async function createDispatchTransaction({
     const result = await client.query(`
       INSERT INTO dispatches(
         dispatch_code,order_number,courier_id,
-        registered_by,registration_source,admin_reason,client_token,departed_at
+        registered_by,registration_source,admin_reason,client_token,departed_at,
+        operational_stage,route_sla_minutes,return_sla_minutes
       )
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz)
-      RETURNING id,dispatch_code,order_number,departed_at,status,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,'EN_ROUTE',$9,$10)
+      RETURNING id,dispatch_code,order_number,departed_at,status,operational_stage,
+                route_sla_minutes,return_sla_minutes,
                 registered_by,registration_source,admin_reason
     `, [
       code,
@@ -2398,7 +2452,9 @@ async function createDispatchTransaction({
       source,
       adminReason || null,
       clientToken || null,
-      effectiveDeparture
+      effectiveDeparture,
+      routeSlaMinutes,
+      returnSlaMinutes
     ]);
 
     const dispatch = result.rows[0];
@@ -2476,53 +2532,41 @@ async function createDispatchTransaction({
 
 async function checkTimeNotifications() {
   try {
-    const alerts = await getAlertSettings();
+    const sla = await getOperationalSlaSettings();
     const rows = (await pool.query(`
-      SELECT d.id,d.departed_at,u.id AS courier_id,u.name AS courier_name,
-             EXTRACT(EPOCH FROM (NOW()-d.departed_at))/60 AS minutes,
+      SELECT d.id,d.departed_at,d.returning_at,d.operational_stage,
+             d.route_sla_minutes,d.return_sla_minutes,
+             u.id AS courier_id,u.name AS courier_name,
              ${orderArraySql("d")}
       FROM dispatches d
       JOIN users u ON u.id=d.courier_id
       WHERE d.status='ON_ROAD'
     `)).rows;
 
-    for (const row of rows) {
-      const minutes = Number(row.minutes || 0);
-      const orders = Array.isArray(row.order_numbers) ? row.order_numbers.join(", ") : row.order_number;
+    const progressMap = await getDispatchProgressMap(rows.map(r => r.id));
+    const enriched = decorateOperationalDispatches(rows, progressMap, sla);
 
-      if (minutes >= alerts.attention) {
-        await createNotification({
-          type: "TIME_ATTENTION",
-          severity: "warning",
-          title: "Motoboy em atenção",
-          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
-          courierId: row.courier_id,
-          dispatchId: row.id,
-          uniqueKey: `time:${row.id}:attention`
-        });
-      }
-      if (minutes >= alerts.delayed) {
-        await createNotification({
-          type: "TIME_DELAYED",
-          severity: "delayed",
-          title: "Saída demorada",
-          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
-          courierId: row.courier_id,
-          dispatchId: row.id,
-          uniqueKey: `time:${row.id}:delayed`
-        });
-      }
-      if (minutes >= alerts.critical) {
-        await createNotification({
-          type: "TIME_CRITICAL",
-          severity: "critical",
-          title: "Tempo crítico",
-          message: `${row.courier_name} está na rua há ${Math.floor(minutes)} min. ${orders}`,
-          courierId: row.courier_id,
-          dispatchId: row.id,
-          uniqueKey: `time:${row.id}:critical`
-        });
-      }
+    for (const row of enriched) {
+      if (row.sla_state === "NORMAL") continue;
+
+      const config = {
+        ATTENTION: { type: "TIME_ATTENTION", severity: "warning", label: "Atenção operacional" },
+        DELAYED: { type: "TIME_DELAYED", severity: "delayed", label: "Meta de tempo excedida" },
+        CRITICAL: { type: "TIME_CRITICAL", severity: "critical", label: "Tempo crítico" }
+      }[row.sla_state];
+      if (!config) continue;
+
+      const stageLabel = row.operational_stage === "RETURNING" ? "retornando" : "em rota";
+      const orders = Array.isArray(row.order_numbers) ? row.order_numbers.join(", ") : row.order_number;
+      await createNotification({
+        type: config.type,
+        severity: config.severity,
+        title: `${config.label} • ${row.courier_name}`,
+        message: `${row.courier_name} está ${stageLabel} há ${row.stage_elapsed_minutes} min (meta ${row.sla_minutes} min). ${orders}`,
+        courierId: row.courier_id,
+        dispatchId: row.id,
+        uniqueKey: `time:${row.id}:${row.operational_stage}:${row.sla_state.toLowerCase()}`
+      });
     }
   } catch (e) {
     console.error("Falha ao verificar alertas de tempo:", e.message);
@@ -2541,6 +2585,216 @@ async function getAlertSettings() {
     critical: obj.alert_critical_minutes || 60
   };
 }
+
+async function getOperationalSlaSettings() {
+  const keys = [
+    'route_sla_1_minutes','route_sla_2_minutes','route_sla_3_minutes',
+    'route_sla_4_minutes','route_sla_5_minutes','return_sla_minutes','sla_critical_over_minutes'
+  ];
+  const q = await pool.query(
+    `SELECT setting_key,setting_value FROM app_settings WHERE setting_key = ANY($1::text[])`,
+    [keys]
+  );
+  const obj = Object.fromEntries(q.rows.map(r => [r.setting_key, Number(r.setting_value)]));
+  return {
+    route: {
+      1: obj.route_sla_1_minutes || 25,
+      2: obj.route_sla_2_minutes || 30,
+      3: obj.route_sla_3_minutes || 35,
+      4: obj.route_sla_4_minutes || 40,
+      5: obj.route_sla_5_minutes || 45
+    },
+    returnMinutes: obj.return_sla_minutes || 15,
+    criticalOverMinutes: obj.sla_critical_over_minutes || 15
+  };
+}
+
+function operationalRouteSlaMinutes(orderCount, sla) {
+  const count = Math.max(1, Math.min(5, Number(orderCount) || 1));
+  return Number(sla?.route?.[count] || sla?.route?.[String(count)] || 25);
+}
+
+function operationalStage(value, status = "ON_ROAD") {
+  if (String(status || "").toUpperCase() === "RELEASED") return "COMPLETED";
+  return String(value || "EN_ROUTE").toUpperCase() === "RETURNING" ? "RETURNING" : "EN_ROUTE";
+}
+
+function operationalTiming(row, progress, sla, nowMs = Date.now()) {
+  const stage = operationalStage(row.operational_stage, row.status);
+  const totalOrders = Math.max(1, Number(progress?.total_orders || 0) || (Array.isArray(row.order_numbers) ? row.order_numbers.length : 1));
+  const routeTarget = Number(row.route_sla_minutes) || operationalRouteSlaMinutes(totalOrders, sla);
+  const returnTarget = Number(row.return_sla_minutes) || Number(sla.returnMinutes || 15);
+  const baseIso = stage === "RETURNING" ? (row.returning_at || row.departed_at) : row.departed_at;
+  const baseMs = Date.parse(baseIso || new Date(nowMs).toISOString());
+  const departedMs = Date.parse(row.departed_at || new Date(nowMs).toISOString());
+  const stageElapsed = Math.max(0, Math.floor((nowMs - baseMs) / 60000));
+  const totalElapsed = Math.max(0, Math.floor((nowMs - departedMs) / 60000));
+  const target = stage === "RETURNING" ? returnTarget : routeTarget;
+  const attentionAt = Math.max(1, Math.ceil(target * 0.8));
+  const criticalAt = target + Number(sla.criticalOverMinutes || 15);
+  let state = "NORMAL";
+  if (stageElapsed >= criticalAt) state = "CRITICAL";
+  else if (stageElapsed > target) state = "DELAYED";
+  else if (stageElapsed >= attentionAt) state = "ATTENTION";
+  return {
+    operational_stage: stage,
+    stage_elapsed_minutes: stageElapsed,
+    total_elapsed_minutes: totalElapsed,
+    sla_minutes: target,
+    sla_attention_at: attentionAt,
+    sla_critical_at: criticalAt,
+    sla_state: state
+  };
+}
+
+async function getDispatchProgressMap(dispatchIds) {
+  const ids = [...new Set((dispatchIds || []).map(Number).filter(Number.isFinite))];
+  const map = new Map();
+  if (!ids.length) return map;
+
+  const rows = (await pool.query(`
+    SELECT d.id AS dispatch_id,
+      COUNT(DISTINCT o.id)::int AS total_orders,
+      COUNT(DISTINCT o.id) FILTER (
+        WHERE l.ifood_order_id IS NOT NULL
+          AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
+          AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
+      )::int AS trackable_orders,
+      COUNT(DISTINCT o.id) FILTER (
+        WHERE l.ifood_order_id IS NOT NULL
+          AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
+          AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
+          AND UPPER(COALESCE(io.status,''))<>'CANCELLED'
+          AND (
+            UPPER(COALESCE(io.status,'')) IN ('CONCLUDED','DELIVERED')
+            OR UPPER(COALESCE(dc.status,'')) IN ('VERIFIED','CONCLUDED')
+          )
+      )::int AS delivered_orders,
+      COUNT(DISTINCT o.id) FILTER (
+        WHERE l.ifood_order_id IS NOT NULL
+          AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
+          AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
+          AND (
+            UPPER(COALESCE(io.status,'')) IN ('CONCLUDED','DELIVERED','CANCELLED')
+            OR UPPER(COALESCE(dc.status,'')) IN ('VERIFIED','CONCLUDED')
+          )
+      )::int AS resolved_orders
+    FROM dispatches d
+    LEFT JOIN dispatch_orders o ON o.dispatch_id=d.id
+    LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
+    LEFT JOIN ifood_orders io ON io.order_id=l.ifood_order_id
+    LEFT JOIN ifood_delivery_confirmations dc ON dc.ifood_order_id=l.ifood_order_id
+    WHERE d.id = ANY($1::bigint[])
+    GROUP BY d.id
+  `, [ids])).rows;
+
+  for (const r of rows) {
+    const progress = {
+      total_orders: Number(r.total_orders || 0),
+      trackable_orders: Number(r.trackable_orders || 0),
+      delivered_orders: Number(r.delivered_orders || 0),
+      resolved_orders: Number(r.resolved_orders || 0)
+    };
+    progress.all_orders_trackable = progress.total_orders > 0 && progress.trackable_orders === progress.total_orders;
+    progress.all_orders_resolved = progress.all_orders_trackable && progress.resolved_orders >= progress.total_orders;
+    map.set(Number(r.dispatch_id), progress);
+  }
+  return map;
+}
+
+function decorateOperationalDispatches(rows, progressMap, sla, nowMs = Date.now()) {
+  return (rows || []).map(row => {
+    const progress = progressMap.get(Number(row.id)) || {
+      total_orders: Array.isArray(row.order_numbers) ? row.order_numbers.length : 1,
+      trackable_orders: 0,
+      delivered_orders: 0,
+      resolved_orders: 0,
+      all_orders_trackable: false,
+      all_orders_resolved: false
+    };
+    return { ...row, ...progress, ...operationalTiming(row, progress, sla, nowMs) };
+  });
+}
+
+async function markDispatchReturning(dispatchId, { actorUserId = null, source = "MANUAL", reason = null } = {}) {
+  const q = await pool.query(`
+    UPDATE dispatches
+    SET operational_stage='RETURNING',
+        returning_at=COALESCE(returning_at,NOW()),
+        return_source=COALESCE(return_source,$2),
+        return_reason=COALESCE(return_reason,$3)
+    WHERE id=$1 AND status='ON_ROAD' AND COALESCE(operational_stage,'EN_ROUTE')<>'RETURNING'
+    RETURNING *
+  `, [dispatchId, source, reason]);
+
+  if (!q.rowCount) return null;
+  if (actorUserId) {
+    await auditBestEffort(actorUserId, "DISPATCH_RETURN_STARTED", "dispatch", dispatchId, { source, reason });
+  }
+  io.emit("dispatch:changed");
+  return q.rows[0];
+}
+
+async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, source = "AUTO_IFOOD" } = {}) {
+  const progressMap = await getDispatchProgressMap([dispatchId]);
+  const progress = progressMap.get(Number(dispatchId));
+  if (!progress?.all_orders_resolved) return null;
+  return markDispatchReturning(dispatchId, {
+    actorUserId,
+    source,
+    reason: "ALL_TRACKABLE_ORDERS_RESOLVED"
+  });
+}
+
+async function completeDispatchReturn({ dispatchId, courierId = null, actorUserId, source = "COURIER_ARRIVAL", reason = "ARRIVED_AT_STORE" }) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const params = [dispatchId];
+    let courierClause = "";
+    if (courierId) {
+      params.push(courierId);
+      courierClause = ` AND courier_id=$${params.length}`;
+    }
+    const active = await client.query(`
+      SELECT * FROM dispatches
+      WHERE id=$1 AND status='ON_ROAD'${courierClause}
+      FOR UPDATE
+    `, params);
+    if (!active.rowCount) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const q = await client.query(`
+      UPDATE dispatches
+      SET status='RELEASED',
+          operational_stage='COMPLETED',
+          returning_at=CASE WHEN operational_stage='RETURNING' THEN returning_at ELSE returning_at END,
+          returned_at=NOW(),
+          returned_by=$2,
+          released_at=NOW(),
+          released_by=$2,
+          return_source=COALESCE(return_source,$3),
+          return_reason=COALESCE(return_reason,$4),
+          closed_reason=COALESCE(closed_reason,$4)
+      WHERE id=$1 AND status='ON_ROAD'
+      RETURNING *
+    `, [dispatchId, actorUserId, source, reason]);
+
+    await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+    await client.query("COMMIT");
+    await auditBestEffort(actorUserId, "DISPATCH_RETURN_COMPLETED", "dispatch", dispatchId, { source, reason });
+    io.emit("dispatch:changed");
+    return q.rows[0] || null;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function getSPDate() {
   const q = await pool.query("SELECT to_char(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS d");
   return q.rows[0].d;
@@ -2961,12 +3215,20 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
   await touchPresence(req.session.user.id, "COURIER_WEB");
   const user = await currentUser(req.session.user.id);
 
-  const active = (await pool.query(`
-    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,${orderArraySql("d")}
+  let active = (await pool.query(`
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
+           d.operational_stage,d.returning_at,d.returned_at,
+           d.route_sla_minutes,d.return_sla_minutes,${orderArraySql("d")}
     FROM dispatches d
     WHERE d.courier_id=$1 AND d.status='ON_ROAD'
     ORDER BY d.id DESC LIMIT 1
   `, [req.session.user.id])).rows[0] || null;
+
+  const operationalSla = await getOperationalSlaSettings();
+  if (active) {
+    const progressMap = await getDispatchProgressMap([active.id]);
+    active = decorateOperationalDispatches([active], progressMap, operationalSla)[0];
+  }
 
   const stats = (await pool.query(`
     SELECT
@@ -2985,7 +3247,7 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
   `, [req.session.user.id])).rows[0];
 
   const recent = (await pool.query(`
-    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.released_at,${orderArraySql("d")}
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.operational_stage,d.returning_at,d.returned_at,d.released_at,${orderArraySql("d")}
     FROM dispatches d
     WHERE d.courier_id=$1
     ORDER BY d.id DESC LIMIT 30
@@ -2995,12 +3257,57 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     active,
     stats,
     recent,
+    operational_sla: operationalSla,
     mustChangePassword: !!user?.must_change_password,
     server_now: new Date().toISOString()
   });
 }));
 
 
+
+app.post("/api/courier/dispatches/:id/start-return", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const owned = (await pool.query(`
+    SELECT id,operational_stage FROM dispatches
+    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
+  `, [req.params.id, req.session.user.id])).rows[0];
+  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
+
+  if (operationalStage(owned.operational_stage) === "RETURNING") {
+    return res.json({ ok: true, already_returning: true, server_now: new Date().toISOString() });
+  }
+
+  const dispatch = await markDispatchReturning(req.params.id, {
+    actorUserId: req.session.user.id,
+    source: "COURIER_MANUAL",
+    reason: "COURIER_CONFIRMED_ALL_DELIVERED"
+  });
+  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const owned = (await pool.query(`
+    SELECT id,operational_stage FROM dispatches
+    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
+  `, [req.params.id, req.session.user.id])).rows[0];
+  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
+  if (operationalStage(owned.operational_stage) !== "RETURNING") {
+    return res.status(409).json({
+      error: "Primeiro confirme que terminou as entregas e iniciou o retorno.",
+      code: "RETURN_NOT_STARTED"
+    });
+  }
+
+  const dispatch = await completeDispatchReturn({
+    dispatchId: req.params.id,
+    courierId: req.session.user.id,
+    actorUserId: req.session.user.id,
+    source: "COURIER_ARRIVAL",
+    reason: "COURIER_CONFIRMED_ARRIVAL"
+  });
+  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+}));
 
 app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
@@ -3413,6 +3720,11 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     io.emit("delivery:changed", {
       courier_id: req.session.user.id,
       order_id: row.order_id
+    });
+
+    await maybeAutoMarkDispatchReturning(row.dispatch_id, {
+      actorUserId: req.session.user.id,
+      source: "AUTO_IFOOD_VERIFIED"
     });
 
     setImmediate(() => {
@@ -3840,6 +4152,7 @@ app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
 
   const rows = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.released_at,d.status,
+           d.operational_stage,d.returning_at,d.returned_at,d.route_sla_minutes,d.return_sla_minutes,
            d.registration_source,d.admin_reason,d.registered_by,
            u.id AS courier_id,u.name AS courier_name,u.username,
            ru.name AS registered_by_name,
@@ -4037,10 +4350,19 @@ app.get("/api/admin/reports/period.csv", auth, adminOnly, asyncRoute(async (req,
       u.username,
       o.order_number,
       d.dispatch_code,
-      CASE d.status WHEN 'ON_ROAD' THEN 'NA RUA' ELSE 'LIBERADO' END AS status,
-      CASE WHEN d.released_at IS NULL THEN '' ELSE
-        to_char(d.released_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
-      END AS released_br
+      CASE
+        WHEN d.status='RELEASED' THEN 'CONCLUÍDO'
+        WHEN d.operational_stage='RETURNING' THEN 'RETORNANDO'
+        ELSE 'EM ROTA'
+      END AS status,
+      CASE WHEN d.returning_at IS NULL THEN '' ELSE
+        to_char(d.returning_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS returning_br,
+      CASE WHEN COALESCE(d.returned_at,d.released_at) IS NULL THEN '' ELSE
+        to_char(COALESCE(d.returned_at,d.released_at) AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS returned_br,
+      COALESCE(d.route_sla_minutes,0)::int AS route_sla_minutes,
+      COALESCE(d.return_sla_minutes,0)::int AS return_sla_minutes
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     JOIN dispatch_orders o ON o.dispatch_id=d.id
@@ -4051,14 +4373,14 @@ app.get("/api/admin/reports/period.csv", auth, adminOnly, asyncRoute(async (req,
 
   const header = [
     "Data","Horário da saída","Motoboy","Usuário","Pedido",
-    "Código da saída","Status","Liberado em"
+    "Código da saída","Status","Retorno iniciado","Chegada na loja","SLA rota (min)","SLA retorno (min)"
   ];
   const lines = [header.map(csvCell).join(";")];
 
   for (const r of rows) {
     lines.push([
       r.date_br,r.time_br,r.courier_name,r.username,r.order_number,
-      r.dispatch_code,r.status,r.released_br
+      r.dispatch_code,r.status,r.returning_br,r.returned_br,r.route_sla_minutes,r.return_sla_minutes
     ].map(csvCell).join(";"));
   }
 
@@ -4351,13 +4673,16 @@ app.get("/api/admin/peak", auth, adminOnly, asyncRoute(async (req, res) => {
 
   const team = await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE operational='NA_RUA')::int AS on_road,
+      COUNT(*) FILTER (WHERE operational IN ('NA_RUA','RETORNANDO'))::int AS on_road,
+      COUNT(*) FILTER (WHERE operational='NA_RUA')::int AS en_route,
+      COUNT(*) FILTER (WHERE operational='RETORNANDO')::int AS returning,
       COUNT(*) FILTER (WHERE operational='DISPONIVEL')::int AS available,
       COUNT(*) FILTER (WHERE operational='OFFLINE')::int AS offline,
       COUNT(*) FILTER (WHERE operational='INATIVO')::int AS inactive
     FROM (
       SELECT CASE
         WHEN u.active=false THEN 'INATIVO'
+        WHEN EXISTS(SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND d.status='ON_ROAD' AND d.operational_stage='RETURNING') THEN 'RETORNANDO'
         WHEN EXISTS(SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND d.status='ON_ROAD') THEN 'NA_RUA'
         WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
         ELSE 'OFFLINE'
@@ -5326,13 +5651,18 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       )::int AS active_orders
   `)).rows[0];
 
-  const active = (await pool.query(`
+  const activeRaw = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
+           d.operational_stage,d.returning_at,d.returned_at,
+           d.route_sla_minutes,d.return_sla_minutes,
            u.id AS courier_id,u.name AS courier_name,u.username,${orderArraySql("d")}
     FROM dispatches d JOIN users u ON u.id=d.courier_id
     WHERE d.status='ON_ROAD'
     ORDER BY d.departed_at ASC
   `)).rows;
+  const operationalSla = await getOperationalSlaSettings();
+  const progressMap = await getDispatchProgressMap(activeRaw.map(r => r.id));
+  const active = decorateOperationalDispatches(activeRaw, progressMap, operationalSla);
 
   const recent = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.released_at,d.status,
@@ -5356,6 +5686,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       (SELECT MAX(d3.departed_at) FROM dispatches d3 WHERE d3.courier_id=u.id) AS last_departure,
       CASE
         WHEN u.active=false THEN 'INATIVO'
+        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD' AND d4.operational_stage='RETURNING') THEN 'RETORNANDO'
         WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 'NA_RUA'
         WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
         ELSE 'OFFLINE'
@@ -5366,27 +5697,63 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
     ORDER BY
       CASE u.approval_status WHEN 'PENDING' THEN 0 WHEN 'REJECTED' THEN 2 ELSE 1 END,
       CASE
-        WHEN u.active=false THEN 4
-        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 1
-        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 2
-        ELSE 3
+        WHEN u.active=false THEN 5
+        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD' AND d4.operational_stage='RETURNING') THEN 1
+        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 2
+        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 3
+        ELSE 4
       END,
       u.name
   `)).rows;
+
+  const timeMetrics = (await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE status='RELEASED')::int AS completed,
+      ROUND(AVG(EXTRACT(EPOCH FROM (returning_at-departed_at))/60.0) FILTER (WHERE returning_at IS NOT NULL),1) AS avg_route_minutes,
+      ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(returned_at,released_at)-returning_at))/60.0) FILTER (WHERE returning_at IS NOT NULL AND COALESCE(returned_at,released_at) IS NOT NULL),1) AS avg_return_minutes,
+      ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(returned_at,released_at)-departed_at))/60.0) FILTER (WHERE COALESCE(returned_at,released_at) IS NOT NULL),1) AS avg_total_minutes,
+      COUNT(*) FILTER (
+        WHERE returning_at IS NOT NULL AND COALESCE(returned_at,released_at) IS NOT NULL
+          AND EXTRACT(EPOCH FROM (returning_at-departed_at))/60.0 <= COALESCE(route_sla_minutes,99999)
+          AND EXTRACT(EPOCH FROM (COALESCE(returned_at,released_at)-returning_at))/60.0 <= COALESCE(return_sla_minutes,99999)
+      )::int AS within_sla,
+      COUNT(*) FILTER (WHERE returning_at IS NOT NULL AND COALESCE(returned_at,released_at) IS NOT NULL)::int AS sla_measured
+    FROM dispatches
+    WHERE (departed_at AT TIME ZONE 'America/Sao_Paulo')::date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+  `)).rows[0];
+
+  const exceptions = active
+    .filter(x => x.sla_state !== 'NORMAL')
+    .sort((a,b) => ({CRITICAL:0,DELAYED:1,ATTENTION:2}[a.sla_state] ?? 9) - ({CRITICAL:0,DELAYED:1,ATTENTION:2}[b.sla_state] ?? 9));
 
   res.json({
     metrics: {
       activeCouriers: metrics.active_couriers,
       pendingCouriers: metrics.pending_couriers,
       onRoad: metrics.on_road,
+      enRoute: active.filter(x => x.operational_stage==='EN_ROUTE').length,
+      returning: active.filter(x => x.operational_stage==='RETURNING').length,
       available: Math.max(0, metrics.active_couriers - metrics.on_road),
       todayOrders: metrics.today_orders,
-      activeOrders: metrics.active_orders
+      activeOrders: metrics.active_orders,
+      exceptions: exceptions.length
     },
     active,
+    exceptions,
+    timeMetrics: {
+      completed: Number(timeMetrics.completed || 0),
+      avgRouteMinutes: Number(timeMetrics.avg_route_minutes || 0),
+      avgReturnMinutes: Number(timeMetrics.avg_return_minutes || 0),
+      avgTotalMinutes: Number(timeMetrics.avg_total_minutes || 0),
+      withinSlaPercent: Number(timeMetrics.sla_measured || 0) > 0
+        ? Math.round((Number(timeMetrics.within_sla || 0) / Number(timeMetrics.sla_measured)) * 100)
+        : null,
+      measured: Number(timeMetrics.sla_measured || 0)
+    },
     recent,
     couriers,
     alerts: await getAlertSettings(),
+    operationalSla,
     server_now: new Date().toISOString()
   });
 }));
@@ -5635,21 +6002,25 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
   });
 }));
 
-app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {
-  const q = await pool.query(`
-    UPDATE dispatches SET status='RELEASED',released_at=NOW(),released_by=$1
-    WHERE id=$2 AND status='ON_ROAD'
-    RETURNING *
-  `, [req.session.user.id, req.params.id]);
-
-  if (!q.rowCount) return res.status(404).json({ error: "Saída ativa não encontrada." });
-
-  await audit(req.session.user.id, "COURIER_RELEASED", "dispatch", q.rows[0].id, {
-    order_number: q.rows[0].order_number
+app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(async (req, res) => {
+  const dispatch = await markDispatchReturning(req.params.id, {
+    actorUserId: req.session.user.id,
+    source: "ADMIN_MANUAL",
+    reason: String(req.body?.reason || "ADMIN_STARTED_RETURN").slice(0,200)
   });
+  if (!dispatch) return res.status(404).json({ error: "Saída ativa em rota não encontrada." });
+  res.json({ dispatch, server_now: new Date().toISOString() });
+}));
 
-  io.emit("dispatch:changed");
-  res.json({ dispatch: q.rows[0], server_now: new Date().toISOString() });
+app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {
+  const dispatch = await completeDispatchReturn({
+    dispatchId: req.params.id,
+    actorUserId: req.session.user.id,
+    source: "ADMIN_RELEASE",
+    reason: String(req.body?.reason || "ADMIN_CONFIRMED_RETURN").slice(0,200)
+  });
+  if (!dispatch) return res.status(404).json({ error: "Saída ativa não encontrada." });
+  res.json({ dispatch, server_now: new Date().toISOString() });
 }));
 
 app.get("/api/admin/security", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -5705,10 +6076,19 @@ app.get("/api/admin/backup/dispatches.csv", auth, adminOnly, asyncRoute(async (r
       u.username,
       o.order_number,
       d.dispatch_code,
-      CASE d.status WHEN 'ON_ROAD' THEN 'NA RUA' ELSE 'LIBERADO' END AS status,
-      CASE WHEN d.released_at IS NULL THEN '' ELSE
-        to_char(d.released_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
-      END AS released_br
+      CASE
+        WHEN d.status='RELEASED' THEN 'CONCLUÍDO'
+        WHEN d.operational_stage='RETURNING' THEN 'RETORNANDO'
+        ELSE 'EM ROTA'
+      END AS status,
+      CASE WHEN d.returning_at IS NULL THEN '' ELSE
+        to_char(d.returning_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS returning_br,
+      CASE WHEN COALESCE(d.returned_at,d.released_at) IS NULL THEN '' ELSE
+        to_char(COALESCE(d.returned_at,d.released_at) AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS')
+      END AS returned_br,
+      COALESCE(d.route_sla_minutes,0)::int AS route_sla_minutes,
+      COALESCE(d.return_sla_minutes,0)::int AS return_sla_minutes
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     JOIN dispatch_orders o ON o.dispatch_id=d.id
@@ -5717,14 +6097,14 @@ app.get("/api/admin/backup/dispatches.csv", auth, adminOnly, asyncRoute(async (r
 
   const header = [
     "Data","Horário da saída","Motoboy","Usuário","Pedido",
-    "Código da saída","Status","Liberado em"
+    "Código da saída","Status","Retorno iniciado","Chegada na loja","SLA rota (min)","SLA retorno (min)"
   ];
   const lines = [header.map(csvCell).join(";")];
 
   for (const r of rows) {
     lines.push([
       r.date_br,r.time_br,r.courier_name,r.username,r.order_number,
-      r.dispatch_code,r.status,r.released_br
+      r.dispatch_code,r.status,r.returning_br,r.returned_br,r.route_sla_minutes,r.return_sla_minutes
     ].map(csvCell).join(";"));
   }
 
@@ -5737,6 +6117,37 @@ app.get("/api/admin/backup/dispatches.csv", auth, adminOnly, asyncRoute(async (r
     rows: rows.length,
     ...requestMeta(req)
   });
+}));
+
+app.get("/api/admin/settings/operational-sla", auth, adminOnly, asyncRoute(async (req, res) => {
+  res.json({ sla: await getOperationalSlaSettings() });
+}));
+
+app.put("/api/admin/settings/operational-sla", auth, adminOnly, asyncRoute(async (req, res) => {
+  const route = req.body?.route || {};
+  const values = [1,2,3,4,5].map(n => Number(route[n] ?? route[String(n)]));
+  const returnMinutes = Number(req.body?.returnMinutes);
+  const criticalOverMinutes = Number(req.body?.criticalOverMinutes);
+
+  if (!values.every(Number.isInteger) || values.some(v => v < 5 || v > 180)) {
+    return res.status(400).json({ error: "As metas de rota devem ser minutos inteiros entre 5 e 180." });
+  }
+  if (!Number.isInteger(returnMinutes) || returnMinutes < 3 || returnMinutes > 120) {
+    return res.status(400).json({ error: "A meta de retorno deve ficar entre 3 e 120 minutos." });
+  }
+  if (!Number.isInteger(criticalOverMinutes) || criticalOverMinutes < 1 || criticalOverMinutes > 120) {
+    return res.status(400).json({ error: "O limite crítico adicional deve ficar entre 1 e 120 minutos." });
+  }
+
+  for (let i=0;i<5;i++) await setSetting(`route_sla_${i+1}_minutes`, values[i]);
+  await setSetting('return_sla_minutes', returnMinutes);
+  await setSetting('sla_critical_over_minutes', criticalOverMinutes);
+
+  await audit(req.session.user.id, "OPERATIONAL_SLA_UPDATED", "settings", null, {
+    route: Object.fromEntries(values.map((v,i)=>[i+1,v])), returnMinutes, criticalOverMinutes
+  });
+  io.emit("settings:changed");
+  res.json({ sla: await getOperationalSlaSettings() });
 }));
 
 app.get("/api/admin/settings/alerts", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -5814,7 +6225,7 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
       u.name AS courier_name,
       o.order_number,
       d.dispatch_code,
-      CASE d.status WHEN 'ON_ROAD' THEN 'NA RUA' ELSE 'LIBERADO' END AS status
+      CASE WHEN d.status='RELEASED' THEN 'CONCLUÍDO' WHEN d.operational_stage='RETURNING' THEN 'RETORNANDO' ELSE 'EM ROTA' END AS status
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     JOIN dispatch_orders o ON o.dispatch_id=d.id
