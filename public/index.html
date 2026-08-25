@@ -6,12 +6,14 @@
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>DespachaMoto 2.5.4</title>
+<link rel="icon" href="/favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="/app-icon-192.png">
+<title>DespacheFull 2.6.1</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
 .login{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#111827,#293548);padding:20px}.auth-box{width:min(450px,100%);background:#fff;border-radius:20px;padding:30px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.logo{font-size:25px;font-weight:900}.logo span{color:var(--primary)}.creator-signature{font-size:10px;font-weight:600;letter-spacing:2.2px;color:#94a3b8;margin-top:3px;margin-left:31px;line-height:1.2}.auth-box .creator-signature{margin-left:0;text-align:center;margin-bottom:14px}.side .creator-signature{margin-bottom:22px}
+.brand-logo-login{display:block;width:min(340px,92%);height:auto;margin:0 auto 12px}.brand-wordmark-sidebar{display:block;width:190px;max-width:100%;height:auto;margin:0 auto}.brand-wordmark-header{display:block;width:175px;max-width:38vw;height:auto;max-height:38px;object-fit:contain}.brand-wordmark-kds{display:block;width:215px;max-width:100%;height:auto;max-height:42px;object-fit:contain}
 .tabs{display:flex;background:#f3f4f6;padding:4px;border-radius:11px;margin:20px 0}.tabs button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;cursor:pointer}.tabs .on{background:#fff;font-weight:800;box-shadow:0 1px 5px #0001}
 .form{display:grid;gap:13px}.form label{font-size:13px;font-weight:700}.form input,.form select{width:100%;display:block;padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;outline:none;background:#fff}.form input:focus,.form select:focus{border-color:var(--primary)}
 .btn{border:0;border-radius:10px;padding:11px 15px;font-weight:800;cursor:pointer}.btn.primary{background:var(--primary);color:#111827}.btn.outline{background:#fff;border:1px solid var(--line)}.btn.danger{background:#fee2e2;color:#991b1b}.btn.success{background:#dcfce7;color:#166534}.btn:disabled{opacity:.5;cursor:not-allowed}
@@ -97,12 +99,12 @@
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.wall-summary-clean{grid-template-columns:1fr}.wall-order-line,.wall-feed-head{grid-template-columns:1fr 1fr}.wall-feed-head div:nth-child(3),.wall-feed-head div:nth-child(4){display:none}.wall-order-line>div:nth-child(3),.wall-order-line>div:nth-child(4){font-size:12px}.pix-self-grid{grid-template-columns:1fr}.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 
-/* v2.5.4 — Dashboard KDS + retorno automático ao login por sessão expirada */
+/* v2.6.1 — Logo oficial DespacheFull + preservação integral das funções v2.6.0 */
 #adminApp{--bg:#05070a;--card:#0b0f14;--text:#f3f4f6;--muted:#8b98aa;--line:#252b33;--shadow:none;background:#05070a;color:#f3f4f6;min-height:100vh}
 #adminApp .admin-side{width:240px;background:#05070a;border-right:1px solid #20252c;padding:18px 10px 14px;display:flex;flex-direction:column;overflow:hidden}
 #adminApp .admin-brand{padding:8px 12px 12px;border-bottom:1px solid #15191f;margin-bottom:10px}
 #adminApp .admin-brand .logo{padding:0;font-size:22px;white-space:nowrap}
-#adminApp .admin-brand .creator-signature{margin:4px 0 0 31px;color:#596474;letter-spacing:1.6px}
+#adminApp .admin-brand .creator-signature{margin:6px 0 0 0;color:#596474;letter-spacing:1.6px;text-align:center}
 #adminApp .admin-nav{gap:3px;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#252b33 transparent}
 #adminApp .admin-nav button{display:flex;align-items:center;gap:11px;min-height:44px;color:#9ca3af;border:1px solid transparent;border-radius:9px;padding:10px 12px;font-weight:650;white-space:nowrap}
 #adminApp .admin-nav button span{overflow:hidden;text-overflow:ellipsis}
@@ -197,7 +199,7 @@
 <body>
 <div id="loginScreen" class="login">
   <div class="auth-box">
-    <div class="logo">🛵 Despacha<span>Moto</span></div>
+    <img class="brand-logo-login" src="/brand-logo.png" alt="DespacheFull — Inteligente, Seguro, Eficiente">
     <div class="creator-signature">Create by. Hernandes</div>
     <h2>Bem-vindo</h2>
     <p class="muted">Sistema online de despacho de motoboys.</p>
@@ -225,7 +227,7 @@
 
 <div id="adminApp" class="app hidden">
   <aside class="side admin-side">
-    <div class="admin-brand"><div class="logo">🛵 Despacha<span>Moto</span></div><div class="creator-signature">Create by. Hernandes</div></div>
+    <div class="admin-brand"><img class="brand-wordmark-sidebar" src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
     <nav class="nav admin-nav">
       <button data-page="dashboard" class="active">▦ <span>Dashboard</span></button>
       <button data-page="operations">⚡ <span>Operação</span></button>
@@ -294,7 +296,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 2.5.4</span>
+          <span>Versão 2.6.1</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -324,7 +326,7 @@
 
   <div class="warning" style="margin-top:18px">
     <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
-    A saída é salva primeiro no DespachaMoto. O iFood é atualizado depois, sem bloquear o motoboy.
+    A saída é salva primeiro no DespacheFull. O iFood é atualizado depois, sem bloquear o motoboy.
   </div>
 
   <div id="ifoodStatusCards" class="cards" style="margin-top:18px">
@@ -393,7 +395,7 @@
       
       <section id="wallboard" class="page kds-page">
         <div class="kds-top">
-          <div class="kds-brand">🛵 Despacha<span>Moto</span></div>
+          <div class="kds-brand"><img class="brand-wordmark-kds" src="/brand-wordmark-light.png" alt="DespacheFull"></div>
           <div class="kds-mode">MODO TELÃO – <span>iFOOD</span></div>
           <div class="kds-right">
             <div class="kds-clock"><div id="kdsClockTime" class="kds-clock-time">--:--:--</div><div id="kdsClockDate" class="kds-clock-date">--/--/----</div></div>
@@ -631,7 +633,7 @@
           <div class="section">
             <div class="section-head"><b>Notificações no aparelho</b></div>
             <div style="padding:20px">
-              <p class="muted">Ative Web Push para receber alertas compatíveis mesmo com o DespachaMoto fechado. A permissão depende do navegador/aparelho.</p>
+              <p class="muted">Ative Web Push para receber alertas compatíveis mesmo com o DespacheFull fechado. A permissão depende do navegador/aparelho.</p>
               <button class="btn primary" onclick="enableBackgroundPush()">Ativar push em segundo plano</button>
               <button class="btn outline" style="margin-left:6px" onclick="disableBackgroundPush()">Desativar neste aparelho</button>
               <p id="browserNotificationStatus" class="small muted" style="margin-top:12px"></p>
@@ -695,7 +697,7 @@
 </div>
 
 <div id="courierApp" class="hidden">
-  <div class="top"><b>🛵 DespachaMoto</b><div class="actions"><span class="connection-pill online connectionStatus">🟢 Online</span><button id="installBtnCourier" class="btn outline hidden" onclick="installApp()">Instalar app</button><button class="btn outline" onclick="openPasswordModal()">Minha senha</button><span id="courierName"></span><button class="btn outline" onclick="logout()">Sair</button></div></div>
+  <div class="top"><img class="brand-wordmark-header" src="/brand-wordmark.png" alt="DespacheFull"><div class="actions"><span class="connection-pill online connectionStatus">🟢 Online</span><button id="installBtnCourier" class="btn outline hidden" onclick="installApp()">Instalar app</button><button class="btn outline" onclick="openPasswordModal()">Minha senha</button><span id="courierName"></span><button class="btn outline" onclick="logout()">Sair</button></div></div>
   <main class="content" style="max-width:760px">
     <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
@@ -784,7 +786,7 @@
       <button type="button" class="btn outline" onclick="closeDeliveryConfirmModal()">×</button>
     </div>
     <div class="warning" style="margin-top:16px">
-      Peça ao cliente o código/localizador da entrega e digite abaixo. O DespachaMoto enviará a confirmação diretamente ao iFood.
+      Peça ao cliente o código/localizador da entrega e digite abaixo. O DespacheFull enviará a confirmação diretamente ao iFood.
     </div>
     <form id="deliveryConfirmForm" class="form">
       <label>Código do cliente
@@ -2131,15 +2133,15 @@ async function requestBrowserNotifications(){
   if(!('Notification'in window))return alert('Este navegador não suporta notificações.');
   const result=await Notification.requestPermission();
   updateBrowserNotificationStatus();
-  if(result==='granted')new Notification('DespachaMoto',{body:'Notificações do sistema autorizadas.'});
+  if(result==='granted')new Notification('DespacheFull',{body:'Notificações do sistema autorizadas.'});
 }
 function showBrowserNotification(n){
   if(!('Notification'in window)||Notification.permission!=='granted')return;
   try{
     if(navigator.serviceWorker?.controller){
-      navigator.serviceWorker.ready.then(reg=>reg.showNotification(n.title,{body:n.message,icon:'/icon.svg',tag:`despachamoto-${n.id}`}));
+      navigator.serviceWorker.ready.then(reg=>reg.showNotification(n.title,{body:n.message,icon:'/app-icon-192.png',tag:`despachefull-${n.id}`}));
     }else{
-      new Notification(n.title,{body:n.message,icon:'/icon.svg',tag:`despachamoto-${n.id}`});
+      new Notification(n.title,{body:n.message,icon:'/app-icon-192.png',tag:`despachefull-${n.id}`});
     }
   }catch{}
 }
@@ -2492,7 +2494,7 @@ async function checkIfoodMerchantOperational(merchantId){
 }
 
 async function dispatchIfoodTestOrder(orderId){
-  if(!confirm('Enviar o DESPACHO deste pedido de TESTE ao iFood agora? A saída já está registrada no DespachaMoto.'))return;
+  if(!confirm('Enviar o DESPACHO deste pedido de TESTE ao iFood agora? A saída já está registrada no DespacheFull.'))return;
   try{
     const d=await api(`/api/admin/ifood/orders/${encodeURIComponent(orderId)}/dispatch-test`,{method:'POST'});
     $('ifoodConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'Despacho enviado ao iFood.')}</div>`;

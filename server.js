@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.5.4";
+const VERSION = "2.6.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -2886,7 +2886,7 @@ app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
       type: "REGISTRATION_PENDING",
       severity: "info",
       title: "Novo cadastro aguardando aprovação",
-      message: `${user.name} (@${user.username}) solicitou acesso ao DespachaMoto.`,
+      message: `${user.name} (@${user.username}) solicitou acesso ao DespacheFull.`,
       courierId: user.id,
       uniqueKey: `registration:${user.id}`
     });
@@ -4065,7 +4065,7 @@ app.get("/api/admin/reports/period.csv", auth, adminOnly, asyncRoute(async (req,
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="despachamoto-${from}-a-${to}.csv"`
+    `attachment; filename="despachefull-${from}-a-${to}.csv"`
   );
   res.send("\uFEFF" + lines.join("\r\n"));
 
@@ -4726,7 +4726,7 @@ app.get("/api/admin/ifood/merchant-operational/:id", auth, adminOnly, asyncRoute
   `, [merchantId])).rows[0];
 
   if (!known) {
-    return res.status(404).json({ error: "Loja iFood não conhecida pelo DespachaMoto." });
+    return res.status(404).json({ error: "Loja iFood não conhecida pelo DespacheFull." });
   }
 
   const result = await fetchIfoodMerchantOperationalData(merchantId);
@@ -4852,7 +4852,7 @@ app.post("/api/admin/ifood/orders/:id/dispatch-test", auth, adminOnly, asyncRout
   }
   if (!row.dispatch_id) {
     return res.status(409).json({
-      error: "O pedido ainda não está vinculado a uma saída do DespachaMoto."
+      error: "O pedido ainda não está vinculado a uma saída do DespacheFull."
     });
   }
   if (String(row.order_type || "").toUpperCase() !== "DELIVERY") {
@@ -5300,7 +5300,7 @@ app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req, res) 
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="despachamoto-pagamentos-${date}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="despachefull-pagamentos-${date}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
 
   await audit(req.session.user.id, "PAYMENT_REPORT_EXPORTED", "payment", null, {
@@ -5730,7 +5730,7 @@ app.get("/api/admin/backup/dispatches.csv", auth, adminOnly, asyncRoute(async (r
 
   const stamp = new Date().toISOString().slice(0,10);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="despachamoto-backup-${stamp}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="despachefull-backup-${stamp}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
 
   await audit(req.session.user.id, "FULL_HISTORY_EXPORTED", "backup", null, {
@@ -5832,7 +5832,7 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="despachamoto-${date}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="despachefull-${date}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
 }));
 
@@ -5940,7 +5940,7 @@ setTimeout(() => {
   createNotification({
     type: "SYSTEM_STARTED",
     severity: "info",
-    title: "DespachaMoto online",
+    title: "DespacheFull online",
     message: `Servidor v${VERSION} iniciado e conectado.`,
     uniqueKey: `system-start:${Date.now()}`
   }).catch(() => {});
@@ -5958,13 +5958,13 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 3000);
-server.listen(port, () => console.log(`DespachaMoto ${VERSION} rodando na porta ${port}`));
+server.listen(port, () => console.log(`DespacheFull ${VERSION} rodando na porta ${port}`));
 
 let shuttingDown = false;
 async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`${signal}: encerrando DespachaMoto com segurança...`);
+  console.log(`${signal}: encerrando DespacheFull com segurança...`);
 
   const force = setTimeout(() => {
     console.error("Shutdown forçado após timeout.");

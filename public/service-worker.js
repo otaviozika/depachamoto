@@ -1,5 +1,5 @@
-const CACHE = "despachamoto-v2.5.4-session-expiry";
-const STATIC = ["/", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "despachefull-v2.6.1-logo";
+const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC)));
@@ -49,12 +49,12 @@ self.addEventListener("notificationclick", event => {
 self.addEventListener("push", event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch {}
-  const title = data.title || "DespachaMoto";
+  const title = data.title || "DespacheFull";
   const options = {
     body: data.message || "Novo alerta operacional.",
-    icon: "/icon.svg",
-    badge: "/icon.svg",
-    tag: data.id ? `despachamoto-${data.id}` : "despachamoto-alert",
+    icon: "/app-icon-192.png",
+    badge: "/app-icon-192.png",
+    tag: data.id ? `despachefull-${data.id}` : "despachefull-alert",
     renotify: true,
     data: { url: "/" }
   };
