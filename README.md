@@ -1,75 +1,58 @@
-# DespacheFull 2.8.0 — Check-in obrigatório de retorno
+# DespacheFull 2.9.0 — Motoboy somente com pedidos iFood
 
-> Base: DespacheFull v2.7.0. Banco, Supabase/PostgreSQL, iFood, pagamentos, PIX, KDS, PWA, histórico e os dois perfis existentes (Admin e Motoboy) permanecem compatíveis.
+> Base: DespacheFull v2.8.0. Supabase/PostgreSQL, check-in obrigatório, controle de tempo, pagamentos, PIX, KDS, PWA, histórico e iFood permanecem preservados.
 
 Perfis continuam sendo SOMENTE:
 - Admin
 - Motoboy
 
-## Regra principal da v2.8.0
+## Regra principal da v2.9.0
 
-Uma nova saída **não encerra mais a saída anterior automaticamente**.
+O **motoboy não pode mais registrar saída manual**.
 
-O ciclo obrigatório agora é:
+Para cada saída do motoboy, todos os pedidos precisam:
+
+1. existir no iFood já sincronizado pelo DespacheFull;
+2. ser pedido de entrega (`DELIVERY`);
+3. ser entrega própria da loja (`deliveredBy=MERCHANT`);
+4. estar em estado válido para despacho;
+5. ainda não estar vinculados a outra saída.
+
+Se qualquer pedido não atender às regras, a saída inteira é bloqueada.
+
+Pedidos fora do iFood só podem ser lançados pelo **Admin > Saída manual**.
+
+## Validação em duas camadas
+
+### Interface do Motoboy
+
+O botão de saída só é liberado quando todos os campos exibirem validação positiva do iFood.
+
+### Backend
+
+Mesmo que alguém tente contornar a interface e chamar a API diretamente, `/api/courier/depart` exige que 100% dos pedidos estejam vinculados ao iFood e aceitos pela validação.
+
+## Sem saída offline para motoboy
+
+A saída do motoboy agora exige conexão no momento do registro. Isso é necessário porque a autorização do pedido depende da validação iFood em tempo real.
+
+Se estiver sem internet:
+
+- o motoboy não inicia uma nova saída pelo sistema;
+- o Admin pode usar a saída manual quando a operação exigir.
+
+## Regras da v2.8 preservadas
 
 `DISPONÍVEL → EM ROTA → RETORNANDO → CHEGUEI NA LOJA → DISPONÍVEL`
 
-Enquanto existir uma saída `ON_ROAD`, o backend bloqueia qualquer nova saída do mesmo motoboy, inclusive se o navegador tentar reenviar uma chamada antiga.
+O motoboy continua impedido de pegar novos pedidos até confirmar que voltou à loja.
 
-### Proteção no backend
+## Banco / Supabase
 
-- nova saída com check-in pendente retorna `409 RETURN_CHECKIN_REQUIRED`;
-- a antiga flag `confirm_new_departure` não é mais aceita como forma de contornar a trava;
-- um `pg_advisory_xact_lock` por motoboy serializa saídas concorrentes entre instâncias do servidor;
-- replay do mesmo `client_token` continua idempotente e não cria duplicidade;
-- a fila offline permite somente uma saída pendente e também respeita o check-in obrigatório quando sincroniza.
+Não há migração de banco nesta versão.
 
-## Fluxo do Motoboy
-
-1. Registra de 1 a 5 pedidos.
-2. Fica `EM ROTA`.
-3. Confirma `Todos entregues — iniciar retorno` (ou o iFood pode iniciar o retorno automaticamente quando todos os pedidos rastreáveis forem resolvidos).
-4. Fica `RETORNANDO`.
-5. Confirma `Cheguei na loja`.
-6. Somente então volta a ficar `DISPONÍVEL` e o formulário de nova saída é liberado.
-
-## Exceção administrativa
-
-O Admin pode corrigir uma chegada manualmente, mas precisa informar um **motivo obrigatório**. A chegada manual registra:
-
-- usuário que confirmou;
-- `arrival_source`;
-- `arrival_reason`;
-- data/hora de chegada;
-- auditoria da operação.
-
-O Admin também não consegue abrir uma nova saída manual para um motoboy com check-in pendente. Primeiro deve confirmar/corrigir a chegada.
-
-## Recursos preservados da v2.7
-
-- controle de rota e retorno;
-- SLA dinâmico de 1 a 5 pedidos;
-- SLA de retorno;
-- alertas NORMAL / ATENÇÃO / ATRASADO / CRÍTICO;
-- painel de exceções;
-- métricas de rota, retorno e tempo total;
-- confirmação de entrega iFood;
-- PIX e pagamentos;
-- KDS / modo telão;
-- histórico e auditoria;
-- trava contra pedido ativo duplicado;
-- sincronização offline;
-- presença do motoboy.
-
-## Migração
-
-A migração é automática no startup. A v2.8 adiciona somente:
-
-- `dispatches.arrival_source`
-- `dispatches.arrival_reason`
-
-Não altere `DATABASE_URL`, `SESSION_SECRET`, credenciais iFood ou outras variáveis do Render.
+**Não altere `DATABASE_URL`. Não execute SQL manual.**
 
 ## Deploy
 
-Para atualização sobre a v2.7.0, substitua os arquivos do pacote `UPDATE-ONLY` e faça o deploy normal no Render.
+Use o pacote `UPDATE-ONLY` sobre a versão atual e faça o deploy normal no Render.

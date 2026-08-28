@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v2.8.0-checkin-required";
+const CACHE = "despachefull-v2.9.0-ifood-only-courier";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {

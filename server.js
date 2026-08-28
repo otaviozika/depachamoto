@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.8.0";
+const VERSION = "2.9.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -3854,10 +3854,11 @@ app.get("/api/courier/ifood/lookup", auth, courierOnly, asyncRoute(async (req, r
 
   res.json({
     found: false,
-    valid: true,
-    manual: true,
+    valid: false,
+    manual: false,
+    code: "IFOOD_ORDER_REQUIRED",
     order_number: order,
-    message: "Pedido não encontrado no iFood. Será tratado como pedido manual."
+    message: "Pedido não encontrado no iFood. O motoboy só pode sair com pedidos iFood vinculados e disponíveis."
   });
 }));
 
@@ -3872,12 +3873,65 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   const orders = normalizeOrders(req.body);
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
+  // v2.9: o motoboy precisa estar online para validar o pedido no iFood no
+  // momento da saída. A saída manual/offline fica exclusiva do administrador.
+  if (req.body.offline_queued === true) {
+    await logOperationalConflict({
+      type: "COURIER_OFFLINE_DEPARTURE_BLOCKED",
+      severity: "warning",
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders,
+      details: { reason: "IFOOD_ONLINE_VALIDATION_REQUIRED" }
+    });
+    return res.status(409).json({
+      error: "Saída offline não é permitida para motoboy. Conecte-se à internet para validar os pedidos no iFood, ou peça ao administrador para registrar uma saída manual.",
+      code: "IFOOD_ONLINE_VALIDATION_REQUIRED",
+      server_now: new Date().toISOString()
+    });
+  }
+
   const ifoodInspection = await inspectIfoodOrdersForDeparture(orders);
   if (ifoodInspection.blocked.length) {
     return res.status(409).json({
       error: ifoodInspection.blocked[0].message,
       code: ifoodInspection.blocked[0].code,
       ifood: ifoodInspection.blocked[0],
+      server_now: new Date().toISOString()
+    });
+  }
+
+  // Todo pedido informado pelo motoboy precisa existir no iFood e passar pela
+  // validação de entrega própria. Pedidos não encontrados são considerados
+  // manuais e só podem ser registrados pelo endpoint administrativo.
+  const matchedIfoodOrders = new Set(
+    ifoodInspection.matched.map(x => plainLocalOrderNumber(x.order_number))
+  );
+  const missingIfoodOrders = orders.filter(
+    x => !matchedIfoodOrders.has(plainLocalOrderNumber(x))
+  );
+
+  if (missingIfoodOrders.length) {
+    await logOperationalConflict({
+      type: "COURIER_NON_IFOOD_ORDER_BLOCKED",
+      severity: "warning",
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders: missingIfoodOrders,
+      details: { requested_orders: orders }
+    });
+    return res.status(409).json({
+      error: `Pedido(s) ${missingIfoodOrders.join(", ")} não encontrado(s) no iFood. Somente o administrador pode registrar saída manual.`,
+      code: "IFOOD_ORDER_REQUIRED",
+      missing_orders: missingIfoodOrders,
+      server_now: new Date().toISOString()
+    });
+  }
+
+  if (ifoodInspection.accepted.length !== orders.length) {
+    return res.status(409).json({
+      error: "Todos os pedidos da saída precisam estar vinculados ao iFood e disponíveis para entrega própria.",
+      code: "IFOOD_ORDER_REQUIRED",
       server_now: new Date().toISOString()
     });
   }

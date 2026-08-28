@@ -1,0 +1,52 @@
+DESPACHEFULL v2.9.0 — RELATÓRIO DE VALIDAÇÃO
+================================================
+
+RECURSO
+Motoboy somente pode registrar saída com pedidos iFood vinculados/validados.
+Saída manual fica exclusiva do Admin.
+
+REGRAS IMPLEMENTADAS
+- /api/courier/depart exige 100% dos pedidos encontrados no iFood.
+- Pedido ausente do iFood retorna 409 IFOOD_ORDER_REQUIRED.
+- Pedido iFood não elegível continua bloqueado pelas regras já existentes.
+- Pedido de entrega parceira iFood continua bloqueado para motoboy da loja.
+- Saída offline de motoboy retorna 409 IFOOD_ONLINE_VALIDATION_REQUIRED.
+- Cliente não cria mais novas saídas offline.
+- Botão Registrar saída só libera quando todos os campos estão com validação iFood positiva.
+- Falha de consulta iFood mantém saída bloqueada.
+- /api/admin/dispatches/manual continua protegido por adminOnly.
+- Admin continua autorizado a registrar pedidos manuais/externos.
+- Check-in obrigatório da v2.8 permanece intacto.
+- Admin também não abre nova saída para motoboy ainda EM ROTA/RETORNANDO.
+
+TESTES
+- node --check server.js: PASS
+- JavaScript inline do public/index.html: PASS
+- package.json parse: PASS
+- selftest:ifood-only-courier: PASS
+- selftest:checkin-required: PASS
+- selftest:operational-time: PASS
+- selftest:delivery-confirmation: PASS
+- selftest:wallboard: PASS
+- selftest:dashboard-theme: PASS
+- selftest:session-expiry: PASS
+- selftest:payments: PASS
+- selftest:pix: PASS
+- selftest:rebrand: PASS
+- selftest:brutal: PASS
+
+SELFTEST BRUTAL PRESERVADO
+- 40 motoboys
+- 2.000 saídas simuladas
+- 2.000 novas saídas bloqueadas até check-in
+- 1.960 check-ins de retorno
+- 400 replays idempotentes bloqueados
+- 200 tentativas de pedido ativo duplicado bloqueadas
+
+BANCO / SUPABASE
+Nenhuma nova tabela ou coluna.
+Nenhum SQL manual necessário.
+DATABASE_URL permanece inalterada.
+
+VERSÃO
+2.9.0

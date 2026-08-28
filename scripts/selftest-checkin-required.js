@@ -8,7 +8,7 @@ const sw = fs.readFileSync(new URL('../public/service-worker.js', import.meta.ur
 const closeCalls = (server.match(/closeActiveDispatch\s*\(/g) || []).length;
 
 const checks = {
-  version_280: /const VERSION = "2\.8\.0"/.test(server),
+  version_290: /const VERSION = "2\.9\.0"/.test(server),
   package_gate_code: /RETURN_CHECKIN_REQUIRED/.test(server),
   transaction_advisory_lock: /pg_advisory_xact_lock/.test(server),
   database_one_active_index: /dispatches_one_active_per_courier_idx/.test(server),
@@ -22,9 +22,9 @@ const checks = {
   courier_payload_no_override: !/confirm_new_departure/.test(ui),
   admin_manual_blocked: /Nova saída bloqueada: confirme a chegada deste motoboy/.test(ui),
   offline_queue_respects_gate: /saída sem check-in de chegada/.test(ui),
-  pwa_cache_280: /despachefull-v2\.8\.0-checkin-required/.test(sw),
+  pwa_cache_290: /despachefull-v2\.9\.0-ifood-only-courier/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
-console.log(JSON.stringify({ result: 'PASS', version: '2.8.0', checks }, null, 2));
+console.log(JSON.stringify({ result: 'PASS', version: '2.9.0', checks }, null, 2));

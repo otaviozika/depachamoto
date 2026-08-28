@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 2.8.0</title>
+<title>DespacheFull 2.9.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -102,7 +102,7 @@
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.wall-summary-clean{grid-template-columns:1fr}.wall-order-line,.wall-feed-head{grid-template-columns:1fr 1fr}.wall-feed-head div:nth-child(3),.wall-feed-head div:nth-child(4){display:none}.wall-order-line>div:nth-child(3),.wall-order-line>div:nth-child(4){font-size:12px}.pix-self-grid{grid-template-columns:1fr}.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 
-/* v2.8.0 — Check-in obrigatório de retorno + controle de tempo operacional */
+/* v2.9.0 — Motoboy somente com pedidos iFood + check-in obrigatório */
 #adminApp{--bg:#05070a;--card:#0b0f14;--text:#f3f4f6;--muted:#8b98aa;--line:#252b33;--shadow:none;background:#05070a;color:#f3f4f6;min-height:100vh}
 #adminApp .admin-side{width:240px;background:#05070a;border-right:1px solid #20252c;padding:18px 10px 14px;display:flex;flex-direction:column;overflow:hidden}
 #adminApp .admin-brand{padding:8px 12px 12px;border-bottom:1px solid #15191f;margin-bottom:10px}
@@ -299,7 +299,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 2.8.0</span>
+          <span>Versão 2.9.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -719,7 +719,7 @@
   <main class="content" style="max-width:760px">
     <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
-    <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre os pedidos que está levando.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
+    <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre somente pedidos iFood de entrega própria validados pelo sistema.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
     <div id="courierDeliveriesCard" class="card hidden" style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
@@ -733,7 +733,7 @@
     </div>
     <div id="departureCard" class="card">
       <h2 style="margin-top:0">Registrar saída</h2>
-      <p class="muted">Informe de 1 a 5 pedidos. Digite o número de cada pedido.</p>
+      <p class="muted">Informe de 1 a 5 pedidos. <b>Somente pedidos iFood vinculados e disponíveis</b> podem ser registrados pelo motoboy. Saídas manuais são exclusivas do Admin.</p>
       <form id="departureForm" class="form">
         <div id="orderFields"></div>
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
@@ -824,7 +824,7 @@
 <div id="manualDispatchModal" class="modal">
   <div class="modal-box" style="width:min(620px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><h2 style="margin:0">Registrar saída manual</h2><div class="small muted">Use quando o motoboy não conseguir registrar pelo próprio celular.</div></div>
+      <div><h2 style="margin:0">Registrar saída manual</h2><div class="small muted">Exclusivo do Admin. Use para pedidos fora do iFood ou quando o motoboy não puder registrar pelo próprio celular.</div></div>
       <button class="btn outline" onclick="closeManualDispatchModal()">×</button>
     </div>
     <div id="manualMsg"></div>
@@ -996,6 +996,7 @@ function setConnectionState(state){
 }
 function updateConnectionState(){
   setConnectionState(navigator.onLine?'online':'offline');
+  updateCourierDepartureEligibility();
 }
 function makeClientToken(){
   return crypto?.randomUUID?.()||('dm-'+Date.now()+'-'+Math.random().toString(36).slice(2));
@@ -1060,6 +1061,10 @@ async function flushOfflineQueue(){
           alert('Uma saída offline não pôde ser sincronizada porque um pedido já está ativo. O administrador deve conferir Conflitos.');
           break;
         }
+        if(err.code==='IFOOD_ONLINE_VALIDATION_REQUIRED'||err.code==='IFOOD_ORDER_REQUIRED'){
+          alert('A fila offline antiga não pode mais gerar saída de motoboy. Todos os pedidos precisam ser validados online no iFood. Se necessário, peça ao Admin para registrar uma saída manual.');
+          break;
+        }
         if(!navigator.onLine)break;
         throw err;
       }
@@ -1095,10 +1100,31 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required oninput="scheduleIfoodFieldLookup(this)"></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" oninput="scheduleIfoodFieldLookup(this)"></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
-function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;$('addOrderBtn').disabled=n>=5}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
+function allCourierOrdersIfoodValidated(){
+  const inputs=[...document.querySelectorAll('.order-input')].filter(i=>i.value.trim());
+  return inputs.length>0&&inputs.every(i=>i.dataset.ifoodValid==='true');
+}
+function updateCourierDepartureEligibility(){
+  const btn=$('departureSubmit');
+  if(!btn)return;
+  const checkinLocked=!!courierActiveDispatch;
+  const offline=!navigator.onLine;
+  const legacyQueue=getOfflineQueue().length>0;
+  const valid=allCourierOrdersIfoodValidated();
+  btn.disabled=!!me?.mustChangePassword||checkinLocked||offline||legacyQueue||!valid;
+  if(checkinLocked)btn.textContent='🔒 Confirme sua chegada para nova saída';
+  else if(offline)btn.textContent='🔒 Conexão necessária para validar iFood';
+  else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
+  else if(!valid)btn.textContent='🔒 Valide os pedidos iFood';
+  else btn.textContent='🛵 Registrar saída';
+
+  const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
+  if($('addOrderBtn'))$('addOrderBtn').disabled=checkinLocked||n>=5;
+}
+function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;updateCourierDepartureEligibility()}
 
 
 
@@ -1114,7 +1140,9 @@ function normalizedUiOrder(v){
 function scheduleIfoodFieldLookup(input){
   const row=input.closest('.order-row');
   const status=row?.querySelector('.order-validation');
-  if(status){status.className='order-validation';status.textContent='';}
+  input.dataset.ifoodValid='false';
+  if(status){status.className='order-validation';status.textContent=input.value.trim()?'Validando no iFood...':'';}
+  updateCourierDepartureEligibility();
 
   const old=ifoodFieldTimers.get(input);
   if(old)clearTimeout(old);
@@ -1138,18 +1166,20 @@ async function lookupIfoodField(input){
     const d=await api(`/api/courier/ifood/lookup?order=${encodeURIComponent(value)}`);
 
     if(d.found&&d.valid){
+      input.dataset.ifoodValid='true';
       box.className='order-validation ok';
       box.textContent=`✓ iFood • entrega própria • ${d.status||'disponível'}`;
-    }else if(d.found&&!d.valid){
-      box.className='order-validation err';
-      box.textContent=`✕ ${d.message||'Pedido iFood indisponível.'}`;
     }else{
-      box.className='order-validation warn';
-      box.textContent='Pedido não encontrado no iFood — será tratado como manual.';
+      input.dataset.ifoodValid='false';
+      box.className='order-validation err';
+      box.textContent=`✕ ${d.message||'Pedido não disponível no iFood. Somente o Admin pode fazer saída manual.'}`;
     }
   }catch(err){
-    box.className='order-validation warn';
-    box.textContent='Não foi possível validar no iFood agora. O pedido manual continua disponível.';
+    input.dataset.ifoodValid='false';
+    box.className='order-validation err';
+    box.textContent='Não foi possível validar no iFood. Conexão obrigatória para registrar a saída.';
+  }finally{
+    updateCourierDepartureEligibility();
   }
 }
 
@@ -1834,10 +1864,8 @@ async function loadCourier(){
   courierActiveDispatch=d.active||null;
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
   const checkinLocked=!!d.active;
-  $('departureSubmit').disabled=!!d.mustChangePassword||checkinLocked;
-  $('departureSubmit').textContent=checkinLocked?'🔒 Confirme sua chegada para nova saída':'🛵 Registrar saída';
-  $('addOrderBtn').disabled=checkinLocked;
   document.querySelectorAll('.order-input').forEach(i=>i.disabled=checkinLocked);
+  updateCourierDepartureEligibility();
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
   $('myHistory').innerHTML=d.recent.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span></td></tr>`}).join('')||empty(3);
 
@@ -1893,18 +1921,17 @@ async function depart(e){
     return message('departureMsg','Nova saída bloqueada. Finalize a rota, inicie o retorno e confirme “Cheguei na loja” antes de levar outros pedidos.','err');
   }
   if(getOfflineQueue().length){
-    return message('departureMsg','Existe uma saída offline aguardando sincronização. Sincronize essa saída antes de registrar outra.','err');
+    return message('departureMsg','Existe uma saída antiga aguardando sincronização. Resolva essa pendência antes de registrar outra.','err');
+  }
+  if(!navigator.onLine){
+    return message('departureMsg','Conexão obrigatória: o pedido precisa ser validado no iFood no momento da saída. Peça ao Admin para registrar manualmente se necessário.','err');
+  }
+  if(!allCourierOrdersIfoodValidated()){
+    return message('departureMsg','Todos os pedidos precisam aparecer como ✓ iFood antes de registrar a saída. Pedido manual é exclusivo do Admin.','err');
   }
 
   const btn=$('departureSubmit');
   btn.disabled=true;
-
-  if(!navigator.onLine){
-    enqueueDeparture(orders);
-    resetOrderFields();
-    btn.disabled=!!me.mustChangePassword;
-    return;
-  }
 
   const payload={
     order_numbers:orders,
@@ -1967,15 +1994,13 @@ async function depart(e){
     }
   }catch(err){
     if(!navigator.onLine||err instanceof TypeError){
-      enqueueDeparture(orders);
-      resetOrderFields();
-      message('departureMsg','Sem conexão. A saída foi salva no aparelho para sincronizar depois.','ok');
+      message('departureMsg','Conexão perdida. A saída NÃO foi registrada. Reconecte para validar os pedidos no iFood, ou peça ao Admin para fazer a saída manual.','err');
     }else{
       message('departureMsg',err.message,'err');
     }
   }finally{
-    btn.disabled=!!me.mustChangePassword||!!courierActiveDispatch;
     updateConnectionState();
+    updateCourierDepartureEligibility();
   }
 }
 function trendHtml(change){
