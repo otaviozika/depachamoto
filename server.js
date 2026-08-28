@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.7.0";
+const VERSION = "2.8.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -219,6 +219,14 @@ ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS return_source TEXT;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS return_reason TEXT;
+
+-- v2.8: check-in obrigatório de chegada. A origem e o motivo da chegada
+-- ficam separados do início do retorno para auditoria operacional.
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS arrival_source TEXT;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS arrival_reason TEXT;
+
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS route_sla_minutes INTEGER;
 ALTER TABLE dispatches
@@ -233,6 +241,26 @@ WHERE status='RELEASED' AND operational_stage<>'COMPLETED';
 
 CREATE INDEX IF NOT EXISTS dispatches_active_stage_idx
 ON dispatches(operational_stage,departed_at DESC) WHERE status='ON_ROAD';
+
+-- v2.8: se a base estiver consistente, reforça no próprio PostgreSQL que um
+-- motoboy só pode ter uma saída ativa. Se houver legado inconsistente, o deploy
+-- não falha: o advisory lock continua protegendo novas saídas até a correção.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname='public' AND indexname='dispatches_one_active_per_courier_idx'
+  ) AND NOT EXISTS (
+    SELECT courier_id
+    FROM dispatches
+    WHERE status='ON_ROAD'
+    GROUP BY courier_id
+    HAVING COUNT(*)>1
+  ) THEN
+    CREATE UNIQUE INDEX dispatches_one_active_per_courier_idx
+    ON dispatches(courier_id) WHERE status='ON_ROAD';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS dispatch_orders (
   id BIGSERIAL PRIMARY KEY,
@@ -2350,46 +2378,6 @@ async function createNotification({
   return notification;
 }
 
-async function closeActiveDispatch(client, courierId, releasedBy, reason, closedAt = null) {
-  const active = await client.query(`
-    SELECT id,dispatch_code,departed_at,status
-    FROM dispatches
-    WHERE courier_id=$1 AND status='ON_ROAD'
-    ORDER BY departed_at DESC,id DESC
-    LIMIT 1
-    FOR UPDATE
-  `, [courierId]);
-
-  if (!active.rowCount) return null;
-
-  const requested = closedAt ? new Date(closedAt) : null;
-  const previousStart = new Date(active.rows[0].departed_at);
-  const effectiveClose = requested && requested >= previousStart
-    ? requested.toISOString()
-    : new Date().toISOString();
-
-  const q = await client.query(`
-    UPDATE dispatches
-    SET status='RELEASED',
-        operational_stage='COMPLETED',
-        released_at=$1::timestamptz,
-        returned_at=COALESCE(returned_at,$1::timestamptz),
-        released_by=$2,
-        returned_by=COALESCE(returned_by,$2),
-        return_source=COALESCE(return_source,'AUTO_CLOSE'),
-        return_reason=COALESCE(return_reason,$3),
-        closed_reason=$3
-    WHERE id=$4 AND status='ON_ROAD'
-    RETURNING *
-  `, [effectiveClose, releasedBy, reason, active.rows[0].id]);
-
-  if (q.rowCount) {
-    await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [active.rows[0].id]);
-  }
-
-  return q.rows[0] || null;
-}
-
 async function createDispatchTransaction({
   actorUserId,
   courierId,
@@ -2421,15 +2409,34 @@ async function createDispatchTransaction({
       }
     }
 
-    const effectiveDeparture = departedAt || new Date().toISOString();
+    // v2.8: uma nova saída NUNCA encerra a anterior automaticamente.
+    // O advisory lock serializa saídas do mesmo motoboy inclusive entre
+    // múltiplas instâncias do Render, evitando duas saídas simultâneas.
+    await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
 
-    const closedPrevious = await closeActiveDispatch(
-      client,
-      courierId,
-      actorUserId,
-      source === "ADMIN" ? "NEW_DEPARTURE_BY_ADMIN" : "NEW_DEPARTURE_BY_COURIER",
-      effectiveDeparture
-    );
+    const activeDispatch = await client.query(`
+      SELECT id,dispatch_code,departed_at,operational_stage,returning_at
+      FROM dispatches
+      WHERE courier_id=$1 AND status='ON_ROAD'
+      ORDER BY departed_at DESC,id DESC
+      LIMIT 1
+      FOR UPDATE
+    `, [courierId]);
+
+    if (activeDispatch.rowCount) {
+      const err = new Error(
+        operationalStage(activeDispatch.rows[0].operational_stage) === "RETURNING"
+          ? "Você ainda está retornando. Confirme sua chegada à loja antes de registrar outra saída."
+          : "Você ainda possui uma saída em andamento. Finalize as entregas, inicie o retorno e confirme sua chegada à loja antes de registrar outra saída."
+      );
+      err.code = "RETURN_CHECKIN_REQUIRED";
+      err.status = 409;
+      err.active = activeDispatch.rows[0];
+      throw err;
+    }
+
+    const effectiveDeparture = departedAt || new Date().toISOString();
+    const closedPrevious = null;
 
     const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
       Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -2777,6 +2784,8 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
           released_by=$2,
           return_source=COALESCE(return_source,$3),
           return_reason=COALESCE(return_reason,$4),
+          arrival_source=$3,
+          arrival_reason=$4,
           closed_reason=COALESCE(closed_reason,$4)
       WHERE id=$1 AND status='ON_ROAD'
       RETURNING *
@@ -3938,18 +3947,22 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   }
 
   const activeQ = await pool.query(`
-    SELECT d.id,d.departed_at,d.order_number,${orderArraySql("d")}
+    SELECT d.id,d.departed_at,d.order_number,d.operational_stage,d.returning_at,${orderArraySql("d")}
     FROM dispatches d
     WHERE d.courier_id=$1 AND d.status='ON_ROAD'
     ORDER BY d.departed_at DESC,d.id DESC
     LIMIT 1
   `, [req.session.user.id]);
 
-  if (activeQ.rowCount && req.body.confirm_new_departure !== true) {
+  if (activeQ.rowCount) {
+    const active = activeQ.rows[0];
+    const returning = operationalStage(active.operational_stage) === "RETURNING";
     return res.status(409).json({
-      error: "Você possui uma saída ativa. Confirme para encerrar a saída anterior e iniciar a nova.",
-      code: "ACTIVE_DISPATCH_CONFIRMATION",
-      active: activeQ.rows[0],
+      error: returning
+        ? "Você ainda está retornando. Toque em ‘Cheguei na loja’ antes de registrar outra saída."
+        : "Você ainda possui uma saída em andamento. Finalize as entregas, inicie o retorno e confirme ‘Cheguei na loja’ antes de registrar outra saída.",
+      code: "RETURN_CHECKIN_REQUIRED",
+      active,
       server_now: new Date().toISOString()
     });
   }
@@ -3990,6 +4003,14 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       ifoodLinks: ifoodInspection.accepted
     });
   } catch (e) {
+    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+      return res.status(409).json({
+        error: e.message,
+        code: e.code,
+        active: e.active || null,
+        server_now: new Date().toISOString()
+      });
+    }
     if (e.code === "IFOOD_ORDER_ALREADY_LINKED") {
       return res.status(409).json({
         error: e.message,
@@ -4022,7 +4043,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       order_count: orders.length,
       departed_at: result.dispatch.departed_at,
       source: "COURIER",
-      previous_dispatch_closed: result.closedPrevious?.id || null
+      checkin_gate_enforced: true
     });
   }
 
@@ -4437,6 +4458,22 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     }
   }
 
+  const activeCourierDispatch = (await pool.query(`
+    SELECT id,dispatch_code,departed_at,operational_stage,returning_at
+    FROM dispatches
+    WHERE courier_id=$1 AND status='ON_ROAD'
+    ORDER BY departed_at DESC,id DESC
+    LIMIT 1
+  `, [courierId])).rows[0];
+
+  if (activeCourierDispatch) {
+    return res.status(409).json({
+      error: "Este motoboy ainda não confirmou a chegada à loja. Confirme a chegada antes de registrar uma nova saída, inclusive pelo Admin.",
+      code: "RETURN_CHECKIN_REQUIRED",
+      active: activeCourierDispatch
+    });
+  }
+
   const inspection = await inspectOrders(orders);
 
   if (inspection.active.length) {
@@ -4473,15 +4510,27 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     });
   }
 
-  const result = await createDispatchTransaction({
-    actorUserId: req.session.user.id,
-    courierId,
-    orders,
-    source: "ADMIN",
-    adminReason: reason || "Registro manual pelo administrador",
-    clientToken,
-    ifoodLinks: ifoodInspection.accepted
-  });
+  let result;
+  try {
+    result = await createDispatchTransaction({
+      actorUserId: req.session.user.id,
+      courierId,
+      orders,
+      source: "ADMIN",
+      adminReason: reason || "Registro manual pelo administrador",
+      clientToken,
+      ifoodLinks: ifoodInspection.accepted
+    });
+  } catch (e) {
+    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+      return res.status(409).json({
+        error: e.message,
+        code: e.code,
+        active: e.active || null
+      });
+    }
+    throw e;
+  }
 
   if (!result.duplicate) {
     await auditBestEffort(req.session.user.id, "MANUAL_DEPARTURE_REGISTERED", "dispatch", result.dispatch.id, {
@@ -4490,7 +4539,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       order_numbers: orders,
       order_count: orders.length,
       reason: reason || "Não informado",
-      previous_dispatch_closed: result.closedPrevious?.id || null
+      checkin_gate_enforced: true
     });
 
     await createNotification({
@@ -6013,11 +6062,19 @@ app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(a
 }));
 
 app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {
+  const reason = String(req.body?.reason || "").trim().slice(0,200);
+  if (reason.length < 4) {
+    return res.status(400).json({
+      error: "Informe o motivo da confirmação manual de chegada (mínimo 4 caracteres).",
+      code: "ADMIN_ARRIVAL_REASON_REQUIRED"
+    });
+  }
+
   const dispatch = await completeDispatchReturn({
     dispatchId: req.params.id,
     actorUserId: req.session.user.id,
-    source: "ADMIN_RELEASE",
-    reason: String(req.body?.reason || "ADMIN_CONFIRMED_RETURN").slice(0,200)
+    source: "ADMIN_ARRIVAL_OVERRIDE",
+    reason
   });
   if (!dispatch) return res.status(404).json({ error: "Saída ativa não encontrada." });
   res.json({ dispatch, server_now: new Date().toISOString() });

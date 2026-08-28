@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 2.7.0</title>
+<title>DespacheFull 2.8.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -102,7 +102,7 @@
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.wall-summary-clean{grid-template-columns:1fr}.wall-order-line,.wall-feed-head{grid-template-columns:1fr 1fr}.wall-feed-head div:nth-child(3),.wall-feed-head div:nth-child(4){display:none}.wall-order-line>div:nth-child(3),.wall-order-line>div:nth-child(4){font-size:12px}.pix-self-grid{grid-template-columns:1fr}.payment-mini{grid-template-columns:1fr 1fr}.ops-grid,.peak-strip{grid-template-columns:repeat(2,1fr)}.monitor-grid{grid-template-columns:1fr 1fr}.manual-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.comparison-grid{grid-template-columns:1fr 1fr}.side{display:none}.main{margin:0}.content{padding:16px 13px 80px}.cards{grid-template-columns:repeat(2,1fr)}.top{padding:0 14px}.mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:#111827;z-index:20;justify-content:space-around;padding:8px}.mobile-nav button{background:none;border:0;color:#cbd5e1;font-size:11px}.title{font-size:23px}.settings-grid{grid-template-columns:1fr}}
 
-/* v2.7.0 — Controle de tempo operacional, retorno e SLA dinâmico */
+/* v2.8.0 — Check-in obrigatório de retorno + controle de tempo operacional */
 #adminApp{--bg:#05070a;--card:#0b0f14;--text:#f3f4f6;--muted:#8b98aa;--line:#252b33;--shadow:none;background:#05070a;color:#f3f4f6;min-height:100vh}
 #adminApp .admin-side{width:240px;background:#05070a;border-right:1px solid #20252c;padding:18px 10px 14px;display:flex;flex-direction:column;overflow:hidden}
 #adminApp .admin-brand{padding:8px 12px 12px;border-bottom:1px solid #15191f;margin-bottom:10px}
@@ -299,7 +299,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 2.7.0</span>
+          <span>Versão 2.8.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -847,7 +847,7 @@
       <label>Motivo / observação (opcional)
         <input id="manualReason" maxlength="250" placeholder="Ex.: celular sem bateria">
       </label>
-      <div class="warning"><b>Importante:</b> se este motoboy já estiver na rua, a saída anterior será encerrada automaticamente e esta nova saída será iniciada.</div>
+      <div class="warning"><b>Check-in obrigatório:</b> se este motoboy estiver EM ROTA ou RETORNANDO, uma nova saída será bloqueada. Primeiro confirme a chegada dele à loja no painel “Quem está na rua”.</div>
       <button id="manualSubmit" class="btn primary">Confirmar saída manual</button>
     </form>
   </div>
@@ -1004,7 +1004,6 @@ function enqueueDeparture(orders){
   const q=getOfflineQueue();
   const payload={
     order_numbers:orders,
-    confirm_new_departure:true,
     client_token:makeClientToken(),
     offline_queued:true,
     estimated_departed_at:new Date(serverNowMs()).toISOString(),
@@ -1051,6 +1050,10 @@ async function flushOfflineQueue(){
           if(confirm(`Pedido(s) usado(s) recentemente: ${names}. Sincronizar mesmo assim?`)){
             q[0].confirm_recent_orders=true;saveOfflineQueue(q);continue;
           }
+          break;
+        }
+        if(err.code==='RETURN_CHECKIN_REQUIRED'){
+          alert('A saída offline não pôde ser sincronizada porque existe uma saída sem check-in de chegada. Confirme “Cheguei na loja” antes de sincronizar outra saída.');
           break;
         }
         if(err.code==='ORDER_ALREADY_ACTIVE'){
@@ -1491,7 +1494,13 @@ async function verifyCourierPix(id){
 async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/approve',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function adminStartReturn(id){if(!confirm('Confirmar que este motoboy terminou as entregas e iniciou o retorno para a loja?'))return;try{await api('/api/admin/dispatches/'+id+'/start-return',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_RETURN_START'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
-async function releaseDispatch(id){if(!confirm('Confirmar que o motoboy chegou à loja e está disponível novamente?'))return;try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_ARRIVAL'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
+async function releaseDispatch(id){
+  if(!confirm('Confirmar manualmente que o motoboy chegou à loja e está disponível novamente?'))return;
+  const reason=prompt('Motivo obrigatório da confirmação manual de chegada:', 'Chegada confirmada presencialmente pelo administrador');
+  if(reason===null)return;
+  if(reason.trim().length<4)return alert('Informe um motivo com pelo menos 4 caracteres.');
+  try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST',body:JSON.stringify({reason:reason.trim()})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}
+}
 async function toggleCourier(id,active){try{await api('/api/admin/couriers/'+id,{method:'PATCH',body:JSON.stringify({active})});await loadAdmin()}catch(err){alert(err.message)}}
 async function resetCourierPassword(id,name){
   const p1=prompt(`Digite uma senha temporária para ${name} (mínimo 8 caracteres):`);
@@ -1824,7 +1833,11 @@ async function loadCourier(){
   me.mustChangePassword=!!d.mustChangePassword;
   courierActiveDispatch=d.active||null;
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
-  $('departureSubmit').disabled=!!d.mustChangePassword;
+  const checkinLocked=!!d.active;
+  $('departureSubmit').disabled=!!d.mustChangePassword||checkinLocked;
+  $('departureSubmit').textContent=checkinLocked?'🔒 Confirme sua chegada para nova saída':'🛵 Registrar saída';
+  $('addOrderBtn').disabled=checkinLocked;
+  document.querySelectorAll('.order-input').forEach(i=>i.disabled=checkinLocked);
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
   $('myHistory').innerHTML=d.recent.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span></td></tr>`}).join('')||empty(3);
 
@@ -1843,7 +1856,7 @@ async function loadCourier(){
       const note=document.createElement('div');
       note.id='currentDepartureNote';
       note.className='current-active-note';
-      note.innerHTML='<b>Nova saída:</b> você pode registrar os próximos pedidos. Ao confirmar, a saída atual será encerrada automaticamente e o cronômetro recomeçará.';
+      note.innerHTML='<b>Nova saída bloqueada:</b> para manter o tempo operacional exato, você só poderá levar novos pedidos depois de confirmar <b>Cheguei na loja</b>.';
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
@@ -1876,10 +1889,11 @@ async function depart(e){
   const orders=getOrderValues();
   if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');
 
-  let confirmNew=false;
-  if(courierActiveDispatch||getOfflineQueue().length){
-    confirmNew=confirm('Ao continuar, a saída anterior será encerrada e estes pedidos iniciarão uma nova saída. Confirmar?');
-    if(!confirmNew)return;
+  if(courierActiveDispatch){
+    return message('departureMsg','Nova saída bloqueada. Finalize a rota, inicie o retorno e confirme “Cheguei na loja” antes de levar outros pedidos.','err');
+  }
+  if(getOfflineQueue().length){
+    return message('departureMsg','Existe uma saída offline aguardando sincronização. Sincronize essa saída antes de registrar outra.','err');
   }
 
   const btn=$('departureSubmit');
@@ -1894,7 +1908,6 @@ async function depart(e){
 
   const payload={
     order_numbers:orders,
-    confirm_new_departure:confirmNew,
     confirm_recent_orders:false,
     client_token:makeClientToken(),
     offline_queued:false,
@@ -1934,13 +1947,13 @@ async function depart(e){
         return;
       }
 
-      if(r.status===409&&d.code==='ACTIVE_DISPATCH_CONFIRMATION'){
-        if(confirm('Existe uma saída ativa. Encerrar e iniciar a nova?')){
-          payload.confirm_new_departure=true;continue;
-        }
-        return;
+      if(r.status===409&&d.code==='RETURN_CHECKIN_REQUIRED'){
+        throw new Error(d.error||'Confirme sua chegada à loja antes de registrar outra saída.');
       }
 
+      if(r.status===409&&d.code==='RETURN_CHECKIN_REQUIRED'){
+        throw new Error(d.error||'Confirme a chegada do motoboy à loja antes da nova saída.');
+      }
       if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
         const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
         throw new Error(`PEDIDO DUPLICADO BLOQUEADO:\n${text}\n\nProcure o administrador.`);
@@ -1961,7 +1974,7 @@ async function depart(e){
       message('departureMsg',err.message,'err');
     }
   }finally{
-    btn.disabled=!!me.mustChangePassword;
+    btn.disabled=!!me.mustChangePassword||!!courierActiveDispatch;
     updateConnectionState();
   }
 }
@@ -2045,7 +2058,8 @@ function populateManualCouriers(){
 function updateManualActiveInfo(){
   const id=Number($('manualCourier').value);
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===id);
-  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} já está na rua</b>${ordersHtml(active)}<div class="small">Esta saída será encerrada automaticamente ao confirmar a nova.</div></div>`:'';
+  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} ainda não fez check-in de chegada</b>${ordersHtml(active)}<div class="small">Nova saída bloqueada. Confirme a chegada à loja no painel “Quem está na rua”.</div></div>`:'';
+  $('manualSubmit').disabled=!!active;
 }
 function openManualDispatchModal(){
   if(!dashboard)return;
@@ -2054,6 +2068,7 @@ function openManualDispatchModal(){
   $('manualReason').value='';
   $('manualActiveInfo').innerHTML='';
   $('manualMsg').innerHTML='';
+  $('manualSubmit').disabled=false;
   $('manualDispatchModal').style.display='grid';
 }
 function closeManualDispatchModal(){$('manualDispatchModal').style.display='none'}
@@ -2065,7 +2080,7 @@ async function submitManualDispatch(e){
   if(!orders.length)return message('manualMsg','Informe pelo menos um pedido.','err');
 
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===courierId);
-  if(active&&!confirm('Este motoboy já possui uma saída ativa. Encerrar a anterior e iniciar esta nova saída?'))return;
+  if(active)return message('manualMsg','Nova saída bloqueada: confirme a chegada deste motoboy à loja antes de registrar outros pedidos.','err');
 
   const btn=$('manualSubmit');btn.disabled=true;
   const payload={

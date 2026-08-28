@@ -1,59 +1,75 @@
-# DespacheFull 2.7.0 — Controle de Tempo Operacional
+# DespacheFull 2.8.0 — Check-in obrigatório de retorno
 
-> Base oficial: rebranding da versão DespachaMoto v2.5.4. Banco de dados, integrações, regras operacionais, iFood, pagamentos, PIX, KDS e histórico permanecem compatíveis.
+> Base: DespacheFull v2.7.0. Banco, Supabase/PostgreSQL, iFood, pagamentos, PIX, KDS, PWA, histórico e os dois perfis existentes (Admin e Motoboy) permanecem compatíveis.
 
 Perfis continuam sendo SOMENTE:
 - Admin
 - Motoboy
 
-Nenhum login de operador foi adicionado.
+## Regra principal da v2.8.0
 
-## Principais recursos
+Uma nova saída **não encerra mais a saída anterior automaticamente**.
 
-- ciclo EM ROTA → RETORNANDO → DISPONÍVEL;
-- SLA dinâmico de 1 a 5 pedidos + SLA de retorno;
-- transição automática para retorno quando todas as entregas iFood rastreáveis forem resolvidas;
-- botão `Cheguei na loja` para encerrar o tempo fora;
-- painel de exceções por tempo;
-- médias de rota, retorno, tempo total e aderência ao SLA;
+O ciclo obrigatório agora é:
 
-## Recursos preservados
+`DISPONÍVEL → EM ROTA → RETORNANDO → CHEGUEI NA LOJA → DISPONÍVEL`
 
-- trava transacional contra pedido ativo duplicado;
-- proteção para duas requisições simultâneas tentarem usar o mesmo pedido;
-- aviso para pedido reutilizado nas últimas 12 horas;
-- colar até 5 pedidos de uma vez;
-- presença do motoboy a cada 20 segundos;
-- status DISPONÍVEL / NA RUA / OFFLINE / INATIVO;
-- última saída por motoboy;
-- tela `Operação` com pedidos nos últimos 15/30/60 minutos;
-- busca instantânea de pedido;
-- tela `Conflitos`;
-- registro de atraso de sincronização offline;
-- teste brutal de 40 motoboys.
+Enquanto existir uma saída `ON_ROAD`, o backend bloqueia qualquer nova saída do mesmo motoboy, inclusive se o navegador tentar reenviar uma chamada antiga.
 
-## Atualização
+### Proteção no backend
 
-Substitua:
-- server.js
-- package.json
-- public/index.html
-- public/service-worker.js
-- README.md
+- nova saída com check-in pendente retorna `409 RETURN_CHECKIN_REQUIRED`;
+- a antiga flag `confirm_new_departure` não é mais aceita como forma de contornar a trava;
+- um `pg_advisory_xact_lock` por motoboy serializa saídas concorrentes entre instâncias do servidor;
+- replay do mesmo `client_token` continua idempotente e não cria duplicidade;
+- a fila offline permite somente uma saída pendente e também respeita o check-in obrigatório quando sincroniza.
 
-Adicione:
-- scripts/selftest-brutal.js
-- scripts/loadtest-brutal.js
-- LOAD_TEST.md
-- BACKUP_BEFORE_UPDATE.md
+## Fluxo do Motoboy
 
-Não altere PostgreSQL nem variáveis existentes.
+1. Registra de 1 a 5 pedidos.
+2. Fica `EM ROTA`.
+3. Confirma `Todos entregues — iniciar retorno` (ou o iFood pode iniciar o retorno automaticamente quando todos os pedidos rastreáveis forem resolvidos).
+4. Fica `RETORNANDO`.
+5. Confirma `Cheguei na loja`.
+6. Somente então volta a ficar `DISPONÍVEL` e o formulário de nova saída é liberado.
 
-## Migração automática
+## Exceção administrativa
 
-Novas tabelas:
-- user_presence
-- active_order_locks
-- operational_conflicts
+O Admin pode corrigir uma chegada manualmente, mas precisa informar um **motivo obrigatório**. A chegada manual registra:
 
-O sistema faz backfill das travas para pedidos que já estiverem NA RUA no momento do deploy.
+- usuário que confirmou;
+- `arrival_source`;
+- `arrival_reason`;
+- data/hora de chegada;
+- auditoria da operação.
+
+O Admin também não consegue abrir uma nova saída manual para um motoboy com check-in pendente. Primeiro deve confirmar/corrigir a chegada.
+
+## Recursos preservados da v2.7
+
+- controle de rota e retorno;
+- SLA dinâmico de 1 a 5 pedidos;
+- SLA de retorno;
+- alertas NORMAL / ATENÇÃO / ATRASADO / CRÍTICO;
+- painel de exceções;
+- métricas de rota, retorno e tempo total;
+- confirmação de entrega iFood;
+- PIX e pagamentos;
+- KDS / modo telão;
+- histórico e auditoria;
+- trava contra pedido ativo duplicado;
+- sincronização offline;
+- presença do motoboy.
+
+## Migração
+
+A migração é automática no startup. A v2.8 adiciona somente:
+
+- `dispatches.arrival_source`
+- `dispatches.arrival_reason`
+
+Não altere `DATABASE_URL`, `SESSION_SECRET`, credenciais iFood ou outras variáveis do Render.
+
+## Deploy
+
+Para atualização sobre a v2.7.0, substitua os arquivos do pacote `UPDATE-ONLY` e faça o deploy normal no Render.

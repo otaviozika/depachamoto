@@ -192,7 +192,6 @@ try {
       const token = `${RUN}-${courierIndex + 1}-${n}`;
       const payload = {
         order_numbers: orders,
-        confirm_new_departure: true,
         confirm_recent_orders: true,
         client_token: token
       };
@@ -202,7 +201,10 @@ try {
         body: JSON.stringify(payload)
       });
 
+      let departure = null;
       if (res.ok) {
+        const body = await res.json();
+        departure = body.dispatch || null;
         createdDepartures++;
         createdOrders += orders.length;
       } else {
@@ -221,6 +223,14 @@ try {
 
         if (replay.ok) replayAccepted++;
         else failures.push(`idempotent-replay:HTTP${replay.status}`);
+      }
+
+      // v2.8: a próxima saída só é liberada após retorno + check-in na loja.
+      if (departure && n < DEPARTURES) {
+        const ret = await call(`/api/courier/dispatches/${departure.id}/start-return`, cookie, { method: "POST", body: "{}" });
+        if (!ret.ok) failures.push(`start-return-c${courierIndex + 1}-n${n}:HTTP${ret.status}`);
+        const arrived = await call(`/api/courier/dispatches/${departure.id}/arrive`, cookie, { method: "POST", body: "{}" });
+        if (!arrived.ok) failures.push(`arrive-c${courierIndex + 1}-n${n}:HTTP${arrived.status}`);
       }
     }
   }));
@@ -275,6 +285,21 @@ try {
     );
   }
 
+  // Libera o último ciclo de cada motoboy antes da corrida de pedido compartilhado.
+  const finalActives = (await pool.query(`
+    SELECT id,courier_id FROM dispatches
+    WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
+    ORDER BY courier_id
+  `, [userIds])).rows;
+  const cookieByUser = new Map(userIds.map((id,i)=>[Number(id),courierCookies[i]]));
+  for (const row of finalActives) {
+    const cookie = cookieByUser.get(Number(row.courier_id));
+    const ret = await call(`/api/courier/dispatches/${row.id}/start-return`, cookie, { method: "POST", body: "{}" });
+    if (!ret.ok) failures.push(`pre-race-return:${row.courier_id}:${ret.status}`);
+    const arrived = await call(`/api/courier/dispatches/${row.id}/arrive`, cookie, { method: "POST", body: "{}" });
+    if (!arrived.ok) failures.push(`pre-race-arrive:${row.courier_id}:${arrived.status}`);
+  }
+
   // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
   const raceOrder = `#${RUN.toUpperCase()}-RACE-SAME-ORDER`;
   const raceStarted = performance.now();
@@ -285,7 +310,6 @@ try {
         method: "POST",
         body: JSON.stringify({
           order_numbers: [raceOrder],
-          confirm_new_departure: true,
           confirm_recent_orders: true,
           client_token: `${RUN}-race-${i + 1}`
         })

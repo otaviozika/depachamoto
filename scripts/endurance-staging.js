@@ -212,13 +212,15 @@ try {
           method: "POST",
           body: JSON.stringify({
             order_numbers: orders,
-            confirm_new_departure: true,
             confirm_recent_orders: true,
             client_token: token
           })
         });
 
+        let departure = null;
         if (r.ok) {
+          const body = await r.json();
+          departure = body.dispatch || null;
           createdDepartures++;
           createdOrders += orders.length;
         } else {
@@ -232,13 +234,20 @@ try {
             method: "POST",
             body: JSON.stringify({
               order_numbers: orders,
-              confirm_new_departure: true,
               confirm_recent_orders: true,
               client_token: token
             })
           });
           if (replay.ok) replayAccepted++;
           else errors.push(`replay-c${courierIndex + 1}-${sequence}:${replay.status}`);
+        }
+
+        // v2.8: fecha cada ciclo somente por retorno + check-in obrigatório.
+        if (departure) {
+          const ret = await request(`/api/courier/dispatches/${departure.id}/start-return`, cookie, { method: "POST", body: "{}" });
+          if (!ret.ok) errors.push(`start-return-c${courierIndex + 1}-${sequence}:${ret.status}`);
+          const arrived = await request(`/api/courier/dispatches/${departure.id}/arrive`, cookie, { method: "POST", body: "{}" });
+          if (!arrived.ok) errors.push(`arrive-c${courierIndex + 1}-${sequence}:${arrived.status}`);
         }
 
         // Simula uma pequena "queda" do aparelho: alguns motoboys ficam sem enviar por 90s.

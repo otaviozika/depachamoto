@@ -120,17 +120,28 @@ try{
       const token=`${RUN}-${c+1}-${n}`;
       const payload={
         order_numbers:orders,
-        confirm_new_departure:true,
         confirm_recent_orders:true,
         client_token:token
       };
       const r=await call("/api/courier/depart",cookie,{method:"POST",body:JSON.stringify(payload)});
-      if(r.ok){createdDepartures++;createdOrders+=orders.length}
-      else failures.push(`depart-c${c+1}-n${n}:${r.status}:${await r.text()}`);
+      let departure=null;
+      if(r.ok){
+        const body=await r.json();
+        departure=body.dispatch||null;
+        createdDepartures++;createdOrders+=orders.length;
+      } else failures.push(`depart-c${c+1}-n${n}:${r.status}:${await r.text()}`);
 
       if(n%10===0){
         const replay=await call("/api/courier/depart",cookie,{method:"POST",body:JSON.stringify(payload)});
         if(!replay.ok)failures.push(`replay:${replay.status}`);
+      }
+
+      // v2.8: entre duas saídas é obrigatório iniciar retorno e confirmar chegada.
+      if(departure&&n<DEPARTURES){
+        const ret=await call(`/api/courier/dispatches/${departure.id}/start-return`,cookie,{method:"POST",body:"{}"});
+        if(!ret.ok)failures.push(`start-return-c${c+1}-n${n}:${ret.status}`);
+        const arrive=await call(`/api/courier/dispatches/${departure.id}/arrive`,cookie,{method:"POST",body:"{}"});
+        if(!arrive.ok)failures.push(`arrive-c${c+1}-n${n}:${arrive.status}`);
       }
     }
   }));
