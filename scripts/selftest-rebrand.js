@@ -8,16 +8,16 @@ const sw=fs.readFileSync(new URL("../public/service-worker.js",import.meta.url),
 const pkg=JSON.parse(fs.readFileSync(new URL("../package.json",import.meta.url),"utf8"));
 
 const checks={
-  version:server.includes('const VERSION = "2.9.0";')&&pkg.version==="2.9.0",
+  version:server.includes('const VERSION = "3.0.0";')&&pkg.version==="3.0.0",
   packageName:pkg.name==="despachefull",
-  title:html.includes('<title>DespacheFull 2.9.0</title>'),
+  title:html.includes('<title>DespacheFull 3.0.0</title>'),
   loginBrand:html.includes('/brand-logo.png')&&html.includes('/brand-wordmark-light.png')&&html.includes('/brand-wordmark.png'),
   manifest:manifest.includes('"name": "DespacheFull"')&&manifest.includes('"short_name": "DespacheFull"'),
-  serviceWorker:sw.includes('despachefull-v2.9.0-ifood-only-courier')&&sw.includes('/app-icon-192.png'),
+  serviceWorker:sw.includes('despachefull-v3.0.0-attendance')&&sw.includes('/app-icon-192.png'),
   publicOldBrandRemoved:!html.includes('DespachaMoto')&&!manifest.includes('DespachaMoto')&&!sw.includes('DespachaMoto'),
   serverOldVisibleBrandRemoved:!server.includes('DespachaMoto'),
   dbCompatibility:server.includes('CREATE TABLE IF NOT EXISTS dispatches')&&server.includes('CREATE TABLE IF NOT EXISTS ifood_orders'),
   sessionCompatibility:html.includes("sessionStorage.setItem('dm_session_notice','expired')")
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`Falhou: ${name}`);
-console.log(JSON.stringify({result:"PASS",version:"2.9.0",brand:"DespacheFull",checks},null,2));
+console.log(JSON.stringify({result:"PASS",version:"3.0.0",brand:"DespacheFull",checks},null,2));

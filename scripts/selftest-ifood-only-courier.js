@@ -10,7 +10,7 @@ const adminManual = server.match(/app\.post\("\/api\/admin\/dispatches\/manual"[
 const uiDepart = ui.match(/async function depart\(e\)\{[\s\S]*?\n\}/)?.[0] || '';
 
 const checks = {
-  version_290: /const VERSION = "2\.9\.0"/.test(server),
+  version_290: /const VERSION = "3\.0\.0"/.test(server),
   courier_non_ifood_backend_block: /COURIER_NON_IFOOD_ORDER_BLOCKED/.test(courierDepart),
   courier_requires_ifood_code: /IFOOD_ORDER_REQUIRED/.test(courierDepart),
   courier_all_orders_must_match: /ifoodInspection\.accepted\.length !== orders\.length/.test(courierDepart),
@@ -23,9 +23,9 @@ const checks = {
   admin_manual_still_admin_only: /auth, adminOnly/.test(adminManual),
   admin_manual_still_allows_non_ifood: /inspectIfoodOrdersForDeparture\(orders\)/.test(adminManual) && !/accepted\.length !== orders\.length/.test(adminManual),
   admin_manual_source: /source: "ADMIN"/.test(adminManual),
-  pwa_cache_290: /despachefull-v2\.9\.0-ifood-only-courier/.test(sw),
+  pwa_cache_290: /despachefull-v3\.0\.0-attendance/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
-console.log(JSON.stringify({ result: 'PASS', version: '2.9.0', checks }, null, 2));
+console.log(JSON.stringify({ result: 'PASS', version: '3.0.0', checks }, null, 2));

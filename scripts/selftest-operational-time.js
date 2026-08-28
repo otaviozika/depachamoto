@@ -6,7 +6,7 @@ const ui = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'ut
 const sw = fs.readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8');
 
 const checks = {
-  version_290: /const VERSION = "2\.9\.0"/.test(server),
+  version_290: /const VERSION = "3\.0\.0"/.test(server),
   stage_column: /operational_stage TEXT NOT NULL DEFAULT 'EN_ROUTE'/.test(server),
   returning_timestamp: /returning_at TIMESTAMPTZ/.test(server),
   returned_timestamp: /returned_at TIMESTAMPTZ/.test(server),
@@ -23,7 +23,7 @@ const checks = {
   courier_return_button: /Todos entregues — iniciar retorno/.test(ui),
   sla_admin_fields: /id="slaRoute1"/.test(ui) && /id="slaRoute5"/.test(ui) && /id="slaReturn"/.test(ui),
   returning_ui: /RETORNANDO/.test(ui),
-  pwa_cache_290: /despachefull-v2\.9\.0-ifood-only-courier/.test(sw),
+  pwa_cache_290: /despachefull-v3\.0\.0-attendance/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 

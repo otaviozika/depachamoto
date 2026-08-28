@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 2.9.0</title>
+<title>DespacheFull 3.0.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -96,7 +96,20 @@
 .monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
 
 
-.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.conn-dot{font-size:11px}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
+.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.team-status.AUSENTE{background:#f1f5f9;color:#64748b}.conn-dot{font-size:11px}
+.attendance-layout{display:grid;grid-template-columns:minmax(300px,430px) 1fr;gap:18px;align-items:start}
+.attendance-qr-card{padding:22px;text-align:center}
+.attendance-qr-shell{width:300px;max-width:100%;aspect-ratio:1;margin:18px auto;background:#fff;border:10px solid #fff;border-radius:18px;display:grid;place-items:center;box-shadow:0 12px 35px rgba(15,23,42,.12)}
+.attendance-qr-shell img,.attendance-qr-shell canvas{max-width:100%;height:auto!important}
+.attendance-qr-countdown{font-weight:900;font-size:18px;margin-top:10px}
+.attendance-present-card{border:1px solid #bbf7d0;background:#f0fdf4}
+.attendance-missing-card{border:1px solid #fde68a;background:#fffbeb}
+.attendance-status-line{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.attendance-checkin-banner{margin-bottom:16px;padding:16px 18px;border-radius:14px}
+.attendance-checkin-banner.ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46}
+.attendance-checkin-banner.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
+.attendance-checkin-banner.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+@media(max-width:950px){.attendance-layout{grid-template-columns:1fr}.attendance-qr-shell{width:280px}}.quick-paste{width:100%;min-height:74px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;background:#fafafa;resize:vertical}.conflict-critical{background:#fff1f2}.conflict-warning{background:#fffbeb}.search-result{padding:14px;border-bottom:1px solid var(--line)}.search-result:last-child{border-bottom:0}.peak-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.peak-item{background:#111827;color:#fff;border-radius:13px;padding:14px}.peak-item .label{color:#cbd5e1}.peak-item .metric{font-size:25px}.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.team-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px}
 .payment-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.payment-toolbar label{font-size:12px;font-weight:800}.payment-toolbar input{display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.payment-formula{padding:12px 14px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px;color:#854d0e;font-size:13px}.payment-input{width:92px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-note{min-width:180px;width:220px;padding:8px;border:1px solid var(--line);border-radius:8px}.payment-select{padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}.payment-total{font-size:15px;font-weight:900}.payment-pix{max-width:220px;white-space:normal;line-height:1.35}.payment-locked{background:#f8fafc}.money-positive{color:#166534}.money-negative{color:#991b1b}.payment-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.payment-mini>div{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px}.payment-own-total{font-size:30px;font-weight:900;margin-top:5px}.pix-self-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pix-self-grid label{font-size:12px;font-weight:800}.pix-self-grid input,.pix-self-grid select{display:block;width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.pix-status-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.pix-holder{font-weight:800}.pix-pending-row{background:#fffbeb}.pix-verified-row{background:#f0fdf4}
 
 @media(max-width:1100px){.wall-summary-clean{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-grid{grid-template-columns:repeat(2,1fr)}.peak-strip{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:repeat(3,1fr)}.grid,.security-grid,.analytics-grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(3,1fr)}.comparison-grid{grid-template-columns:repeat(2,1fr)}}
@@ -233,6 +246,7 @@
     <div class="admin-brand"><img class="brand-wordmark-sidebar" src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
     <nav class="nav admin-nav">
       <button data-page="dashboard" class="active">▦ <span>Dashboard</span></button>
+      <button data-page="attendance">✓ <span>Presença do dia</span></button>
       <button data-page="operations">⚡ <span>Operação</span></button>
       <button data-page="ifood">▣ <span>Pedidos iFood</span></button>
       <button data-page="road">◷ <span>Quem está na rua</span></button>
@@ -278,10 +292,10 @@
           <div class="dashboard-clock-card"><span class="dashboard-clock-icon">◷</span><div><b id="dashboardClockTime">--:--:--</b><small id="dashboardClockDate">--/--/----</small></div></div>
         </div>
         <div class="cards dashboard-metrics">
-          <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Online agora</div></div>
+          <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Confirmaram presença hoje</div></div>
           <div class="card dashboard-metric-card metric-orange"><div class="dashboard-metric-label"><span>●</span> Fora da loja</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em rota + retornando</div></div>
-          <div class="card dashboard-metric-card metric-green"><div class="dashboard-metric-label"><span>●</span> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Aguardando</div></div>
-          <div class="card dashboard-metric-card metric-blue"><div class="dashboard-metric-label"><span>▣</span> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Recebidos</div></div>
+          <div class="card dashboard-metric-card metric-green"><div class="dashboard-metric-label"><span>●</span> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Presentes na loja</div></div>
+          <div class="card dashboard-metric-card metric-blue"><div class="dashboard-metric-label"><span>▣</span> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Entraram no sistema</div></div>
           <div class="card dashboard-metric-card metric-purple"><div class="dashboard-metric-label"><span>▰</span> Pedidos ativos</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Saídas ainda abertas</div></div>
           <div class="card dashboard-metric-card metric-amber"><div class="dashboard-metric-label"><span>◷</span> Cadastros pendentes</div><div id="mPending" class="metric">0</div><div class="dashboard-metric-note">Aguardando aprovação</div></div>
         </div>
@@ -299,12 +313,73 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 2.9.0</span>
+          <span>Versão 3.0.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
 
       
+      <section id="attendance" class="page">
+        <div class="dashboard-heading">
+          <div>
+            <h1 class="title">Presença do dia</h1>
+            <p class="muted">O motoboy entra na operação somente depois de confirmar a presença pelo QR da loja.</p>
+          </div>
+          <button class="btn outline" type="button" onclick="loadAttendance()">Atualizar</button>
+        </div>
+
+        <div class="cards" style="margin-top:18px">
+          <div class="card"><div class="label">Presentes hoje</div><div id="aPresent" class="metric">0</div></div>
+          <div class="card"><div class="label">Fora da loja</div><div id="aOutside" class="metric">0</div></div>
+          <div class="card"><div class="label">Disponíveis</div><div id="aAvailable" class="metric">0</div></div>
+          <div class="card"><div class="label">Ausentes</div><div id="aAbsent" class="metric">0</div></div>
+        </div>
+
+        <div class="attendance-layout" style="margin-top:18px">
+          <div class="section">
+            <div class="section-head">
+              <div>
+                <b>QR de presença</b>
+                <div class="small muted">Atualiza automaticamente. O motoboy deve escanear com a câmera do celular.</div>
+              </div>
+              <button class="btn outline" type="button" onclick="refreshAttendanceQr()">Novo QR</button>
+            </div>
+            <div class="attendance-qr-card">
+              <div id="attendanceQr" class="attendance-qr-shell"><div class="muted">Carregando QR...</div></div>
+              <div id="attendanceQrCountdown" class="attendance-qr-countdown">—</div>
+              <div id="attendanceQrStatus" class="small muted" style="margin-top:8px">O código expira rapidamente para reduzir confirmações à distância.</div>
+              <div class="small muted" style="margin-top:14px">Se o motoboy ainda não estiver logado, o link do QR será preservado e a presença será confirmada logo após o login.</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section">
+              <div class="section-head"><b>Equipe de hoje</b><span class="badge green">PRESENÇA</span></div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Motoboy</th><th>Presença</th><th>Origem</th><th>Status agora</th><th>Conexão</th></tr></thead>
+                  <tbody id="attendanceTable"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="section" style="margin-top:18px">
+              <div class="section-head"><b>Confirmar presença manualmente</b></div>
+              <form id="attendanceManualForm" class="form" style="padding:18px">
+                <label>Motoboy
+                  <select id="attendanceManualCourier"><option value="">Selecione</option></select>
+                </label>
+                <label>Motivo
+                  <input id="attendanceManualReason" maxlength="250" placeholder="Ex.: celular sem bateria" required>
+                </label>
+                <button id="attendanceManualBtn" class="btn primary" type="submit">Confirmar presença pelo Admin</button>
+              </form>
+              <div id="attendanceManualMsg"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="operations" class="page">
         <h1 class="title">Operação em tempo real</h1>
         <p class="muted">Visão rápida para horários de pico com muitos motoboys.</p>
@@ -465,12 +540,15 @@
         <h1 class="title">Relatório diário</h1>
         <div class="actions" style="margin:18px 0"><input id="reportDate" type="date" style="padding:10px;border:1px solid var(--line);border-radius:9px"><button class="btn primary" onclick="loadReport()">Gerar</button><button class="btn outline" onclick="exportReport()">Exportar CSV</button></div>
         <div class="cards" style="grid-template-columns:repeat(4,1fr)">
-          <div class="card"><div class="label">Pedidos</div><div id="rOrders" class="metric">0</div></div>
+          <div class="card"><div class="label">Pedidos recebidos</div><div id="rOrders" class="metric">0</div></div>
+          <div class="card"><div class="label">Pedidos despachados</div><div id="rDispatchedOrders" class="metric">0</div></div>
           <div class="card"><div class="label">Saídas</div><div id="rDispatches" class="metric">0</div></div>
-          <div class="card"><div class="label">Motoboys</div><div id="rCouriers" class="metric">0</div></div>
-          <div class="card"><div class="label">Máx. pedidos/saída</div><div id="rMax" class="metric">0</div></div>
+          <div class="card"><div class="label">Motoboys presentes</div><div id="rCouriers" class="metric">0</div></div>
         </div>
-        <div class="section"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedidos</th><th>Saídas</th><th>Primeira saída</th><th>Última saída</th></tr></thead><tbody id="reportTable"></tbody></table></div></div>
+        <div class="section">
+          <div class="section-head"><b>Presença e operação por motoboy</b></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Presença</th><th>Origem</th><th>Pedidos</th><th>Saídas</th><th>Primeira saída</th><th>Última saída</th></tr></thead><tbody id="reportTable"></tbody></table></div>
+        </div>
       </section>
 
       
@@ -719,6 +797,7 @@
   <main class="content" style="max-width:760px">
     <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
+    <div id="attendanceCheckinStatus"></div>
     <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre somente pedidos iFood de entrega própria validados pelo sistema.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
     <div id="courierDeliveriesCard" class="card hidden" style="margin-bottom:18px">
@@ -847,7 +926,7 @@
       <label>Motivo / observação (opcional)
         <input id="manualReason" maxlength="250" placeholder="Ex.: celular sem bateria">
       </label>
-      <div class="warning"><b>Check-in obrigatório:</b> se este motoboy estiver EM ROTA ou RETORNANDO, uma nova saída será bloqueada. Primeiro confirme a chegada dele à loja no painel “Quem está na rua”.</div>
+      <div class="warning"><b>Presença + retorno obrigatórios:</b> o motoboy precisa ter presença confirmada hoje e não pode estar EM ROTA ou RETORNANDO. A presença pode ser feita pelo QR ou manualmente pelo Admin.</div>
       <button id="manualSubmit" class="btn primary">Confirmar saída manual</button>
     </form>
   </div>
@@ -884,6 +963,7 @@
 
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
 <script>
 let me=null,dashboard=null,wallboardData=null,serverOffsetMs=0,deferredInstallPrompt=null;
 let alertSettings={attention:40,delayed:50,critical:60};
@@ -896,6 +976,10 @@ let sessionRedirecting=false;
 const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v17_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
 let paymentState={date:null,rule:null,rows:[],summary:{}};
+let attendanceState={date:null,summary:{present:0,outside:0,available:0,absent:0},rows:[]};
+let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownTimer=null;
+let courierAttendancePresent=false;
+const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
 
 function redirectExpiredSession(){
@@ -950,6 +1034,52 @@ function ordersOf(x){return Array.isArray(x?.order_numbers)&&x.order_numbers.len
 function ordersText(x){return ordersOf(x).join(', ')}
 function ordersHtml(x){return `<div class="orders-list">${ordersOf(x).map(o=>`<span class="order-chip">${escapeHtml(o)}</span>`).join('')}</div>`}
 function spToday(){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const o=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${o.year}-${o.month}-${o.day}`}
+
+function captureAttendanceTokenFromUrl(){
+  try{
+    const url=new URL(window.location.href);
+    const token=url.searchParams.get('attendance_token');
+    if(!token)return;
+    sessionStorage.setItem(ATTENDANCE_TOKEN_KEY,token);
+    url.searchParams.delete('attendance_token');
+    const cleaned=url.pathname+(url.search?url.search:'')+(url.hash||'');
+    history.replaceState({},document.title,cleaned);
+  }catch{}
+}
+function getPendingAttendanceToken(){
+  try{return sessionStorage.getItem(ATTENDANCE_TOKEN_KEY)||''}catch{return''}
+}
+function clearPendingAttendanceToken(){
+  try{sessionStorage.removeItem(ATTENDANCE_TOKEN_KEY)}catch{}
+}
+function renderAttendanceCheckinNotice(text,type='ok'){
+  if(!$('attendanceCheckinStatus'))return;
+  $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}">${escapeHtml(text)}</div>`:'';
+}
+async function processPendingAttendanceToken(){
+  const token=getPendingAttendanceToken();
+  if(!token||!me)return null;
+  if(me.role!=='courier'){
+    clearPendingAttendanceToken();
+    return null;
+  }
+  try{
+    const d=await api('/api/courier/attendance/checkin',{
+      method:'POST',
+      body:JSON.stringify({token})
+    });
+    clearPendingAttendanceToken();
+    courierAttendancePresent=true;
+    renderAttendanceCheckinNotice(d.message||'Presença confirmada.','ok');
+    return d;
+  }catch(err){
+    if(['ATTENDANCE_QR_EXPIRED','ATTENDANCE_QR_INVALID','ATTENDANCE_QR_WRONG_DAY'].includes(err.code)){
+      clearPendingAttendanceToken();
+    }
+    renderAttendanceCheckinNotice(err.message||'Não foi possível confirmar a presença.','err');
+    return null;
+  }
+}
 function isoDateLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 function addDaysIso(iso,days){const [y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+days);return isoDateLocal(dt)}
 function firstDayMonthIso(iso){const [y,m]=iso.split('-').map(Number);return `${y}-${String(m).padStart(2,'0')}-01`}
@@ -1110,19 +1240,21 @@ function allCourierOrdersIfoodValidated(){
 function updateCourierDepartureEligibility(){
   const btn=$('departureSubmit');
   if(!btn)return;
+  const attendanceLocked=!courierAttendancePresent;
   const checkinLocked=!!courierActiveDispatch;
   const offline=!navigator.onLine;
   const legacyQueue=getOfflineQueue().length>0;
   const valid=allCourierOrdersIfoodValidated();
-  btn.disabled=!!me?.mustChangePassword||checkinLocked||offline||legacyQueue||!valid;
-  if(checkinLocked)btn.textContent='🔒 Confirme sua chegada para nova saída';
+  btn.disabled=!!me?.mustChangePassword||attendanceLocked||checkinLocked||offline||legacyQueue||!valid;
+  if(attendanceLocked)btn.textContent='🔒 Confirme presença pelo QR';
+  else if(checkinLocked)btn.textContent='🔒 Confirme sua chegada para nova saída';
   else if(offline)btn.textContent='🔒 Conexão necessária para validar iFood';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
   else if(!valid)btn.textContent='🔒 Valide os pedidos iFood';
   else btn.textContent='🛵 Registrar saída';
 
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
-  if($('addOrderBtn'))$('addOrderBtn').disabled=checkinLocked||n>=5;
+  if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||checkinLocked||n>=5;
 }
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;updateCourierDepartureEligibility()}
 
@@ -1392,7 +1524,13 @@ function showApp(){
   if(me.role==='admin'){
     $('adminApp').classList.remove('hidden');$('adminName').textContent=me.name;if($('adminSideName'))$('adminSideName').textContent=me.name||'Administrador';if($('adminSideUser'))$('adminSideUser').textContent=me.username||'admin';$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();if($('paymentDate'))$('paymentDate').value=spToday();if($('paymentRuleEffective'))$('paymentRuleEffective').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
-    $('courierApp').classList.remove('hidden');$('courierName').textContent=me.name;$('hello').textContent=me.name.split(' ')[0];resetOrderFields();renderOfflineQueueStatus();loadCourier().then(flushOfflineQueue);
+    $('courierApp').classList.remove('hidden');
+    $('courierName').textContent=me.name;
+    $('hello').textContent=me.name.split(' ')[0];
+    resetOrderFields();
+    renderOfflineQueueStatus();
+    processPendingAttendanceToken()
+      .finally(()=>loadCourier().then(flushOfflineQueue));
   }
   heartbeat();
   if(me.mustChangePassword){setTimeout(()=>openPasswordModal(true),250)}
@@ -1409,6 +1547,110 @@ async function loadAdmin(){
   if($('slaReturn'))$('slaReturn').value=operationalSla.returnMinutes??15;
   if($('slaCriticalOver'))$('slaCriticalOver').value=operationalSla.criticalOverMinutes??15;
   renderRoad();renderRecent();renderCouriers();populateHistoryCouriers();populateManualCouriers();renderDashboardClock();
+}
+
+function attendanceMethodLabel(method){
+  return {
+    QR:'QR DA LOJA',
+    ADMIN_MANUAL:'ADMIN',
+    LEGACY_INFERRED:'INFERIDA DO HISTÓRICO'
+  }[method]||String(method||'—').replaceAll('_',' ');
+}
+function attendanceStatusForRow(x){
+  if(!x.present)return {key:'AUSENTE',label:'AUSENTE'};
+  if(x.active_dispatch_id&&x.operational_stage==='RETURNING')return {key:'RETORNANDO',label:'RETORNANDO'};
+  if(x.active_dispatch_id)return {key:'NA_RUA',label:'FORA DA LOJA'};
+  return {key:'DISPONIVEL',label:'DISPONÍVEL'};
+}
+function renderAttendance(){
+  if(!$('attendanceTable'))return;
+  const s=attendanceState.summary||{};
+  $('aPresent').textContent=s.present||0;
+  $('aOutside').textContent=s.outside||0;
+  $('aAvailable').textContent=s.available||0;
+  $('aAbsent').textContent=s.absent||0;
+
+  $('attendanceTable').innerHTML=(attendanceState.rows||[]).map(x=>{
+    const st=attendanceStatusForRow(x);
+    const presence=x.present
+      ? `<b>${localTime(x.checked_in_at)}</b><div class="small muted">${escapeHtml(attendanceState.date||'')}</div>`
+      : '<span class="badge gray">NÃO CONFIRMADA</span>';
+    const source=x.present
+      ? `<span class="badge ${x.checkin_method==='QR'?'green':x.checkin_method==='ADMIN_MANUAL'?'blue':'gray'}">${escapeHtml(attendanceMethodLabel(x.checkin_method))}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}`
+      : '—';
+    return `<tr>
+      <td><b>${escapeHtml(x.name)}</b><div class="small muted">@${escapeHtml(x.username)}</div></td>
+      <td>${presence}</td>
+      <td>${source}</td>
+      <td><span class="team-status ${st.key}">${st.label}</span></td>
+      <td>${x.is_online?'🟢 Online':'⚪ Offline'}</td>
+    </tr>`;
+  }).join('')||empty(5);
+
+  const absent=(attendanceState.rows||[]).filter(x=>!x.present);
+  $('attendanceManualCourier').innerHTML='<option value="">Selecione</option>'+
+    absent.map(x=>`<option value="${x.courier_id}">${escapeHtml(x.name)}</option>`).join('');
+  $('attendanceManualBtn').disabled=!absent.length;
+}
+function updateAttendanceQrCountdown(){
+  if(!$('attendanceQrCountdown'))return;
+  if(!attendanceQrExpiresAt){
+    $('attendanceQrCountdown').textContent='—';
+    return;
+  }
+  const sec=Math.max(0,Math.ceil((attendanceQrExpiresAt-serverNowMs())/1000));
+  $('attendanceQrCountdown').textContent=sec>0?`Expira em ${sec}s`:'QR expirado — atualizando...';
+}
+async function refreshAttendanceQr(){
+  if(me?.role!=='admin'||!$('attendanceQr'))return;
+  try{
+    const d=await api('/api/admin/attendance/qr');
+    attendanceQrExpiresAt=Date.parse(d.expires_at);
+    const el=$('attendanceQr');
+    el.innerHTML='';
+    if(typeof QRCode==='function'){
+      new QRCode(el,{text:d.url,width:280,height:280,correctLevel:QRCode.CorrectLevel?.M});
+      $('attendanceQrStatus').textContent='QR válido somente por alguns segundos. Use a câmera do celular do motoboy.';
+    }else{
+      el.innerHTML=`<div><b>Gerador de QR indisponível.</b><div class="small muted" style="margin-top:8px">Atualize a página com internet.</div></div>`;
+      $('attendanceQrStatus').textContent='Não foi possível carregar o gerador visual do QR.';
+    }
+    updateAttendanceQrCountdown();
+
+    clearTimeout(attendanceQrRefreshTimer);
+    attendanceQrRefreshTimer=setTimeout(()=>{
+      if($('attendance')?.classList.contains('active'))refreshAttendanceQr();
+    },Number(d.refresh_after_ms||30000));
+  }catch(err){
+    $('attendanceQr').innerHTML='<div class="muted">Falha ao gerar QR.</div>';
+    $('attendanceQrStatus').textContent=err.message;
+  }
+}
+async function loadAttendance(){
+  if(me?.role!=='admin')return;
+  try{
+    attendanceState=await api('/api/admin/attendance?date='+encodeURIComponent(spToday()));
+    renderAttendance();
+    if($('attendance')?.classList.contains('active'))refreshAttendanceQr();
+  }catch(err){alert(err.message)}
+}
+async function submitManualAttendance(e){
+  e.preventDefault();
+  const courierId=Number($('attendanceManualCourier').value);
+  const reason=$('attendanceManualReason').value.trim();
+  if(!courierId)return message('attendanceManualMsg','Selecione o motoboy.','err');
+  if(reason.length<3)return message('attendanceManualMsg','Informe o motivo da presença manual.','err');
+  const btn=$('attendanceManualBtn');btn.disabled=true;
+  try{
+    const d=await api('/api/admin/attendance/checkin',{
+      method:'POST',
+      body:JSON.stringify({courier_id:courierId,reason})
+    });
+    message('attendanceManualMsg',d.message||'Presença confirmada.','ok');
+    $('attendanceManualReason').value='';
+    await Promise.all([loadAttendance(),loadAdmin()]);
+  }catch(err){message('attendanceManualMsg',err.message,'err')}
+  finally{btn.disabled=false}
 }
 function operationalStageLabel(stage){return stage==='RETURNING'?'RETORNANDO':'EM ROTA'}
 function slaStateLabel(state){return {NORMAL:'NORMAL',ATTENTION:'ATENÇÃO',DELAYED:'ATRASADO',CRITICAL:'CRÍTICO'}[state]||state}
@@ -1484,7 +1726,7 @@ function renderCouriers(){
     else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button>`;
     else accessActions=`<button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button>`;
 
-    const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+    const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
     const last=x.last_departure?localDate(x.last_departure):'Nunca';
     const pixStatus=x.pix_status||(x.pix_key?'VERIFIED':'NONE');
     const pix=x.pix_key
@@ -1862,8 +2104,17 @@ async function loadCourier(){
   const d=await api('/api/courier/dashboard');
   me.mustChangePassword=!!d.mustChangePassword;
   courierActiveDispatch=d.active||null;
+  courierAttendancePresent=!!d.attendance?.present;
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
-  const checkinLocked=!!d.active;
+
+  if(courierAttendancePresent){
+    const when=d.attendance?.checked_in_at?localTime(d.attendance.checked_in_at):'hoje';
+    renderAttendanceCheckinNotice(`✅ Presença confirmada às ${when}. Você está ativo na operação de hoje.`,'ok');
+  }else{
+    renderAttendanceCheckinNotice('⚠ Presença ainda não confirmada. Escaneie o QR exibido na loja. Nenhuma saída será liberada antes do check-in.','warn');
+  }
+
+  const checkinLocked=!!d.active||!courierAttendancePresent;
   document.querySelectorAll('.order-input').forEach(i=>i.disabled=checkinLocked);
   updateCourierDepartureEligibility();
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
@@ -1917,6 +2168,9 @@ async function depart(e){
   const orders=getOrderValues();
   if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');
 
+  if(!courierAttendancePresent){
+    return message('departureMsg','Confirme sua presença pelo QR da loja antes de registrar uma saída.','err');
+  }
   if(courierActiveDispatch){
     return message('departureMsg','Nova saída bloqueada. Finalize a rota, inicie o retorno e confirme “Cheguei na loja” antes de levar outros pedidos.','err');
   }
@@ -1974,12 +2228,13 @@ async function depart(e){
         return;
       }
 
+      if((r.status===403||r.status===409)&&d.code==='ATTENDANCE_REQUIRED'){
+        courierAttendancePresent=false;
+        updateCourierDepartureEligibility();
+        throw new Error(d.error||'Confirme sua presença pelo QR da loja antes de registrar uma saída.');
+      }
       if(r.status===409&&d.code==='RETURN_CHECKIN_REQUIRED'){
         throw new Error(d.error||'Confirme sua chegada à loja antes de registrar outra saída.');
-      }
-
-      if(r.status===409&&d.code==='RETURN_CHECKIN_REQUIRED'){
-        throw new Error(d.error||'Confirme a chegada do motoboy à loja antes da nova saída.');
       }
       if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
         const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
@@ -2078,12 +2333,23 @@ function manualOrders(){return[...document.querySelectorAll('.manual-order-input
 function populateManualCouriers(){
   if(!dashboard)return;
   const activeApproved=dashboard.couriers.filter(x=>x.active&&x.approval_status==='APPROVED');
-  $('manualCourier').innerHTML='<option value="">Selecione...</option>'+activeApproved.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+  $('manualCourier').innerHTML='<option value="">Selecione...</option>'+activeApproved.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}${x.present_today?' • presente':' • AUSENTE'}</option>`).join('');
 }
 function updateManualActiveInfo(){
   const id=Number($('manualCourier').value);
+  const courier=dashboard?.couriers?.find(x=>Number(x.id)===id);
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===id);
-  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} ainda não fez check-in de chegada</b>${ordersHtml(active)}<div class="small">Nova saída bloqueada. Confirme a chegada à loja no painel “Quem está na rua”.</div></div>`:'';
+  if(!courier){
+    $('manualActiveInfo').innerHTML='';
+    $('manualSubmit').disabled=false;
+    return;
+  }
+  if(!courier.present_today){
+    $('manualActiveInfo').innerHTML='<div class="warning"><b>Presença não confirmada:</b> registre a presença deste motoboy pelo QR ou em “Presença do dia” antes da saída manual.</div>';
+    $('manualSubmit').disabled=true;
+    return;
+  }
+  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} ainda não fez check-in de chegada</b>${ordersHtml(active)}<div class="small">Nova saída bloqueada. Confirme a chegada à loja no painel “Quem está na rua”.</div></div>`:'<div class="msg ok">✓ Presença de hoje confirmada.</div>';
   $('manualSubmit').disabled=!!active;
 }
 function openManualDispatchModal(){
@@ -2104,6 +2370,8 @@ async function submitManualDispatch(e){
   if(!courierId)return message('manualMsg','Selecione o motoboy.','err');
   if(!orders.length)return message('manualMsg','Informe pelo menos um pedido.','err');
 
+  const courier=dashboard?.couriers?.find(x=>Number(x.id)===courierId);
+  if(!courier?.present_today)return message('manualMsg','Este motoboy ainda não confirmou presença hoje. Registre a presença antes da saída manual.','err');
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===courierId);
   if(active)return message('manualMsg','Nova saída bloqueada: confirme a chegada deste motoboy à loja antes de registrar outros pedidos.','err');
 
@@ -2770,8 +3038,14 @@ async function loadOperations(){
     $('operationalExceptions').innerHTML=exceptions.map(x=>`<div class="exception-item ${x.sla_state}"><div><b>${escapeHtml(x.courier_name)}</b><div class="small muted">${escapeHtml(dispatchProgressText(x))}</div></div><div><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div><div><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><div class="small muted">${x.stage_elapsed_minutes}/${x.sla_minutes} min</div></div><div>${dispatchActionHtml(x)}</div></div>`).join('')||'<div class="empty">✓ Nenhuma exceção de tempo agora.</div>';
 
     $('teamNow').innerHTML=dashboard.couriers.filter(x=>x.approval_status==='APPROVED').map(x=>{
-      const label={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
-      const detail=x.operational_status==='DISPONIVEL'?`Última saída há ${timeSince(x.last_departure)}`:(x.operational_status==='RETORNANDO'?'Em retorno para a loja':(x.is_online?'Conectado':'Sem presença recente'));
+      const label={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+      const detail=x.operational_status==='DISPONIVEL'
+        ? `Presente na loja${x.last_departure?' • última saída há '+timeSince(x.last_departure):''}`
+        : x.operational_status==='AUSENTE'
+          ? 'Não confirmou presença hoje'
+          : x.operational_status==='RETORNANDO'
+            ? 'Em retorno para a loja'
+            : (x.is_online?'Conectado':'Sem conexão recente');
       return `<div class="team-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${escapeHtml(x.name)}</b><span class="team-status ${x.operational_status}">${label}</span></div><div class="small muted" style="margin-top:7px">${detail}</div><div class="small" style="margin-top:5px">${x.today_count} pedido(s) hoje</div></div>`;
     }).join('')||'<div class="empty">Nenhum motoboy.</div>';
   }catch(err){alert(err.message)}
@@ -2820,8 +3094,19 @@ async function loadReport(){
   const date=$('reportDate').value||spToday();
   try{
     const d=await api('/api/admin/reports/daily?date='+encodeURIComponent(date));
-    $('rOrders').textContent=d.metrics.orders;$('rDispatches').textContent=d.metrics.dispatches;$('rCouriers').textContent=d.metrics.couriers;$('rMax').textContent=d.metrics.max_orders_per_dispatch;
-    $('reportTable').innerHTML=d.byCourier.map(x=>`<tr><td><b>${escapeHtml(x.name)}</b></td><td>${x.orders}</td><td>${x.dispatches}</td><td>${x.first_departure?localTime(x.first_departure):'—'}</td><td>${x.last_departure?localTime(x.last_departure):'—'}</td></tr>`).join('')||empty(5);
+    $('rOrders').textContent=d.metrics.orders||0;
+    $('rDispatchedOrders').textContent=d.metrics.dispatched_orders||0;
+    $('rDispatches').textContent=d.metrics.dispatches||0;
+    $('rCouriers').textContent=d.metrics.couriers||0;
+    $('reportTable').innerHTML=(d.byCourier||[]).map(x=>`<tr>
+      <td><b>${escapeHtml(x.name)}</b></td>
+      <td><b>${x.checked_in_at?localTime(x.checked_in_at):'—'}</b></td>
+      <td><span class="badge ${x.checkin_method==='QR'?'green':x.checkin_method==='ADMIN_MANUAL'?'blue':'gray'}">${escapeHtml(attendanceMethodLabel(x.checkin_method))}</span></td>
+      <td>${x.orders||0}</td>
+      <td>${x.dispatches||0}</td>
+      <td>${x.first_departure?localTime(x.first_departure):'—'}</td>
+      <td>${x.last_departure?localTime(x.last_departure):'—'}</td>
+    </tr>`).join('')||empty(7);
   }catch(err){alert(err.message)}
 }
 function exportReport(){const date=$('reportDate').value||spToday();window.location.href='/api/admin/reports/daily.csv?date='+encodeURIComponent(date)}
@@ -2906,6 +3191,9 @@ const auditNames={
   PASSWORD_CHANGE_FAILED:'Tentativa de troca de senha falhou',
   PASSWORD_RESET_BY_ADMIN:'Senha redefinida pelo administrador',
   DEPARTURE_REGISTERED:'Saída registrada',
+  ATTENDANCE_QR_CHECKIN:'Presença confirmada por QR',
+  ATTENDANCE_MANUAL_CHECKIN:'Presença confirmada pelo administrador',
+  DAILY_ATTENDANCE_REPORT_EXPORTED:'Relatório diário de presença exportado',
   COURIER_RELEASED:'Motoboy liberado para nova saída',
   ALERT_SETTINGS_UPDATED:'Configuração de alertas alterada',
   OPERATIONAL_SLA_UPDATED:'SLA operacional alterado',
@@ -2928,6 +3216,9 @@ const auditNames={
 function friendlyAuditDetails(x){
   const d=x.details||{};
   if(x.action==='DEPARTURE_REGISTERED')return `${(d.order_numbers||[]).length} pedido(s): ${(d.order_numbers||[]).join(', ')}`;
+  if(x.action==='ATTENDANCE_QR_CHECKIN')return `Presença de ${d.attendance_date||'hoje'} via QR da loja`;
+  if(x.action==='ATTENDANCE_MANUAL_CHECKIN')return `${d.courier_name||'Motoboy'} • ${d.attendance_date||''} • ${d.reason||''}`;
+  if(x.action==='DAILY_ATTENDANCE_REPORT_EXPORTED')return `${d.rows||0} linha(s) exportada(s) em ${d.date||''}`;
   if(x.action==='PUBLIC_REGISTRATION_SETTING_CHANGED')return d.enabled?'Cadastro público ativado':'Cadastro público desativado';
   if(x.action==='FULL_HISTORY_EXPORTED')return `${d.rows||0} registros exportados`;
   if(x.action==='PASSWORD_RESET_BY_ADMIN')return `Usuário: ${d.target_username||'—'}`;
@@ -3021,8 +3312,9 @@ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(b.dataset.page).classList.add('active');
   document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',payments:'Pagamentos',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
+  $('pageTitle').textContent={dashboard:'Dashboard',attendance:'Presença do dia',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',payments:'Pagamentos',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
   if(b.dataset.page==='audit')loadAudit();
+  else if(b.dataset.page==='attendance')loadAttendance();
   else if(b.dataset.page==='operations')loadOperations();
   else if(b.dataset.page==='ifood')loadIfoodStatus();
   else if(b.dataset.page==='conflicts')loadConflicts();
@@ -3045,6 +3337,7 @@ $('myPixForm').onsubmit=saveMyPix;
 $('deliveryConfirmForm').onsubmit=submitDeliveryConfirmation;
 $('passwordForm').onsubmit=changePassword;
 $('manualDispatchForm').onsubmit=submitManualDispatch;
+$('attendanceManualForm').onsubmit=submitManualAttendance;
 $('manualCourier').onchange=updateManualActiveInfo;
 
 const socket=io();
@@ -3053,6 +3346,15 @@ socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')})
 socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',()=>{if(me?.role==='admin'){loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();});if($('wallboard')?.classList.contains('active'))loadWallboard();}else if(me?.role==='courier')loadCourier()});
 socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
+socket.on('attendance:changed',d=>{
+  if(me?.role==='admin'){
+    loadAdmin();
+    if($('attendance')?.classList.contains('active'))loadAttendance();
+    if($('operations')?.classList.contains('active'))loadOperations();
+  }else if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id)){
+    loadCourier();
+  }
+});
 socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();})});
 socket.on('payment:changed',()=>{
   if(me?.role==='admin'&&$('payments')?.classList.contains('active'))loadPayments();
@@ -3086,7 +3388,7 @@ socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotific
 socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
 socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
 
-setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active'))renderKdsClock();},1000);
+setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active'))renderKdsClock();if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
 setInterval(()=>{if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard()},15000);
 setInterval(()=>{if(me)heartbeat();},20000);
 
@@ -3094,6 +3396,7 @@ if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.ser
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});
 async function installApp(){if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.add('hidden'))}
 
+captureAttendanceTokenFromUrl();
 updateConnectionState();
 showSessionNotice();
 loadPublicConfig();

@@ -4,7 +4,7 @@ const server=fs.readFileSync(new URL("../server.js",import.meta.url),"utf8");
 const html=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
 const sw=fs.readFileSync(new URL("../public/service-worker.js",import.meta.url),"utf8");
 const checks={
-  version:server.includes('const VERSION = "2.9.0";')&&html.includes('<title>DespacheFull 2.9.0</title>'),
+  version:server.includes('const VERSION = "3.0.0";')&&html.includes('<title>DespacheFull 3.0.0</title>'),
   darkAdmin:html.includes('#adminApp .admin-side{width:240px;background:#05070a')&&html.includes('#adminApp .dashboard-metric-card'),
   sidebar:html.includes('class="side admin-side"')&&html.includes('class="side-kds-shortcut"'),
   dashboardClock:html.includes('id="dashboardClockTime"')&&html.includes('function renderDashboardClock()'),
@@ -12,9 +12,9 @@ const checks={
   livePanel:html.includes('dashboard-live-panel')&&html.includes('id="roadDash"'),
   recentPanel:html.includes('dashboard-recent-panel')&&html.includes('id="recentTable"'),
   emptyRoad:html.includes('dashboard-empty-road')&&html.includes('No momento, não há motoboys em entrega ou retorno.'),
-  footer:html.includes('class="dashboard-footer"')&&html.includes('Versão 2.9.0'),
+  footer:html.includes('class="dashboard-footer"')&&html.includes('Versão 3.0.0'),
   wallboardPreserved:html.includes('PEDIDOS EM PREPARO')&&html.includes('id="kdsPreparingList"'),
-  cache:sw.includes('despachefull-v2.9.0-ifood-only-courier')
+  cache:sw.includes('despachefull-v3.0.0-attendance')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`Falhou: ${name}`);
-console.log(JSON.stringify({result:"PASS",version:"2.9.0",checks},null,2));
+console.log(JSON.stringify({result:"PASS",version:"3.0.0",checks},null,2));

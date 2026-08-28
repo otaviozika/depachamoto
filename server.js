@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "2.9.0";
+const VERSION = "3.0.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -350,6 +350,49 @@ CREATE TABLE IF NOT EXISTS user_presence (
 
 CREATE INDEX IF NOT EXISTS user_presence_seen_idx
 ON user_presence(last_seen_at DESC);
+
+-- v3.0: presença diária. O registro é por motoboy e por data da operação
+-- em São Paulo. Check-in via QR ou lançamento manual do Admin.
+CREATE TABLE IF NOT EXISTS courier_attendance (
+  id BIGSERIAL PRIMARY KEY,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  attendance_date DATE NOT NULL,
+  checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  checkin_method TEXT NOT NULL DEFAULT 'QR',
+  checked_in_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  admin_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(courier_id,attendance_date)
+);
+
+CREATE INDEX IF NOT EXISTS courier_attendance_date_idx
+ON courier_attendance(attendance_date,checked_in_at);
+
+CREATE INDEX IF NOT EXISTS courier_attendance_courier_idx
+ON courier_attendance(courier_id,attendance_date DESC);
+
+-- Backfill de compatibilidade: para dias anteriores à v3.0, quem teve saída
+-- registrada naquele dia é marcado como presença inferida. Isso preserva o
+-- histórico nos relatórios sem inventar um horário anterior à primeira saída.
+INSERT INTO courier_attendance(
+  courier_id,attendance_date,checked_in_at,checkin_method
+)
+SELECT
+  d.courier_id,
+  (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date,
+  MIN(d.departed_at),
+  'LEGACY_INFERRED'
+FROM dispatches d
+WHERE NOT EXISTS (
+  SELECT 1 FROM app_settings s
+  WHERE s.setting_key='attendance_legacy_backfill_v3'
+)
+GROUP BY d.courier_id,(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+ON CONFLICT(courier_id,attendance_date) DO NOTHING;
+
+INSERT INTO app_settings(setting_key,setting_value)
+VALUES('attendance_legacy_backfill_v3','done')
+ON CONFLICT(setting_key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS active_order_locks (
   order_number TEXT PRIMARY KEY,
@@ -2808,6 +2851,118 @@ async function getSPDate() {
   const q = await pool.query("SELECT to_char(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS d");
   return q.rows[0].d;
 }
+
+const ATTENDANCE_QR_TTL_MS = Math.max(
+  45000,
+  Math.min(5 * 60 * 1000, Number(process.env.ATTENDANCE_QR_TTL_MS || 90000))
+);
+
+function attendanceQrSecret() {
+  return process.env.ATTENDANCE_QR_SECRET
+    || process.env.SESSION_SECRET
+    || crypto.createHash("sha256").update(process.env.DATABASE_URL || "despachefull").digest("hex");
+}
+
+function createAttendanceQrToken(attendanceDate) {
+  const now = Date.now();
+  const payload = {
+    v: 1,
+    p: "courier_attendance",
+    d: attendanceDate,
+    iat: now,
+    exp: now + ATTENDANCE_QR_TTL_MS,
+    n: crypto.randomUUID()
+  };
+  const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", attendanceQrSecret())
+    .update(body)
+    .digest("base64url");
+  return { token: `${body}.${signature}`, payload };
+}
+
+async function verifyAttendanceQrToken(token) {
+  const value = String(token || "").trim();
+  const [body, signature, extra] = value.split(".");
+  if (!body || !signature || extra) {
+    const err = new Error("QR de presença inválido.");
+    err.status = 400;
+    err.code = "ATTENDANCE_QR_INVALID";
+    throw err;
+  }
+
+  const expected = crypto
+    .createHmac("sha256", attendanceQrSecret())
+    .update(body)
+    .digest("base64url");
+
+  const givenBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expected);
+  if (givenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(givenBuf, expectedBuf)) {
+    const err = new Error("QR de presença inválido.");
+    err.status = 400;
+    err.code = "ATTENDANCE_QR_INVALID";
+    throw err;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  } catch {
+    const err = new Error("QR de presença inválido.");
+    err.status = 400;
+    err.code = "ATTENDANCE_QR_INVALID";
+    throw err;
+  }
+
+  if (payload?.v !== 1 || payload?.p !== "courier_attendance" || !validDate(payload?.d)) {
+    const err = new Error("QR de presença inválido.");
+    err.status = 400;
+    err.code = "ATTENDANCE_QR_INVALID";
+    throw err;
+  }
+
+  if (!Number.isFinite(Number(payload.exp)) || Date.now() > Number(payload.exp)) {
+    const err = new Error("Este QR de presença expirou. Escaneie o QR atual exibido na loja.");
+    err.status = 410;
+    err.code = "ATTENDANCE_QR_EXPIRED";
+    throw err;
+  }
+
+  const today = await getSPDate();
+  if (payload.d !== today) {
+    const err = new Error("Este QR pertence a outro dia de operação.");
+    err.status = 409;
+    err.code = "ATTENDANCE_QR_WRONG_DAY";
+    throw err;
+  }
+
+  return payload;
+}
+
+async function getCourierAttendance(courierId, attendanceDate = null) {
+  const date = attendanceDate || await getSPDate();
+  return (await pool.query(`
+    SELECT a.id,a.courier_id,a.attendance_date,a.checked_in_at,a.checkin_method,
+           a.checked_in_by,a.admin_reason
+    FROM courier_attendance a
+    WHERE a.courier_id=$1 AND a.attendance_date=$2::date
+    LIMIT 1
+  `, [courierId, date])).rows[0] || null;
+}
+
+async function requireCourierAttendance(courierId) {
+  const date = await getSPDate();
+  const attendance = await getCourierAttendance(courierId, date);
+  if (!attendance) {
+    const err = new Error("Confirme sua presença pelo QR da loja antes de registrar uma saída.");
+    err.status = 403;
+    err.code = "ATTENDANCE_REQUIRED";
+    err.attendance_date = date;
+    throw err;
+  }
+  return attendance;
+}
 function validDate(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 }
@@ -3220,9 +3375,189 @@ app.post("/api/presence", auth, asyncRoute(async (req, res) => {
   res.json({ ok: true, server_now: new Date().toISOString() });
 }));
 
+app.get("/api/admin/attendance/qr", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = await getSPDate();
+  const { token, payload } = createAttendanceQrToken(date);
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const checkinUrl = new URL("/", baseUrl);
+  checkinUrl.searchParams.set("attendance_token", token);
+
+  res.json({
+    date,
+    url: checkinUrl.toString(),
+    expires_at: new Date(payload.exp).toISOString(),
+    refresh_after_ms: 30000,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) => {
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+
+  const rows = (await pool.query(`
+    SELECT
+      u.id AS courier_id,u.name,u.username,u.nickname,u.active,u.approval_status,
+      a.id AS attendance_id,a.attendance_date,a.checked_in_at,a.checkin_method,
+      a.admin_reason,admin_u.name AS checked_in_by_name,
+      p.last_seen_at,
+      (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
+      active_dispatch.id AS active_dispatch_id,
+      active_dispatch.operational_stage,
+      active_dispatch.departed_at,
+      active_dispatch.returning_at
+    FROM users u
+    LEFT JOIN courier_attendance a
+      ON a.courier_id=u.id AND a.attendance_date=$1::date
+    LEFT JOIN users admin_u ON admin_u.id=a.checked_in_by
+    LEFT JOIN user_presence p ON p.user_id=u.id
+    LEFT JOIN LATERAL (
+      SELECT d.id,d.operational_stage,d.departed_at,d.returning_at
+      FROM dispatches d
+      WHERE d.courier_id=u.id AND d.status='ON_ROAD'
+      ORDER BY d.departed_at DESC,d.id DESC
+      LIMIT 1
+    ) active_dispatch ON TRUE
+    WHERE u.role='courier'
+      AND u.active=true
+      AND u.approval_status='APPROVED'
+    ORDER BY
+      CASE WHEN a.id IS NOT NULL THEN 0 ELSE 1 END,
+      a.checked_in_at NULLS LAST,
+      u.name
+  `, [date])).rows.map(r => ({
+    ...r,
+    present: !!r.attendance_id,
+    outside: !!r.attendance_id && !!r.active_dispatch_id,
+    available: !!r.attendance_id && !r.active_dispatch_id
+  }));
+
+  const present = rows.filter(r => r.present).length;
+  const outside = rows.filter(r => r.outside).length;
+
+  res.json({
+    date,
+    summary: {
+      eligible: rows.length,
+      present,
+      outside,
+      available: Math.max(0, present - outside),
+      absent: Math.max(0, rows.length - present)
+    },
+    rows,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req, res) => {
+  const courierId = Number(req.body.courier_id);
+  const reason = String(req.body.reason || "").trim().slice(0, 250);
+  if (!Number.isInteger(courierId) || courierId < 1) {
+    return res.status(400).json({ error: "Selecione um motoboy." });
+  }
+  if (reason.length < 3) {
+    return res.status(400).json({ error: "Informe o motivo da presença manual." });
+  }
+
+  const courier = (await pool.query(`
+    SELECT id,name,active,approval_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+    LIMIT 1
+  `, [courierId])).rows[0];
+
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+  if (!courier.active || courier.approval_status !== "APPROVED") {
+    return res.status(409).json({ error: "O motoboy precisa estar ativo e aprovado." });
+  }
+
+  const date = await getSPDate();
+  const inserted = await pool.query(`
+    INSERT INTO courier_attendance(
+      courier_id,attendance_date,checked_in_at,checkin_method,checked_in_by,admin_reason
+    )
+    VALUES($1,$2::date,NOW(),'ADMIN_MANUAL',$3,$4)
+    ON CONFLICT(courier_id,attendance_date) DO NOTHING
+    RETURNING *
+  `, [courierId, date, req.session.user.id, reason]);
+
+  const attendance = inserted.rows[0] || await getCourierAttendance(courierId, date);
+
+  if (inserted.rowCount) {
+    await auditBestEffort(req.session.user.id, "ATTENDANCE_MANUAL_CHECKIN", "courier_attendance", attendance.id, {
+      courier_id: courierId,
+      courier_name: courier.name,
+      attendance_date: date,
+      reason
+    });
+    io.emit("attendance:changed", { courier_id: courierId, attendance_date: date });
+  }
+
+  res.status(inserted.rowCount ? 201 : 200).json({
+    attendance,
+    duplicate: !inserted.rowCount,
+    message: inserted.rowCount
+      ? `Presença de ${courier.name} confirmada pelo Admin.`
+      : `${courier.name} já possui presença registrada hoje.`,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+
+  const user = await currentUser(req.session.user.id);
+  if (!user || !user.active || user.approval_status !== "APPROVED") {
+    return res.status(403).json({ error: "Seu acesso não está ativo e aprovado." });
+  }
+
+  let payload;
+  try {
+    payload = await verifyAttendanceQrToken(req.body.token);
+  } catch (err) {
+    return res.status(err.status || 400).json({
+      error: err.message || "QR de presença inválido.",
+      code: err.code || "ATTENDANCE_QR_INVALID",
+      server_now: new Date().toISOString()
+    });
+  }
+
+  const inserted = await pool.query(`
+    INSERT INTO courier_attendance(
+      courier_id,attendance_date,checked_in_at,checkin_method
+    )
+    VALUES($1,$2::date,NOW(),'QR')
+    ON CONFLICT(courier_id,attendance_date) DO NOTHING
+    RETURNING *
+  `, [req.session.user.id, payload.d]);
+
+  const attendance = inserted.rows[0] || await getCourierAttendance(req.session.user.id, payload.d);
+
+  if (inserted.rowCount) {
+    await auditBestEffort(req.session.user.id, "ATTENDANCE_QR_CHECKIN", "courier_attendance", attendance.id, {
+      attendance_date: payload.d,
+      checkin_method: "QR"
+    });
+    io.emit("attendance:changed", {
+      courier_id: req.session.user.id,
+      attendance_date: payload.d
+    });
+  }
+
+  res.status(inserted.rowCount ? 201 : 200).json({
+    attendance,
+    duplicate: !inserted.rowCount,
+    message: inserted.rowCount
+      ? "Presença confirmada. Você está ativo na operação de hoje."
+      : "Sua presença de hoje já estava confirmada.",
+    server_now: new Date().toISOString()
+  });
+}));
+
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
   const user = await currentUser(req.session.user.id);
+  const attendanceDate = await getSPDate();
+  const attendanceRow = await getCourierAttendance(req.session.user.id, attendanceDate);
 
   let active = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
@@ -3266,6 +3601,12 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     active,
     stats,
     recent,
+    attendance: {
+      date: attendanceDate,
+      present: !!attendanceRow,
+      checked_in_at: attendanceRow?.checked_in_at || null,
+      checkin_method: attendanceRow?.checkin_method || null
+    },
     operational_sla: operationalSla,
     mustChangePassword: !!user?.must_change_password,
     server_now: new Date().toISOString()
@@ -3868,6 +4209,17 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   const user = await currentUser(req.session.user.id);
   if (user?.must_change_password) {
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
+  }
+
+  const attendanceDate = await getSPDate();
+  const attendance = await getCourierAttendance(req.session.user.id, attendanceDate);
+  if (!attendance) {
+    return res.status(403).json({
+      error: "Confirme sua presença pelo QR da loja antes de registrar uma saída.",
+      code: "ATTENDANCE_REQUIRED",
+      attendance_date: attendanceDate,
+      server_now: new Date().toISOString()
+    });
   }
 
   const orders = normalizeOrders(req.body);
@@ -4492,6 +4844,16 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
   }
 
+  const attendanceDate = await getSPDate();
+  const attendance = await getCourierAttendance(courierId, attendanceDate);
+  if (!attendance) {
+    return res.status(409).json({
+      error: "Este motoboy ainda não confirmou presença hoje. Confirme pelo QR ou registre a presença manualmente antes da saída.",
+      code: "ATTENDANCE_REQUIRED",
+      attendance_date: attendanceDate
+    });
+  }
+
   const orders = normalizeOrders(req.body);
   const reason = String(req.body.reason || "").trim().slice(0, 250);
 
@@ -4780,18 +5142,21 @@ app.get("/api/admin/peak", auth, adminOnly, asyncRoute(async (req, res) => {
       COUNT(*) FILTER (WHERE operational='NA_RUA')::int AS en_route,
       COUNT(*) FILTER (WHERE operational='RETORNANDO')::int AS returning,
       COUNT(*) FILTER (WHERE operational='DISPONIVEL')::int AS available,
-      COUNT(*) FILTER (WHERE operational='OFFLINE')::int AS offline,
+      COUNT(*) FILTER (WHERE operational='AUSENTE')::int AS absent,
+      COUNT(*) FILTER (WHERE operational='AUSENTE')::int AS offline,
       COUNT(*) FILTER (WHERE operational='INATIVO')::int AS inactive
     FROM (
       SELECT CASE
         WHEN u.active=false THEN 'INATIVO'
+        WHEN a.id IS NULL THEN 'AUSENTE'
         WHEN EXISTS(SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND d.status='ON_ROAD' AND d.operational_stage='RETURNING') THEN 'RETORNANDO'
         WHEN EXISTS(SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND d.status='ON_ROAD') THEN 'NA_RUA'
-        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
-        ELSE 'OFFLINE'
+        ELSE 'DISPONIVEL'
       END AS operational
       FROM users u
-      LEFT JOIN user_presence p ON p.user_id=u.id
+      LEFT JOIN courier_attendance a
+        ON a.courier_id=u.id
+       AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       WHERE u.role='courier' AND u.approval_status='APPROVED'
     ) x
   `);
@@ -5740,12 +6105,26 @@ app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req, res) 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
   const metrics = (await pool.query(`
     SELECT
-      (SELECT COUNT(*) FROM users WHERE role='courier' AND active=true AND approval_status='APPROVED')::int AS active_couriers,
-      (SELECT COUNT(*) FROM users WHERE role='courier' AND approval_status='PENDING')::int AS pending_couriers,
-      (SELECT COUNT(*) FROM dispatches WHERE status='ON_ROAD')::int AS on_road,
       (
-        SELECT COUNT(o.id) FROM dispatch_orders o JOIN dispatches d ON d.id=o.dispatch_id
-        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+        SELECT COUNT(*)
+        FROM courier_attendance a
+        JOIN users u ON u.id=a.courier_id
+        WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND u.role='courier' AND u.active=true AND u.approval_status='APPROVED'
+      )::int AS active_couriers,
+      (SELECT COUNT(*) FROM users WHERE role='courier' AND approval_status='PENDING')::int AS pending_couriers,
+      (
+        SELECT COUNT(DISTINCT d.courier_id)
+        FROM dispatches d
+        JOIN courier_attendance a
+          ON a.courier_id=d.courier_id
+         AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+        WHERE d.status='ON_ROAD'
+      )::int AS on_road,
+      (
+        SELECT COUNT(*)
+        FROM ifood_orders o
+        WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date =
               (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       )::int AS today_orders,
       (
@@ -5775,36 +6154,67 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
   `)).rows;
 
   const couriers = (await pool.query(`
-    SELECT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,u.pix_status,u.pix_verified_at,u.pix_updated_at,u.active,u.approval_status,u.must_change_password,
+    SELECT
+      u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,
+      u.pix_status,u.pix_verified_at,u.pix_updated_at,u.active,u.approval_status,
+      u.must_change_password,
       (
         SELECT COUNT(o.id)
-        FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+        FROM dispatches d
+        JOIN dispatch_orders o ON o.dispatch_id=d.id
         WHERE d.courier_id=u.id
-        AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
-            (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       )::int AS today_count,
-      EXISTS(SELECT 1 FROM dispatches d2 WHERE d2.courier_id=u.id AND d2.status='ON_ROAD') AS on_road,
+      EXISTS(
+        SELECT 1 FROM dispatches d2
+        WHERE d2.courier_id=u.id AND d2.status='ON_ROAD'
+      ) AS on_road,
       p.last_seen_at,
       (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
       (SELECT MAX(d3.departed_at) FROM dispatches d3 WHERE d3.courier_id=u.id) AS last_departure,
+      a.id AS attendance_id,
+      a.checked_in_at,
+      a.checkin_method,
+      a.admin_reason AS attendance_admin_reason,
+      (a.id IS NOT NULL) AS present_today,
       CASE
         WHEN u.active=false THEN 'INATIVO'
-        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD' AND d4.operational_stage='RETURNING') THEN 'RETORNANDO'
-        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 'NA_RUA'
-        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 'DISPONIVEL'
-        ELSE 'OFFLINE'
+        WHEN a.id IS NULL THEN 'AUSENTE'
+        WHEN EXISTS(
+          SELECT 1 FROM dispatches d4
+          WHERE d4.courier_id=u.id
+            AND d4.status='ON_ROAD'
+            AND d4.operational_stage='RETURNING'
+        ) THEN 'RETORNANDO'
+        WHEN EXISTS(
+          SELECT 1 FROM dispatches d4
+          WHERE d4.courier_id=u.id AND d4.status='ON_ROAD'
+        ) THEN 'NA_RUA'
+        ELSE 'DISPONIVEL'
       END AS operational_status
     FROM users u
     LEFT JOIN user_presence p ON p.user_id=u.id
+    LEFT JOIN courier_attendance a
+      ON a.courier_id=u.id
+     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
     WHERE u.role='courier'
     ORDER BY
       CASE u.approval_status WHEN 'PENDING' THEN 0 WHEN 'REJECTED' THEN 2 ELSE 1 END,
       CASE
-        WHEN u.active=false THEN 5
-        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD' AND d4.operational_stage='RETURNING') THEN 1
-        WHEN EXISTS(SELECT 1 FROM dispatches d4 WHERE d4.courier_id=u.id AND d4.status='ON_ROAD') THEN 2
-        WHEN p.last_seen_at >= NOW()-INTERVAL '90 seconds' THEN 3
-        ELSE 4
+        WHEN u.active=false THEN 6
+        WHEN a.id IS NULL THEN 5
+        WHEN EXISTS(
+          SELECT 1 FROM dispatches d4
+          WHERE d4.courier_id=u.id
+            AND d4.status='ON_ROAD'
+            AND d4.operational_stage='RETURNING'
+        ) THEN 1
+        WHEN EXISTS(
+          SELECT 1 FROM dispatches d4
+          WHERE d4.courier_id=u.id AND d4.status='ON_ROAD'
+        ) THEN 2
+        ELSE 3
       END,
       u.name
   `)).rows;
@@ -6292,71 +6702,136 @@ app.put("/api/admin/settings/alerts", auth, adminOnly, asyncRoute(async (req, re
 }));
 
 app.get("/api/admin/reports/daily", auth, adminOnly, asyncRoute(async (req, res) => {
-  const date = validDate(req.query.date) ? req.query.date : await getSPDate();
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
 
   const metrics = (await pool.query(`
-    WITH counts AS (
-      SELECT d.id,d.courier_id,d.departed_at,COUNT(o.id)::int AS order_count
-      FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
-      WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
-      GROUP BY d.id,d.courier_id,d.departed_at
-    )
     SELECT
-      COUNT(*)::int AS dispatches,
-      COALESCE(SUM(order_count),0)::int AS orders,
-      COUNT(DISTINCT courier_id)::int AS couriers,
-      COALESCE(MAX(order_count),0)::int AS max_orders_per_dispatch
-    FROM counts
+      (
+        SELECT COUNT(*)
+        FROM ifood_orders o
+        WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+      )::int AS orders,
+      (
+        SELECT COUNT(*)
+        FROM dispatch_orders o
+        JOIN dispatches d ON d.id=o.dispatch_id
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+      )::int AS dispatched_orders,
+      (
+        SELECT COUNT(*)
+        FROM dispatches d
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+      )::int AS dispatches,
+      (
+        SELECT COUNT(*)
+        FROM courier_attendance a
+        JOIN users u ON u.id=a.courier_id
+        WHERE a.attendance_date=$1::date
+          AND u.role='courier'
+      )::int AS couriers,
+      (
+        SELECT COALESCE(MAX(order_count),0)
+        FROM (
+          SELECT COUNT(o.id)::int AS order_count
+          FROM dispatches d
+          JOIN dispatch_orders o ON o.dispatch_id=d.id
+          WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+          GROUP BY d.id
+        ) x
+      )::int AS max_orders_per_dispatch
   `, [date])).rows[0];
 
   const byCourier = (await pool.query(`
     SELECT
-      u.id,u.name,
+      u.id,u.name,u.username,
+      a.checked_in_at,a.checkin_method,a.admin_reason,
       COUNT(DISTINCT d.id)::int AS dispatches,
       COUNT(o.id)::int AS orders,
       MIN(d.departed_at) AS first_departure,
       MAX(d.departed_at) AS last_departure
-    FROM dispatches d
-    JOIN users u ON u.id=d.courier_id
-    JOIN dispatch_orders o ON o.dispatch_id=d.id
-    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
-    GROUP BY u.id,u.name
-    ORDER BY orders DESC,u.name
+    FROM courier_attendance a
+    JOIN users u ON u.id=a.courier_id
+    LEFT JOIN dispatches d
+      ON d.courier_id=u.id
+     AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
+    LEFT JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE a.attendance_date=$1::date
+    GROUP BY
+      u.id,u.name,u.username,
+      a.checked_in_at,a.checkin_method,a.admin_reason
+    ORDER BY a.checked_in_at,u.name
   `, [date])).rows;
 
-  res.json({ date, metrics, byCourier, server_now: new Date().toISOString() });
+  res.json({
+    date,
+    metrics,
+    byCourier,
+    attendance: byCourier,
+    server_now: new Date().toISOString()
+  });
 }));
 
 app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, res) => {
-  const date = validDate(req.query.date) ? req.query.date : await getSPDate();
+  const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+
   const rows = (await pool.query(`
     SELECT
-      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY') AS date_br,
-      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS time_br,
+      to_char(a.attendance_date,'DD/MM/YYYY') AS date_br,
+      to_char(a.checked_in_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS presence_time_br,
       u.name AS courier_name,
+      u.username,
+      a.checkin_method,
+      a.admin_reason,
+      to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS departure_time_br,
       o.order_number,
       d.dispatch_code,
-      CASE WHEN d.status='RELEASED' THEN 'CONCLUÍDO' WHEN d.operational_stage='RETURNING' THEN 'RETORNANDO' ELSE 'EM ROTA' END AS status
-    FROM dispatches d
-    JOIN users u ON u.id=d.courier_id
-    JOIN dispatch_orders o ON o.dispatch_id=d.id
-    WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
-    ORDER BY d.departed_at,o.id
+      CASE
+        WHEN d.id IS NULL THEN ''
+        WHEN d.status='RELEASED' THEN 'CONCLUÍDO'
+        WHEN d.operational_stage='RETURNING' THEN 'RETORNANDO'
+        ELSE 'EM ROTA'
+      END AS status
+    FROM courier_attendance a
+    JOIN users u ON u.id=a.courier_id
+    LEFT JOIN dispatches d
+      ON d.courier_id=u.id
+     AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=a.attendance_date
+    LEFT JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE a.attendance_date=$1::date
+    ORDER BY a.checked_in_at,u.name,d.departed_at,o.id
   `, [date])).rows;
 
-  const header = ["Data","Horário da saída","Motoboy","Pedido","Código da saída","Status"];
+  const header = [
+    "Data","Presença","Motoboy","Usuário","Origem da presença","Motivo Admin",
+    "Horário da saída","Pedido","Código da saída","Status"
+  ];
   const lines = [header.map(csvCell).join(";")];
 
   for (const r of rows) {
     lines.push([
-      r.date_br,r.time_br,r.courier_name,r.order_number,r.dispatch_code,r.status
+      r.date_br,
+      r.presence_time_br,
+      r.courier_name,
+      r.username,
+      r.checkin_method,
+      r.admin_reason || "",
+      r.departure_time_br || "",
+      r.order_number || "",
+      r.dispatch_code || "",
+      r.status || ""
     ].map(csvCell).join(";"));
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="despachefull-${date}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="despachefull-presenca-${date}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
+
+  await auditBestEffort(req.session.user.id, "DAILY_ATTENDANCE_REPORT_EXPORTED", "report", null, {
+    date,
+    rows: rows.length
+  });
 }));
+
 
 app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
   const rows = (await pool.query(`
