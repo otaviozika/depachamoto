@@ -1,6 +1,6 @@
 {
   "name": "despachefull",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -26,7 +26,8 @@
     "selftest:navigation": "node scripts/selftest-navigation.js",
     "selftest:shift-control": "node scripts/selftest-shift-control.js",
     "selftest:sober-ui": "node scripts/selftest-sober-ui.js",
-    "selftest:dashboard-operations": "node scripts/selftest-dashboard-operations.js"
+    "selftest:dashboard-operations": "node scripts/selftest-dashboard-operations.js",
+    "selftest:pdv-presence": "node scripts/selftest-pdv-presence.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.0";
+const VERSION = "3.5.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -2118,8 +2118,9 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
 
     const url = new URL(`${IFOOD_EVENTS_BASE}/events:polling`);
     url.searchParams.set("categories", "FOOD");
-    // Evita que esta integração de despacho altere presença/abertura da loja.
-    url.searchParams.set("excludeHeartbeat", "true");
+    // PDV/Food: NÃO usar excludeHeartbeat. O heartbeat do polling é usado pelo iFood
+    // para validar a presença/conectividade do aplicativo na homologação e operação.
+    // excludeHeartbeat=true é reservado a integrações da categoria Logística.
 
     const { response, body } = await ifoodApi(url.toString(), {
       headers: {
