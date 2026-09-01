@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.1.0</title>
+<title>DespacheFull 3.2.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -96,7 +96,7 @@
 .monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
 
 
-.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.team-status.AUSENTE{background:#f1f5f9;color:#64748b}.conn-dot{font-size:11px}
+.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.team-status.AUSENTE{background:#f1f5f9;color:#64748b}.team-status.ENCERRADO{background:#e2e8f0;color:#334155}.conn-dot{font-size:11px}
 .attendance-layout{display:grid;grid-template-columns:minmax(300px,430px) 1fr;gap:18px;align-items:start}
 .attendance-qr-card{padding:22px;text-align:center}
 .attendance-qr-shell{width:300px;max-width:100%;aspect-ratio:1;margin:18px auto;background:#fff;border:10px solid #fff;border-radius:18px;display:grid;place-items:center;box-shadow:0 12px 35px rgba(15,23,42,.12)}
@@ -291,7 +291,7 @@
           <div class="dashboard-clock-card"><span class="dashboard-clock-icon">◷</span><div><b id="dashboardClockTime">--:--:--</b><small id="dashboardClockDate">--/--/----</small></div></div>
         </div>
         <div class="cards dashboard-metrics">
-          <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Confirmaram presença hoje</div></div>
+          <div class="card dashboard-metric-card metric-yellow"><div class="dashboard-metric-label"><span>🛵</span> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Com expediente aberto hoje</div></div>
           <div class="card dashboard-metric-card metric-orange"><div class="dashboard-metric-label"><span>●</span> Fora da loja</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em rota + retornando</div></div>
           <div class="card dashboard-metric-card metric-green"><div class="dashboard-metric-label"><span>●</span> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Presentes na loja</div></div>
           <div class="card dashboard-metric-card metric-blue"><div class="dashboard-metric-label"><span>▣</span> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Entraram no sistema</div></div>
@@ -312,7 +312,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.1.0</span>
+          <span>Versão 3.2.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -328,9 +328,10 @@
         </div>
 
         <div class="cards" style="margin-top:18px">
-          <div class="card"><div class="label">Presentes hoje</div><div id="aPresent" class="metric">0</div></div>
+          <div class="card"><div class="label">Ativos agora</div><div id="aPresent" class="metric">0</div></div>
           <div class="card"><div class="label">Fora da loja</div><div id="aOutside" class="metric">0</div></div>
           <div class="card"><div class="label">Disponíveis</div><div id="aAvailable" class="metric">0</div></div>
+          <div class="card"><div class="label">Expediente encerrado</div><div id="aEnded" class="metric">0</div></div>
           <div class="card"><div class="label">Ausentes</div><div id="aAbsent" class="metric">0</div></div>
         </div>
 
@@ -356,7 +357,7 @@
               <div class="section-head"><b>Equipe de hoje</b><span class="badge green">PRESENÇA</span></div>
               <div class="table-wrap">
                 <table class="table">
-                  <thead><tr><th>Motoboy</th><th>Presença</th><th>Origem</th><th>Status agora</th><th>Conexão</th></tr></thead>
+                  <thead><tr><th>Motoboy</th><th>Entrada</th><th>Origem</th><th>Status agora</th><th>Saída</th><th>Conexão</th><th>Ação Admin</th></tr></thead>
                   <tbody id="attendanceTable"></tbody>
                 </table>
               </div>
@@ -546,7 +547,7 @@
         </div>
         <div class="section">
           <div class="section-head"><b>Presença e operação por motoboy</b></div>
-          <div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Presença</th><th>Origem</th><th>Pedidos</th><th>Saídas</th><th>Primeira saída</th><th>Última saída</th></tr></thead><tbody id="reportTable"></tbody></table></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Entrada</th><th>Saída</th><th>Expediente</th><th>Origem</th><th>Pedidos</th><th>Saídas</th><th>Primeira saída</th><th>Última saída</th></tr></thead><tbody id="reportTable"></tbody></table></div>
         </div>
       </section>
 
@@ -975,9 +976,9 @@ let sessionRedirecting=false;
 const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v17_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
 let paymentState={date:null,rule:null,rows:[],summary:{}};
-let attendanceState={date:null,summary:{present:0,outside:0,available:0,absent:0},rows:[]};
+let attendanceState={date:null,summary:{present:0,outside:0,available:0,ended:0,absent:0},rows:[]};
 let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownTimer=null;
-let courierAttendancePresent=false;
+let courierAttendancePresent=false,courierShiftEnded=false;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
 
@@ -1240,20 +1241,22 @@ function updateCourierDepartureEligibility(){
   const btn=$('departureSubmit');
   if(!btn)return;
   const attendanceLocked=!courierAttendancePresent;
+  const shiftLocked=courierShiftEnded;
   const checkinLocked=!!courierActiveDispatch;
   const offline=!navigator.onLine;
   const legacyQueue=getOfflineQueue().length>0;
   const valid=allCourierOrdersIfoodValidated();
-  btn.disabled=!!me?.mustChangePassword||attendanceLocked||checkinLocked||offline||legacyQueue||!valid;
-  if(attendanceLocked)btn.textContent='🔒 Confirme presença pelo QR';
-  else if(checkinLocked)btn.textContent='🔒 Confirme sua chegada para nova saída';
+  btn.disabled=!!me?.mustChangePassword||attendanceLocked||shiftLocked||checkinLocked||offline||legacyQueue||!valid;
+  if(shiftLocked)btn.textContent='Expediente encerrado pelo Admin';
+  else if(attendanceLocked)btn.textContent='Confirme presença pelo QR';
+  else if(checkinLocked)btn.textContent='Confirme sua chegada para nova saída';
   else if(offline)btn.textContent='🔒 Conexão necessária para validar iFood';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
   else if(!valid)btn.textContent='🔒 Valide os pedidos iFood';
   else btn.textContent='🛵 Registrar saída';
 
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
-  if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||checkinLocked||n>=5;
+  if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||shiftLocked||checkinLocked||n>=5;
 }
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;updateCourierDepartureEligibility()}
 
@@ -1556,10 +1559,17 @@ function attendanceMethodLabel(method){
   }[method]||String(method||'—').replaceAll('_',' ');
 }
 function attendanceStatusForRow(x){
-  if(!x.present)return {key:'AUSENTE',label:'AUSENTE'};
+  if(x.ended)return {key:'ENCERRADO',label:'ENCERRADO'};
+  if(!x.attended)return {key:'AUSENTE',label:'AUSENTE'};
   if(x.active_dispatch_id&&x.operational_stage==='RETURNING')return {key:'RETORNANDO',label:'RETORNANDO'};
   if(x.active_dispatch_id)return {key:'NA_RUA',label:'FORA DA LOJA'};
   return {key:'DISPONIVEL',label:'DISPONÍVEL'};
+}
+function formatShiftMinutes(value){
+  const m=Number(value);
+  if(!Number.isFinite(m)||m<0)return '—';
+  const h=Math.floor(m/60),min=Math.round(m%60);
+  return h>0?`${h}h ${String(min).padStart(2,'0')}min`:`${min} min`;
 }
 function renderAttendance(){
   if(!$('attendanceTable'))return;
@@ -1567,26 +1577,37 @@ function renderAttendance(){
   $('aPresent').textContent=s.present||0;
   $('aOutside').textContent=s.outside||0;
   $('aAvailable').textContent=s.available||0;
+  if($('aEnded'))$('aEnded').textContent=s.ended||0;
   $('aAbsent').textContent=s.absent||0;
 
   $('attendanceTable').innerHTML=(attendanceState.rows||[]).map(x=>{
     const st=attendanceStatusForRow(x);
-    const presence=x.present
+    const presence=x.attended
       ? `<b>${localTime(x.checked_in_at)}</b><div class="small muted">${escapeHtml(attendanceState.date||'')}</div>`
       : '<span class="badge gray">NÃO CONFIRMADA</span>';
-    const source=x.present
+    const source=x.attended
       ? `<span class="badge ${x.checkin_method==='QR'?'green':x.checkin_method==='ADMIN_MANUAL'?'blue':'gray'}">${escapeHtml(attendanceMethodLabel(x.checkin_method))}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}`
+      : '—';
+    const checkout=x.ended
+      ? `<b>${localTime(x.checked_out_at)}</b>${x.checkout_reason?`<div class="small muted">${escapeHtml(x.checkout_reason)}</div>`:''}${x.checked_out_by_name?`<div class="small muted">por ${escapeHtml(x.checked_out_by_name)}</div>`:''}`
+      : '—';
+    const action=x.present
+      ? (x.active_dispatch_id
+          ? '<span class="small muted">Finalize a entrega antes</span>'
+          : `<button class="btn danger" type="button" onclick="checkoutCourier(${x.courier_id},decodeURIComponent('${encodeURIComponent(x.name)}'))">Encerrar expediente</button>`)
       : '—';
     return `<tr>
       <td><b>${escapeHtml(x.name)}</b><div class="small muted">@${escapeHtml(x.username)}</div></td>
       <td>${presence}</td>
       <td>${source}</td>
       <td><span class="team-status ${st.key}">${st.label}</span></td>
-      <td>${x.is_online?'🟢 Online':'⚪ Offline'}</td>
+      <td>${checkout}</td>
+      <td>${x.is_online?'Online':'Offline'}</td>
+      <td>${action}</td>
     </tr>`;
-  }).join('')||empty(5);
+  }).join('')||empty(7);
 
-  const absent=(attendanceState.rows||[]).filter(x=>!x.present);
+  const absent=(attendanceState.rows||[]).filter(x=>!x.attended);
   $('attendanceManualCourier').innerHTML='<option value="">Selecione</option>'+
     absent.map(x=>`<option value="${x.courier_id}">${escapeHtml(x.name)}</option>`).join('');
   $('attendanceManualBtn').disabled=!absent.length;
@@ -1650,6 +1671,20 @@ async function submitManualAttendance(e){
     await Promise.all([loadAttendance(),loadAdmin()]);
   }catch(err){message('attendanceManualMsg',err.message,'err')}
   finally{btn.disabled=false}
+}
+async function checkoutCourier(courierId,name){
+  const reason=prompt(`Motivo obrigatório para encerrar o expediente de ${name}:`,'Fim do expediente');
+  if(reason===null)return;
+  if(reason.trim().length<3)return alert('Informe um motivo com pelo menos 3 caracteres.');
+  if(!confirm(`Encerrar o expediente de ${name}? Depois disso, novas saídas ficarão bloqueadas hoje.`))return;
+  try{
+    const d=await api(`/api/admin/attendance/${courierId}/checkout`,{
+      method:'POST',
+      body:JSON.stringify({reason:reason.trim()})
+    });
+    await Promise.all([loadAttendance(),loadAdmin()]);
+    alert(d.message||'Expediente encerrado.');
+  }catch(err){alert(err.message)}
 }
 function operationalStageLabel(stage){return stage==='RETURNING'?'RETORNANDO':'EM ROTA'}
 function slaStateLabel(state){return {NORMAL:'NORMAL',ATTENTION:'ATENÇÃO',DELAYED:'ATRASADO',CRITICAL:'CRÍTICO'}[state]||state}
@@ -1725,7 +1760,7 @@ function renderCouriers(){
     else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button>`;
     else accessActions=`<button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button>`;
 
-    const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+    const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',ENCERRADO:'ENCERRADO',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
     const last=x.last_departure?localDate(x.last_departure):'Nunca';
     const pixStatus=x.pix_status||(x.pix_key?'VERIFIED':'NONE');
     const pix=x.pix_key
@@ -2104,13 +2139,17 @@ async function loadCourier(){
   me.mustChangePassword=!!d.mustChangePassword;
   courierActiveDispatch=d.active||null;
   courierAttendancePresent=!!d.attendance?.present;
+  courierShiftEnded=!!d.attendance?.shift_ended;
   $('forcePasswordWarning').classList.toggle('hidden',!d.mustChangePassword);
 
-  if(courierAttendancePresent){
+  if(d.attendance?.shift_ended){
+    const when=d.attendance?.checked_out_at?localTime(d.attendance.checked_out_at):'hoje';
+    renderAttendanceCheckinNotice(`Expediente encerrado pelo Admin às ${when}. Novas saídas estão bloqueadas hoje.`,'warn');
+  }else if(courierAttendancePresent){
     const when=d.attendance?.checked_in_at?localTime(d.attendance.checked_in_at):'hoje';
-    renderAttendanceCheckinNotice(`✅ Presença confirmada às ${when}. Você está ativo na operação de hoje.`,'ok');
+    renderAttendanceCheckinNotice(`Presença confirmada às ${when}. Você está ativo na operação de hoje.`,'ok');
   }else{
-    renderAttendanceCheckinNotice('⚠ Presença ainda não confirmada. Escaneie o QR exibido na loja. Nenhuma saída será liberada antes do check-in.','warn');
+    renderAttendanceCheckinNotice('Presença ainda não confirmada. Escaneie o QR exibido na loja. Nenhuma saída será liberada antes do check-in.','warn');
   }
 
   const checkinLocked=!!d.active||!courierAttendancePresent;
@@ -2167,6 +2206,9 @@ async function depart(e){
   const orders=getOrderValues();
   if(!orders.length)return message('departureMsg','Informe pelo menos um pedido.','err');
 
+  if(courierShiftEnded){
+    return message('departureMsg','Seu expediente foi encerrado pelo Admin. Novas saídas estão bloqueadas hoje.','err');
+  }
   if(!courierAttendancePresent){
     return message('departureMsg','Confirme sua presença pelo QR da loja antes de registrar uma saída.','err');
   }
@@ -2332,7 +2374,7 @@ function manualOrders(){return[...document.querySelectorAll('.manual-order-input
 function populateManualCouriers(){
   if(!dashboard)return;
   const activeApproved=dashboard.couriers.filter(x=>x.active&&x.approval_status==='APPROVED');
-  $('manualCourier').innerHTML='<option value="">Selecione...</option>'+activeApproved.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}${x.present_today?' • presente':' • AUSENTE'}</option>`).join('');
+  $('manualCourier').innerHTML='<option value="">Selecione...</option>'+activeApproved.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}${x.present_today?' • presente':x.operational_status==='ENCERRADO'?' • ENCERRADO':' • AUSENTE'}</option>`).join('');
 }
 function updateManualActiveInfo(){
   const id=Number($('manualCourier').value);
@@ -2344,11 +2386,13 @@ function updateManualActiveInfo(){
     return;
   }
   if(!courier.present_today){
-    $('manualActiveInfo').innerHTML='<div class="warning"><b>Presença não confirmada:</b> registre a presença deste motoboy pelo QR ou em “Presença do dia” antes da saída manual.</div>';
+    $('manualActiveInfo').innerHTML=courier.operational_status==='ENCERRADO'
+      ? '<div class="warning"><b>Expediente encerrado:</b> este motoboy não pode receber novas saídas hoje.</div>'
+      : '<div class="warning"><b>Presença não confirmada:</b> registre a presença deste motoboy pelo QR ou em “Presença do dia” antes da saída manual.</div>';
     $('manualSubmit').disabled=true;
     return;
   }
-  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} ainda não fez check-in de chegada</b>${ordersHtml(active)}<div class="small">Nova saída bloqueada. Confirme a chegada à loja no painel “Quem está na rua”.</div></div>`:'<div class="msg ok">✓ Presença de hoje confirmada.</div>';
+  $('manualActiveInfo').innerHTML=active?`<div class="current-active-note"><b>${escapeHtml(active.courier_name)} ainda não fez check-in de chegada</b>${ordersHtml(active)}<div class="small">Nova saída bloqueada. Confirme a chegada à loja na área “Operação”.</div></div>`:'<div class="msg ok">✓ Presença de hoje confirmada.</div>';
   $('manualSubmit').disabled=!!active;
 }
 function openManualDispatchModal(){
@@ -2370,7 +2414,7 @@ async function submitManualDispatch(e){
   if(!orders.length)return message('manualMsg','Informe pelo menos um pedido.','err');
 
   const courier=dashboard?.couriers?.find(x=>Number(x.id)===courierId);
-  if(!courier?.present_today)return message('manualMsg','Este motoboy ainda não confirmou presença hoje. Registre a presença antes da saída manual.','err');
+  if(!courier?.present_today)return message('manualMsg',courier?.operational_status==='ENCERRADO'?'O expediente deste motoboy já foi encerrado. Nova saída bloqueada.':'Este motoboy ainda não confirmou presença hoje. Registre a presença antes da saída manual.','err');
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===courierId);
   if(active)return message('manualMsg','Nova saída bloqueada: confirme a chegada deste motoboy à loja antes de registrar outros pedidos.','err');
 
@@ -3037,14 +3081,16 @@ async function loadOperations(){
     $('operationalExceptions').innerHTML=exceptions.map(x=>`<div class="exception-item ${x.sla_state}"><div><b>${escapeHtml(x.courier_name)}</b><div class="small muted">${escapeHtml(dispatchProgressText(x))}</div></div><div><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div><div><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><div class="small muted">${x.stage_elapsed_minutes}/${x.sla_minutes} min</div></div><div>${dispatchActionHtml(x)}</div></div>`).join('')||'<div class="empty">✓ Nenhuma exceção de tempo agora.</div>';
 
     $('teamNow').innerHTML=dashboard.couriers.filter(x=>x.approval_status==='APPROVED').map(x=>{
-      const label={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
+      const label={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',ENCERRADO:'ENCERRADO',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
       const detail=x.operational_status==='DISPONIVEL'
         ? `Presente na loja${x.last_departure?' • última saída há '+timeSince(x.last_departure):''}`
         : x.operational_status==='AUSENTE'
           ? 'Não confirmou presença hoje'
-          : x.operational_status==='RETORNANDO'
-            ? 'Em retorno para a loja'
-            : (x.is_online?'Conectado':'Sem conexão recente');
+          : x.operational_status==='ENCERRADO'
+            ? `Expediente encerrado${x.checked_out_at?' às '+localTime(x.checked_out_at):''}`
+            : x.operational_status==='RETORNANDO'
+              ? 'Em retorno para a loja'
+              : (x.is_online?'Conectado':'Sem conexão recente');
       return `<div class="team-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${escapeHtml(x.name)}</b><span class="team-status ${x.operational_status}">${label}</span></div><div class="small muted" style="margin-top:7px">${detail}</div><div class="small" style="margin-top:5px">${x.today_count} pedido(s) hoje</div></div>`;
     }).join('')||'<div class="empty">Nenhum motoboy.</div>';
   }catch(err){alert(err.message)}
@@ -3100,12 +3146,14 @@ async function loadReport(){
     $('reportTable').innerHTML=(d.byCourier||[]).map(x=>`<tr>
       <td><b>${escapeHtml(x.name)}</b></td>
       <td><b>${x.checked_in_at?localTime(x.checked_in_at):'—'}</b></td>
+      <td>${x.checked_out_at?`<b>${localTime(x.checked_out_at)}</b>${x.checkout_reason?`<div class="small muted">${escapeHtml(x.checkout_reason)}</div>`:''}`:'<span class="badge green">ATIVO</span>'}</td>
+      <td>${formatShiftMinutes(x.shift_minutes)}</td>
       <td><span class="badge ${x.checkin_method==='QR'?'green':x.checkin_method==='ADMIN_MANUAL'?'blue':'gray'}">${escapeHtml(attendanceMethodLabel(x.checkin_method))}</span></td>
       <td>${x.orders||0}</td>
       <td>${x.dispatches||0}</td>
       <td>${x.first_departure?localTime(x.first_departure):'—'}</td>
       <td>${x.last_departure?localTime(x.last_departure):'—'}</td>
-    </tr>`).join('')||empty(7);
+    </tr>`).join('')||empty(9);
   }catch(err){alert(err.message)}
 }
 function exportReport(){const date=$('reportDate').value||spToday();window.location.href='/api/admin/reports/daily.csv?date='+encodeURIComponent(date)}
@@ -3192,6 +3240,7 @@ const auditNames={
   DEPARTURE_REGISTERED:'Saída registrada',
   ATTENDANCE_QR_CHECKIN:'Presença confirmada por QR',
   ATTENDANCE_MANUAL_CHECKIN:'Presença confirmada pelo administrador',
+  ATTENDANCE_ADMIN_CHECKOUT:'Expediente encerrado pelo administrador',
   DAILY_ATTENDANCE_REPORT_EXPORTED:'Relatório diário de presença exportado',
   COURIER_RELEASED:'Motoboy liberado para nova saída',
   ALERT_SETTINGS_UPDATED:'Configuração de alertas alterada',

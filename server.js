@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.1.0";
+const VERSION = "3.2.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -361,9 +361,19 @@ CREATE TABLE IF NOT EXISTS courier_attendance (
   checkin_method TEXT NOT NULL DEFAULT 'QR',
   checked_in_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   admin_reason TEXT,
+  checked_out_at TIMESTAMPTZ,
+  checked_out_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  checkout_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(courier_id,attendance_date)
 );
+
+ALTER TABLE courier_attendance
+ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ;
+ALTER TABLE courier_attendance
+ADD COLUMN IF NOT EXISTS checked_out_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE courier_attendance
+ADD COLUMN IF NOT EXISTS checkout_reason TEXT;
 
 CREATE INDEX IF NOT EXISTS courier_attendance_date_idx
 ON courier_attendance(attendance_date,checked_in_at);
@@ -2944,7 +2954,7 @@ async function getCourierAttendance(courierId, attendanceDate = null) {
   const date = attendanceDate || await getSPDate();
   return (await pool.query(`
     SELECT a.id,a.courier_id,a.attendance_date,a.checked_in_at,a.checkin_method,
-           a.checked_in_by,a.admin_reason
+           a.checked_in_by,a.admin_reason,a.checked_out_at,a.checked_out_by,a.checkout_reason
     FROM courier_attendance a
     WHERE a.courier_id=$1 AND a.attendance_date=$2::date
     LIMIT 1
@@ -2959,6 +2969,14 @@ async function requireCourierAttendance(courierId) {
     err.status = 403;
     err.code = "ATTENDANCE_REQUIRED";
     err.attendance_date = date;
+    throw err;
+  }
+  if (attendance.checked_out_at) {
+    const err = new Error("Seu expediente de hoje foi encerrado pelo Admin. Novas saídas estão bloqueadas.");
+    err.status = 403;
+    err.code = "SHIFT_ENDED";
+    err.attendance_date = date;
+    err.checked_out_at = attendance.checked_out_at;
     throw err;
   }
   return attendance;
@@ -3399,6 +3417,7 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
       u.id AS courier_id,u.name,u.username,u.nickname,u.active,u.approval_status,
       a.id AS attendance_id,a.attendance_date,a.checked_in_at,a.checkin_method,
       a.admin_reason,admin_u.name AS checked_in_by_name,
+      a.checked_out_at,a.checkout_reason,checkout_admin.name AS checked_out_by_name,
       p.last_seen_at,
       (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
       active_dispatch.id AS active_dispatch_id,
@@ -3409,6 +3428,7 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
     LEFT JOIN courier_attendance a
       ON a.courier_id=u.id AND a.attendance_date=$1::date
     LEFT JOIN users admin_u ON admin_u.id=a.checked_in_by
+    LEFT JOIN users checkout_admin ON checkout_admin.id=a.checked_out_by
     LEFT JOIN user_presence p ON p.user_id=u.id
     LEFT JOIN LATERAL (
       SELECT d.id,d.operational_stage,d.departed_at,d.returning_at
@@ -3426,22 +3446,28 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
       u.name
   `, [date])).rows.map(r => ({
     ...r,
-    present: !!r.attendance_id,
-    outside: !!r.attendance_id && !!r.active_dispatch_id,
-    available: !!r.attendance_id && !r.active_dispatch_id
+    attended: !!r.attendance_id,
+    ended: !!r.checked_out_at,
+    present: !!r.attendance_id && !r.checked_out_at,
+    outside: !!r.attendance_id && !r.checked_out_at && !!r.active_dispatch_id,
+    available: !!r.attendance_id && !r.checked_out_at && !r.active_dispatch_id
   }));
 
+  const attended = rows.filter(r => r.attended).length;
   const present = rows.filter(r => r.present).length;
   const outside = rows.filter(r => r.outside).length;
+  const ended = rows.filter(r => r.ended).length;
 
   res.json({
     date,
     summary: {
       eligible: rows.length,
+      attended,
       present,
       outside,
       available: Math.max(0, present - outside),
-      absent: Math.max(0, rows.length - present)
+      ended,
+      absent: Math.max(0, rows.length - attended)
     },
     rows,
     server_now: new Date().toISOString()
@@ -3481,6 +3507,14 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
   `, [courierId, date, req.session.user.id, reason]);
 
   const attendance = inserted.rows[0] || await getCourierAttendance(courierId, date);
+  if (!inserted.rowCount && attendance?.checked_out_at) {
+    return res.status(409).json({
+      error: `${courier.name} teve o expediente encerrado hoje. A presença manual não reabre expediente encerrado.`,
+      code: "SHIFT_ENDED",
+      checked_out_at: attendance.checked_out_at,
+      server_now: new Date().toISOString()
+    });
+  }
 
   if (inserted.rowCount) {
     await auditBestEffort(req.session.user.id, "ATTENDANCE_MANUAL_CHECKIN", "courier_attendance", attendance.id, {
@@ -3498,6 +3532,87 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
     message: inserted.rowCount
       ? `Presença de ${courier.name} confirmada pelo Admin.`
       : `${courier.name} já possui presença registrada hoje.`,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRoute(async (req, res) => {
+  const courierId = Number(req.params.courierId);
+  const reason = String(req.body.reason || "").trim().slice(0, 250);
+  if (!Number.isInteger(courierId) || courierId < 1) {
+    return res.status(400).json({ error: "Motoboy inválido." });
+  }
+  if (reason.length < 3) {
+    return res.status(400).json({ error: "Informe o motivo do encerramento do expediente." });
+  }
+
+  const courier = (await pool.query(`
+    SELECT id,name,active,approval_status
+    FROM users
+    WHERE id=$1 AND role='courier'
+    LIMIT 1
+  `, [courierId])).rows[0];
+  if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
+
+  const date = await getSPDate();
+  const attendance = await getCourierAttendance(courierId, date);
+  if (!attendance) {
+    return res.status(409).json({
+      error: `${courier.name} não possui presença registrada hoje.`,
+      code: "ATTENDANCE_NOT_FOUND"
+    });
+  }
+  if (attendance.checked_out_at) {
+    return res.status(409).json({
+      error: `O expediente de ${courier.name} já foi encerrado hoje.`,
+      code: "SHIFT_ALREADY_ENDED",
+      checked_out_at: attendance.checked_out_at
+    });
+  }
+
+  const activeDispatch = (await pool.query(`
+    SELECT id,dispatch_code,operational_stage,departed_at
+    FROM dispatches
+    WHERE courier_id=$1 AND status='ON_ROAD'
+    ORDER BY departed_at DESC,id DESC
+    LIMIT 1
+  `, [courierId])).rows[0];
+
+  if (activeDispatch) {
+    return res.status(409).json({
+      error: `${courier.name} ainda está ${activeDispatch.operational_stage === 'RETURNING' ? 'retornando para a loja' : 'em rota'}. Finalize a saída antes de encerrar o expediente.`,
+      code: "SHIFT_HAS_ACTIVE_DISPATCH",
+      dispatch_id: activeDispatch.id,
+      operational_stage: activeDispatch.operational_stage
+    });
+  }
+
+  const updated = (await pool.query(`
+    UPDATE courier_attendance
+    SET checked_out_at=NOW(),checked_out_by=$1,checkout_reason=$2
+    WHERE id=$3 AND checked_out_at IS NULL
+    RETURNING *
+  `, [req.session.user.id, reason, attendance.id])).rows[0];
+
+  if (!updated) {
+    return res.status(409).json({ error: "O expediente já foi encerrado.", code: "SHIFT_ALREADY_ENDED" });
+  }
+
+  await auditBestEffort(req.session.user.id, "ATTENDANCE_ADMIN_CHECKOUT", "courier_attendance", updated.id, {
+    courier_id: courierId,
+    courier_name: courier.name,
+    attendance_date: date,
+    checked_in_at: attendance.checked_in_at,
+    checked_out_at: updated.checked_out_at,
+    reason
+  });
+
+  io.emit("attendance:changed", { courier_id: courierId, attendance_date: date, shift_ended: true });
+  io.emit("dashboard:changed");
+
+  res.json({
+    attendance: updated,
+    message: `Expediente de ${courier.name} encerrado pelo Admin.`,
     server_now: new Date().toISOString()
   });
 }));
@@ -3531,6 +3646,14 @@ app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async 
   `, [req.session.user.id, payload.d]);
 
   const attendance = inserted.rows[0] || await getCourierAttendance(req.session.user.id, payload.d);
+  if (!inserted.rowCount && attendance?.checked_out_at) {
+    return res.status(409).json({
+      error: "Seu expediente de hoje foi encerrado pelo Admin. O QR não pode reativar seu turno.",
+      code: "SHIFT_ENDED",
+      checked_out_at: attendance.checked_out_at,
+      server_now: new Date().toISOString()
+    });
+  }
 
   if (inserted.rowCount) {
     await auditBestEffort(req.session.user.id, "ATTENDANCE_QR_CHECKIN", "courier_attendance", attendance.id, {
@@ -3603,8 +3726,12 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     recent,
     attendance: {
       date: attendanceDate,
-      present: !!attendanceRow,
+      present: !!attendanceRow && !attendanceRow.checked_out_at,
+      attended: !!attendanceRow,
+      shift_ended: !!attendanceRow?.checked_out_at,
       checked_in_at: attendanceRow?.checked_in_at || null,
+      checked_out_at: attendanceRow?.checked_out_at || null,
+      checkout_reason: attendanceRow?.checkout_reason || null,
       checkin_method: attendanceRow?.checkin_method || null
     },
     operational_sla: operationalSla,
@@ -4218,6 +4345,15 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       error: "Confirme sua presença pelo QR da loja antes de registrar uma saída.",
       code: "ATTENDANCE_REQUIRED",
       attendance_date: attendanceDate,
+      server_now: new Date().toISOString()
+    });
+  }
+  if (attendance.checked_out_at) {
+    return res.status(403).json({
+      error: "Seu expediente foi encerrado pelo Admin. Você não pode registrar novas saídas hoje.",
+      code: "SHIFT_ENDED",
+      attendance_date: attendanceDate,
+      checked_out_at: attendance.checked_out_at,
       server_now: new Date().toISOString()
     });
   }
@@ -4851,6 +4987,14 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       error: "Este motoboy ainda não confirmou presença hoje. Confirme pelo QR ou registre a presença manualmente antes da saída.",
       code: "ATTENDANCE_REQUIRED",
       attendance_date: attendanceDate
+    });
+  }
+  if (attendance.checked_out_at) {
+    return res.status(403).json({
+      error: "O expediente deste motoboy já foi encerrado pelo Admin. Nova saída bloqueada.",
+      code: "SHIFT_ENDED",
+      attendance_date: attendanceDate,
+      checked_out_at: attendance.checked_out_at
     });
   }
 
@@ -6110,6 +6254,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         FROM courier_attendance a
         JOIN users u ON u.id=a.courier_id
         WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND a.checked_out_at IS NULL
           AND u.role='courier' AND u.active=true AND u.approval_status='APPROVED'
       )::int AS active_couriers,
       (SELECT COUNT(*) FROM users WHERE role='courier' AND approval_status='PENDING')::int AS pending_couriers,
@@ -6120,6 +6265,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
           ON a.courier_id=d.courier_id
          AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
         WHERE d.status='ON_ROAD'
+          AND a.checked_out_at IS NULL
       )::int AS on_road,
       (
         SELECT COUNT(*)
@@ -6177,10 +6323,14 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       a.checked_in_at,
       a.checkin_method,
       a.admin_reason AS attendance_admin_reason,
-      (a.id IS NOT NULL) AS present_today,
+      a.checked_out_at,
+      a.checkout_reason,
+      (a.id IS NOT NULL) AS attended_today,
+      (a.id IS NOT NULL AND a.checked_out_at IS NULL) AS present_today,
       CASE
         WHEN u.active=false THEN 'INATIVO'
         WHEN a.id IS NULL THEN 'AUSENTE'
+        WHEN a.checked_out_at IS NOT NULL THEN 'ENCERRADO'
         WHEN EXISTS(
           SELECT 1 FROM dispatches d4
           WHERE d4.courier_id=u.id
@@ -6202,8 +6352,9 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
     ORDER BY
       CASE u.approval_status WHEN 'PENDING' THEN 0 WHEN 'REJECTED' THEN 2 ELSE 1 END,
       CASE
-        WHEN u.active=false THEN 6
-        WHEN a.id IS NULL THEN 5
+        WHEN u.active=false THEN 7
+        WHEN a.id IS NULL THEN 6
+        WHEN a.checked_out_at IS NOT NULL THEN 5
         WHEN EXISTS(
           SELECT 1 FROM dispatches d4
           WHERE d4.courier_id=u.id
@@ -6745,12 +6896,19 @@ app.get("/api/admin/reports/daily", auth, adminOnly, asyncRoute(async (req, res)
     SELECT
       u.id,u.name,u.username,
       a.checked_in_at,a.checkin_method,a.admin_reason,
+      a.checked_out_at,a.checkout_reason,checkout_admin.name AS checked_out_by_name,
+      CASE
+        WHEN a.checked_out_at IS NOT NULL THEN ROUND(EXTRACT(EPOCH FROM (a.checked_out_at-a.checked_in_at))/60.0)::int
+        WHEN a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date THEN ROUND(EXTRACT(EPOCH FROM (NOW()-a.checked_in_at))/60.0)::int
+        ELSE NULL
+      END AS shift_minutes,
       COUNT(DISTINCT d.id)::int AS dispatches,
       COUNT(o.id)::int AS orders,
       MIN(d.departed_at) AS first_departure,
       MAX(d.departed_at) AS last_departure
     FROM courier_attendance a
     JOIN users u ON u.id=a.courier_id
+    LEFT JOIN users checkout_admin ON checkout_admin.id=a.checked_out_by
     LEFT JOIN dispatches d
       ON d.courier_id=u.id
      AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date
@@ -6758,7 +6916,8 @@ app.get("/api/admin/reports/daily", auth, adminOnly, asyncRoute(async (req, res)
     WHERE a.attendance_date=$1::date
     GROUP BY
       u.id,u.name,u.username,
-      a.checked_in_at,a.checkin_method,a.admin_reason
+      a.checked_in_at,a.checkin_method,a.admin_reason,
+      a.checked_out_at,a.checkout_reason,checkout_admin.name,a.attendance_date
     ORDER BY a.checked_in_at,u.name
   `, [date])).rows;
 
@@ -6782,6 +6941,14 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
       u.username,
       a.checkin_method,
       a.admin_reason,
+      to_char(a.checked_out_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS checkout_time_br,
+      a.checkout_reason,
+      checkout_admin.name AS checkout_admin_name,
+      CASE
+        WHEN a.checked_out_at IS NOT NULL THEN ROUND(EXTRACT(EPOCH FROM (a.checked_out_at-a.checked_in_at))/60.0)::int
+        WHEN a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date THEN ROUND(EXTRACT(EPOCH FROM (NOW()-a.checked_in_at))/60.0)::int
+        ELSE NULL
+      END AS shift_minutes,
       to_char(d.departed_at AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS') AS departure_time_br,
       o.order_number,
       d.dispatch_code,
@@ -6793,6 +6960,7 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
       END AS status
     FROM courier_attendance a
     JOIN users u ON u.id=a.courier_id
+    LEFT JOIN users checkout_admin ON checkout_admin.id=a.checked_out_by
     LEFT JOIN dispatches d
       ON d.courier_id=u.id
      AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=a.attendance_date
@@ -6803,6 +6971,7 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
 
   const header = [
     "Data","Presença","Motoboy","Usuário","Origem da presença","Motivo Admin",
+    "Encerramento","Motivo encerramento","Admin encerramento","Tempo de expediente (min)",
     "Horário da saída","Pedido","Código da saída","Status"
   ];
   const lines = [header.map(csvCell).join(";")];
@@ -6815,6 +6984,10 @@ app.get("/api/admin/reports/daily.csv", auth, adminOnly, asyncRoute(async (req, 
       r.username,
       r.checkin_method,
       r.admin_reason || "",
+      r.checkout_time_br || "",
+      r.checkout_reason || "",
+      r.checkout_admin_name || "",
+      r.shift_minutes ?? "",
       r.departure_time_br || "",
       r.order_number || "",
       r.dispatch_code || "",
