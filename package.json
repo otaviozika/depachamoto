@@ -1,6 +1,6 @@
 {
   "name": "despachefull",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -22,7 +22,8 @@
     "selftest:operational-time": "node scripts/selftest-operational-time.js",
     "selftest:checkin-required": "node scripts/selftest-checkin-required.js",
     "selftest:ifood-only-courier": "node scripts/selftest-ifood-only-courier.js",
-    "selftest:attendance": "node scripts/selftest-attendance.js"
+    "selftest:attendance": "node scripts/selftest-attendance.js",
+    "selftest:navigation": "node scripts/selftest-navigation.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

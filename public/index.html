@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.0.0</title>
+<title>DespacheFull 3.1.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -210,6 +210,17 @@
 @media(max-width:1250px){#adminApp .dashboard-metrics{grid-template-columns:repeat(3,1fr)}#adminApp .dashboard-grid{grid-template-columns:1fr}}
 @media(max-width:900px){#adminApp .admin-top-user{display:none}#adminApp .admin-top-actions{gap:5px}#adminApp .admin-top .btn{padding:9px 10px}#adminApp .dashboard-footer{grid-template-columns:1fr 1fr}#adminApp .dashboard-footer span,#adminApp .dashboard-footer span:nth-child(2),#adminApp .dashboard-footer span:nth-child(3),#adminApp .dashboard-footer span:last-child{text-align:left}}
 @media(max-width:720px){#adminApp .admin-side{display:none}#adminApp .main{margin-left:0}#adminApp .admin-top{padding:0 10px}#adminApp .admin-top-page{display:none}#adminApp .admin-top-actions{width:100%;justify-content:flex-end}#adminApp .dashboard-heading{display:grid}#adminApp .dashboard-clock-card{min-width:0;width:100%}#adminApp .dashboard-metrics{grid-template-columns:repeat(2,1fr)}#adminApp .dashboard-metric-card{min-height:126px;padding:14px}#adminApp .dashboard-metric-card .metric{font-size:34px}#adminApp .dashboard-live-panel,#adminApp .dashboard-recent-panel{min-height:0}#adminApp .dashboard-live-panel .table-wrap{min-height:0}#adminApp .dashboard-footer{grid-template-columns:1fr}.manual-dispatch-top{display:none}}
+
+/* v3.1 — navegação administrativa consolidada */
+#adminApp .admin-nav button{justify-content:flex-start;font-size:14px;letter-spacing:.01em}
+#adminApp .admin-nav button span{overflow:visible;text-overflow:clip}
+#adminApp .admin-subnav{display:flex;gap:6px;align-items:center;overflow-x:auto;margin:0 0 18px;padding:5px;background:#f3f4f6;border:1px solid var(--line);border-radius:12px;scrollbar-width:thin}
+#adminApp .admin-subnav.hidden{display:none}
+#adminApp .admin-subnav button{flex:0 0 auto;border:0;background:transparent;color:#667085;padding:9px 14px;border-radius:8px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+#adminApp .admin-subnav button:hover{background:#fff;color:#111827}
+#adminApp .admin-subnav button.active{background:#fff;color:#111827;box-shadow:0 1px 3px rgba(15,23,42,.10)}
+#adminApp .admin-mobile-nav button{font-size:11px;font-weight:700;padding:6px 4px;min-width:0}
+@media(max-width:720px){#adminApp .admin-subnav{margin:-2px 0 14px;border-radius:10px}#adminApp .admin-subnav button{padding:8px 11px;font-size:12px}}
 </style>
 </head>
 <body>
@@ -245,27 +256,14 @@
   <aside class="side admin-side">
     <div class="admin-brand"><img class="brand-wordmark-sidebar" src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
     <nav class="nav admin-nav">
-      <button data-page="dashboard" class="active">▦ <span>Dashboard</span></button>
-      <button data-page="attendance">✓ <span>Presença do dia</span></button>
-      <button data-page="operations">⚡ <span>Operação</span></button>
-      <button data-page="ifood">▣ <span>Pedidos iFood</span></button>
-      <button data-page="road">◷ <span>Quem está na rua</span></button>
-      <button data-page="history">↶ <span>Histórico</span></button>
-      <button data-page="report">▥ <span>Relatório diário</span></button>
-      <button data-page="management">📊 <span>Gestão</span></button>
-      <button data-page="payments">◉ <span>Financeiro</span></button>
-      <button data-page="couriers">♙ <span>Motoboys</span></button>
-      <button data-page="alerts">⚙ <span>Alertas</span></button>
-      <button data-page="notifications">♢ <span>Notificações</span></button>
-      <button data-page="conflicts">⚠ <span>Conflitos</span></button>
-      <button data-page="security">⚙ <span>Segurança</span></button>
-      <button data-page="audit">▧ <span>Auditoria</span></button>
+      <button data-admin-group="dashboard" class="active"><span>Dashboard</span></button>
+      <button data-admin-group="operations"><span>Operação</span></button>
+      <button data-admin-group="ifood"><span>iFood</span></button>
+      <button data-admin-group="management"><span>Gestão</span></button>
+      <button data-admin-group="system"><span>Sistema</span></button>
     </nav>
     <div class="admin-side-bottom">
-      <button class="side-kds-shortcut" data-page="wallboard" type="button">
-        <span class="side-kds-icon">⛶</span><span><b>Modo telão</b><small><i></i> Ativado</small></span>
-      </button>
-      <div class="side-user-card"><span class="side-user-shield">◇</span><span class="side-user-copy"><b id="adminSideName">Administrador</b><small id="adminSideUser">admin</small></span></div>
+      <div class="side-user-card"><span class="side-user-copy"><b id="adminSideName">Administrador</b><small id="adminSideUser">admin</small></span></div>
     </div>
   </aside>
   <main class="main">
@@ -284,6 +282,7 @@
       </div>
     </div>
     <div class="content">
+      <div id="adminSubnav" class="admin-subnav hidden" aria-label="Navegação da seção"></div>
       <div id="adminPasswordWarning" class="warning hidden"><b>Atenção:</b> sua senha administrativa ainda é a senha padrão. Troque em <b>Minha senha</b>.</div>
 
       <section id="dashboard" class="page active dashboard-page">
@@ -307,13 +306,13 @@
           <div class="section dashboard-panel dashboard-recent-panel">
             <div class="section-head"><b>Últimas saídas</b></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th></tr></thead><tbody id="recentTable"></tbody></table></div>
-            <button class="dashboard-history-link" type="button" onclick="document.querySelector('[data-page=&quot;history&quot;]').click()">Ver todas as saídas ›</button>
+            <button class="dashboard-history-link" type="button" onclick="activateAdminPage('history')">Ver todas as saídas ›</button>
           </div>
         </div>
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.0.0</span>
+          <span>Versão 3.1.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -473,7 +472,7 @@
   </div>
 </section>
 
-<section id="road" class="page"><h1 class="title">Quem está na rua</h1><p class="muted">Acompanhe rota, retorno, progresso de entregas e SLA em tempo real.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Motoboy</th><th>Pedido(s)</th><th>Etapa</th><th>Progresso</th><th>Tempo</th><th>SLA</th><th>Ação</th></tr></thead><tbody id="roadTable"></tbody></table></div></div></section>
+
 
       
       <section id="wallboard" class="page kds-page">
@@ -780,7 +779,7 @@
 <section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
     </div>
   </main>
-  <div class="mobile-nav"><button data-page="dashboard">▦<br>Início</button><button data-page="road">◷<br>Na rua</button><button data-page="payments">💰<br>Pagto</button><button data-page="management">📊<br>Gestão</button><button data-page="security">🔒<br>Segurança</button></div>
+  <div class="mobile-nav admin-mobile-nav"><button data-admin-group="dashboard">Dashboard</button><button data-admin-group="operations">Operação</button><button data-admin-group="ifood">iFood</button><button data-admin-group="management">Gestão</button><button data-admin-group="system">Sistema</button></div>
 </div>
 
 
@@ -1681,7 +1680,7 @@ function renderRoad(){
     </tr>`;
   }).join('');
   $('roadDash').innerHTML=rows||`<tr><td colspan="7"><div class="dashboard-empty-road"><div><div class="road-mark">╱┊╲</div><b>Nenhum registro.</b><small>No momento, não há motoboys em entrega ou retorno.</small></div></div></td></tr>`;
-  $('roadTable').innerHTML=rows||empty(7);
+  if($('roadTable'))$('roadTable').innerHTML=rows||empty(7);
 }
 function renderRecent(){$('recentTable').innerHTML=dashboard.recent.slice(0,8).map(x=>`<tr><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td>${localTime(x.departed_at)}</td></tr>`).join('')||empty(3)}
 async function loadHistory(){
@@ -3308,25 +3307,69 @@ async function saveCourierProfile(e){
   }catch(err){message('courierProfileMsg',err.message,'err')}
 }
 
-document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  $(b.dataset.page).classList.add('active');
-  document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===b.dataset.page));
-  $('pageTitle').textContent={dashboard:'Dashboard',attendance:'Presença do dia',operations:'Operação',ifood:'iFood',road:'Quem está na rua',wallboard:'Modo telão',history:'Histórico',report:'Relatório diário',management:'Gestão',payments:'Pagamentos',couriers:'Motoboys',alerts:'Alertas',notifications:'Notificações',conflicts:'Conflitos',security:'Segurança',audit:'Auditoria'}[b.dataset.page];
-  if(b.dataset.page==='audit')loadAudit();
-  else if(b.dataset.page==='attendance')loadAttendance();
-  else if(b.dataset.page==='operations')loadOperations();
-  else if(b.dataset.page==='ifood')loadIfoodStatus();
-  else if(b.dataset.page==='conflicts')loadConflicts();
-  else if(b.dataset.page==='report')loadReport();
-  else if(b.dataset.page==='wallboard')loadWallboard();
-  else if(b.dataset.page==='management')loadManagement();
-  else if(b.dataset.page==='payments')loadPayments();
-  else if(b.dataset.page==='notifications'){loadNotifications();loadNotificationSettings();}
-  else if(b.dataset.page==='history')loadHistory();
-  else if(b.dataset.page==='security')loadSecurity();
-  else loadAdmin();
+const adminGroups={
+  dashboard:{label:'Dashboard',defaultPage:'dashboard',tabs:[]},
+  operations:{label:'Operação',defaultPage:'operations',tabs:[
+    ['operations','Agora'],['attendance','Presença'],['wallboard','Telão'],['history','Histórico'],['conflicts','Conflitos']
+  ]},
+  ifood:{label:'iFood',defaultPage:'ifood',tabs:[]},
+  management:{label:'Gestão',defaultPage:'management',tabs:[
+    ['management','Desempenho'],['report','Relatórios'],['payments','Financeiro'],['couriers','Motoboys']
+  ]},
+  system:{label:'Sistema',defaultPage:'alerts',tabs:[
+    ['alerts','Alertas'],['notifications','Notificações'],['security','Segurança'],['audit','Auditoria']
+  ]}
+};
+const adminPageGroup={
+  dashboard:'dashboard',
+  operations:'operations',attendance:'operations',wallboard:'operations',history:'operations',conflicts:'operations',
+  ifood:'ifood',
+  management:'management',report:'management',payments:'management',couriers:'management',
+  alerts:'system',notifications:'system',security:'system',audit:'system'
+};
+
+function renderAdminSubnav(groupKey,activePage){
+  const host=$('adminSubnav');
+  if(!host)return;
+  const group=adminGroups[groupKey];
+  const tabs=group?.tabs||[];
+  if(!tabs.length){host.innerHTML='';host.classList.add('hidden');return;}
+  host.classList.remove('hidden');
+  host.innerHTML=tabs.map(([page,label])=>`<button type="button" data-subpage="${page}" class="${page===activePage?'active':''}">${label}</button>`).join('');
+  host.querySelectorAll('[data-subpage]').forEach(btn=>btn.onclick=()=>activateAdminPage(btn.dataset.subpage,groupKey));
+}
+
+async function activateAdminPage(page,explicitGroup){
+  const target=$(page);
+  if(!target)return;
+  const groupKey=explicitGroup||adminPageGroup[page]||'dashboard';
+  const group=adminGroups[groupKey]||adminGroups.dashboard;
+  document.querySelectorAll('#adminApp .page').forEach(p=>p.classList.remove('active'));
+  target.classList.add('active');
+  document.querySelectorAll('#adminApp [data-admin-group]').forEach(x=>x.classList.toggle('active',x.dataset.adminGroup===groupKey));
+  $('pageTitle').textContent=group.label;
+  renderAdminSubnav(groupKey,page);
+
+  if(page==='audit')await loadAudit();
+  else if(page==='attendance')await loadAttendance();
+  else if(page==='operations')await loadOperations();
+  else if(page==='ifood')await loadIfoodStatus();
+  else if(page==='conflicts')await loadConflicts();
+  else if(page==='report')await loadReport();
+  else if(page==='wallboard')await loadWallboard();
+  else if(page==='management')await loadManagement();
+  else if(page==='payments')await loadPayments();
+  else if(page==='notifications'){await loadNotifications();await loadNotificationSettings();}
+  else if(page==='history')await loadHistory();
+  else if(page==='security')await loadSecurity();
+  else await loadAdmin();
+}
+
+document.querySelectorAll('#adminApp [data-admin-group]').forEach(b=>b.onclick=()=>{
+  const group=adminGroups[b.dataset.adminGroup];
+  if(group)activateAdminPage(group.defaultPage,b.dataset.adminGroup);
 });
+
 
 $('loginForm').onsubmit=login;
 $('registerForm').onsubmit=register;
