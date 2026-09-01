@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.1";
+const VERSION = "3.5.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -5969,6 +5969,123 @@ app.post("/api/admin/ifood/orders/:id/confirm-test", auth, adminOnly, asyncRoute
     accepted: true,
     response: body || null,
     message: "Confirmação enviada ao iFood. Sincronize novamente em alguns segundos."
+  });
+}));
+
+
+app.get("/api/admin/ifood/orders/:id/cancellation-reasons-test", auth, adminOnly, asyncRoute(async (req, res) => {
+  const orderId = String(req.params.id || "").trim();
+
+  const order = (await pool.query(`
+    SELECT order_id,display_id,status,is_test
+    FROM ifood_orders
+    WHERE order_id=$1
+    LIMIT 1
+  `, [orderId])).rows[0];
+
+  if (!order) return res.status(404).json({ error: "Pedido iFood não encontrado." });
+  if (order.is_test !== true) {
+    return res.status(403).json({ error: "Consulta de cancelamento permitida somente para pedido de teste." });
+  }
+
+  const status = canonicalIfoodOrderStatus(order.status);
+  if (["CANCELLED","CONCLUDED","DISPATCHED"].includes(status)) {
+    return res.status(409).json({ error: `O pedido está em ${status} e não pode ser cancelado por este fluxo.` });
+  }
+
+  const { body } = await ifoodApi(
+    `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/cancellationReasons`
+  );
+
+  const reasons = Array.isArray(body?.reasons)
+    ? body.reasons
+    : Array.isArray(body)
+      ? body
+      : [];
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_TEST_CANCELLATION_REASONS_READ",
+    "ifood_order",
+    null,
+    { order_id: orderId, display_id: order.display_id, reasons_count: reasons.length }
+  );
+
+  res.json({ ok: true, order_id: orderId, display_id: order.display_id, reasons });
+}));
+
+app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(async (req, res) => {
+  const orderId = String(req.params.id || "").trim();
+  const requestedReason = String(req.body?.reason || "").trim();
+
+  const order = (await pool.query(`
+    SELECT order_id,display_id,status,is_test
+    FROM ifood_orders
+    WHERE order_id=$1
+    LIMIT 1
+  `, [orderId])).rows[0];
+
+  if (!order) return res.status(404).json({ error: "Pedido iFood não encontrado." });
+  if (order.is_test !== true) {
+    return res.status(403).json({ error: "Cancelamento controlado permitido somente para pedido de teste." });
+  }
+
+  const status = canonicalIfoodOrderStatus(order.status);
+  if (["CANCELLED","CONCLUDED","DISPATCHED"].includes(status)) {
+    return res.status(409).json({ error: `O pedido está em ${status} e não pode ser cancelado por este fluxo.` });
+  }
+
+  const { body: reasonsBody } = await ifoodApi(
+    `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/cancellationReasons`
+  );
+  const reasons = Array.isArray(reasonsBody?.reasons)
+    ? reasonsBody.reasons
+    : Array.isArray(reasonsBody)
+      ? reasonsBody
+      : [];
+
+  if (!reasons.length) {
+    return res.status(409).json({ error: "O iFood não retornou motivos válidos de cancelamento para este pedido." });
+  }
+
+  const reason = reasons.find(r => String(r?.code || "") === requestedReason);
+  if (!reason) {
+    return res.status(400).json({
+      error: "Motivo de cancelamento inválido para este pedido.",
+      reasons
+    });
+  }
+
+  const { body } = await ifoodApi(
+    `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/requestCancellation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: String(reason.code) })
+    }
+  );
+
+  await auditBestEffort(
+    req.session.user.id,
+    "IFOOD_TEST_CANCELLATION_REQUESTED",
+    "ifood_order",
+    null,
+    {
+      order_id: orderId,
+      display_id: order.display_id,
+      reason: String(reason.code),
+      reason_description: reason.description || null
+    }
+  );
+
+  io.emit("ifood:changed");
+
+  res.status(202).json({
+    ok: true,
+    accepted: true,
+    reason,
+    response: body || null,
+    message: "Solicitação de cancelamento aceita pelo iFood. Aguarde o evento CANCELLED no polling."
   });
 }));
 
