@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.3";
+const VERSION = "3.5.4";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -6115,12 +6115,24 @@ app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(
     });
   }
 
+  // A documentação pública do Order ainda exemplifica { reason: "<codigo>" },
+  // porém o backend de homologação PDV atualmente também exige cancellationCode.
+  // Enviamos ambos usando exclusivamente o código devolvido por /cancellationReasons.
+  const cancellationCodeRaw = String(reason.code).trim();
+  const cancellationCode = /^\d+$/.test(cancellationCodeRaw)
+    ? Number(cancellationCodeRaw)
+    : cancellationCodeRaw;
+  const cancellationPayload = {
+    reason: cancellationCodeRaw,
+    cancellationCode
+  };
+
   const { body } = await ifoodApi(
     `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/requestCancellation`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: String(reason.code) })
+      body: JSON.stringify(cancellationPayload)
     }
   );
 
@@ -6132,7 +6144,8 @@ app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(
     {
       order_id: orderId,
       display_id: order.display_id,
-      reason: String(reason.code),
+      reason: cancellationCodeRaw,
+      cancellation_code: cancellationCode,
       reason_description: reason.description || null
     }
   );
