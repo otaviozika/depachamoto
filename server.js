@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.4.0";
+const VERSION = "3.5.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -524,16 +524,37 @@ CREATE TABLE IF NOT EXISTS ifood_orders (
   merchant_id TEXT,
   status TEXT,
   order_type TEXT,
+  order_timing TEXT,
   category TEXT,
   sales_channel TEXT,
   delivered_by TEXT,
   is_test BOOLEAN,
   order_created_at TIMESTAMPTZ,
+  preparation_start_at TIMESTAMPTZ,
   last_event_code TEXT,
   last_event_at TIMESTAMPTZ,
   payload JSONB,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE ifood_orders
+ADD COLUMN IF NOT EXISTS order_timing TEXT;
+
+ALTER TABLE ifood_orders
+ADD COLUMN IF NOT EXISTS preparation_start_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS ifood_preparation_times (
+  merchant_id TEXT PRIMARY KEY REFERENCES ifood_merchants(merchant_id) ON DELETE CASCADE,
+  preparation_time_minutes INTEGER,
+  source TEXT NOT NULL DEFAULT 'IFOOD_MY_PREPARATION_TIME',
+  synced_at TIMESTAMPTZ,
+  last_error TEXT,
+  last_error_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ifood_preparation_times_updated_idx
+ON ifood_preparation_times(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS ifood_orders_display_idx
 ON ifood_orders(display_id);
@@ -815,6 +836,14 @@ function ifoodEnvironment() {
   return value === "production" ? "production" : "test";
 }
 
+function ifoodCustomerId() {
+  return String(process.env.IFOOD_CUSTOMER_ID || "").trim();
+}
+
+function ifoodPreparationTimeConfigured() {
+  return Boolean(ifoodConfigured() && ifoodCustomerId());
+}
+
 function ifoodAllowedMerchantIds() {
   return [...new Set(
     String(process.env.IFOOD_ALLOWED_MERCHANT_IDS || "")
@@ -878,6 +907,7 @@ function ifoodSafeError(err) {
   return raw
     .replace(String(process.env.IFOOD_CLIENT_SECRET || ""), "[SECRET]")
     .replace(String(process.env.IFOOD_CLIENT_ID || ""), "[CLIENT_ID]")
+    .replace(String(process.env.IFOOD_CUSTOMER_ID || ""), "[CUSTOMER_ID]")
     .slice(0, 600);
 }
 
@@ -1420,6 +1450,106 @@ async function fetchAndStoreIfoodMerchants() {
     }));
 }
 
+function normalizeIfoodPreparationMinutes(body) {
+  const raw =
+    body?.preparationTime ??
+    body?.preparation_time ??
+    body?.minutes ??
+    (typeof body === "number" ? body : null);
+
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 240) {
+    throw new Error("iFood retornou um tempo de preparo inválido.");
+  }
+  return Math.round(minutes);
+}
+
+async function syncIfoodPreparationTimes(merchantIds = []) {
+  const unique = [...new Set(merchantIds.map(String).filter(Boolean))];
+
+  if (!unique.length) {
+    return { configured: ifoodPreparationTimeConfigured(), checked: 0, changed: 0, failed: 0 };
+  }
+
+  if (!ifoodPreparationTimeConfigured()) {
+    return {
+      configured: false,
+      checked: 0,
+      changed: 0,
+      failed: 0,
+      skipped: true,
+      reason: "IFOOD_CUSTOMER_ID_MISSING"
+    };
+  }
+
+  const customerId = ifoodCustomerId();
+  let checked = 0;
+  let changed = 0;
+  let failed = 0;
+
+  for (const merchantId of unique) {
+    const previous = (await pool.query(`
+      SELECT preparation_time_minutes
+      FROM ifood_preparation_times
+      WHERE merchant_id=$1
+    `, [merchantId])).rows[0];
+
+    try {
+      const { body } = await ifoodApi(
+        `${IFOOD_MERCHANT_BASE}/merchants/${encodeURIComponent(merchantId)}/myPreparationTime`,
+        {
+          headers: {
+            "X-iFood-Customer-ID": customerId,
+            "Content-Type": "application/json"
+          }
+        }
+      );
+
+      const minutes = normalizeIfoodPreparationMinutes(body);
+      checked++;
+
+      if (Number(previous?.preparation_time_minutes || 0) !== minutes) {
+        changed++;
+      }
+
+      await pool.query(`
+        INSERT INTO ifood_preparation_times(
+          merchant_id,preparation_time_minutes,source,synced_at,last_error,last_error_at,updated_at
+        )
+        VALUES($1,$2,'IFOOD_MY_PREPARATION_TIME',NOW(),NULL,NULL,NOW())
+        ON CONFLICT(merchant_id) DO UPDATE SET
+          preparation_time_minutes=EXCLUDED.preparation_time_minutes,
+          source='IFOOD_MY_PREPARATION_TIME',
+          synced_at=NOW(),
+          last_error=NULL,
+          last_error_at=NULL,
+          updated_at=NOW()
+      `, [merchantId, minutes]);
+    } catch (err) {
+      failed++;
+      await pool.query(`
+        INSERT INTO ifood_preparation_times(
+          merchant_id,preparation_time_minutes,source,synced_at,last_error,last_error_at,updated_at
+        )
+        VALUES($1,NULL,'IFOOD_MY_PREPARATION_TIME',NULL,$2,NOW(),NOW())
+        ON CONFLICT(merchant_id) DO UPDATE SET
+          last_error=$2,
+          last_error_at=NOW(),
+          updated_at=NOW()
+      `, [merchantId, ifoodSafeError(err)]).catch(() => {});
+
+      console.error(`iFood preparation time ${merchantId}:`, ifoodSafeError(err));
+    }
+  }
+
+  return {
+    configured: true,
+    checked,
+    changed,
+    failed
+  };
+}
+
 function normalizeIfoodEvents(body) {
   if (Array.isArray(body)) return body;
   if (Array.isArray(body?.events)) return body.events;
@@ -1479,20 +1609,22 @@ async function upsertIfoodOrderFromDetails(order, fallback = {}) {
 
   await pool.query(`
     INSERT INTO ifood_orders(
-      order_id,display_id,merchant_id,status,order_type,category,sales_channel,
-      delivered_by,is_test,order_created_at,last_event_code,last_event_at,payload,updated_at
+      order_id,display_id,merchant_id,status,order_type,order_timing,category,sales_channel,
+      delivered_by,is_test,order_created_at,preparation_start_at,last_event_code,last_event_at,payload,updated_at
     )
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
     ON CONFLICT(order_id) DO UPDATE SET
       display_id=COALESCE(EXCLUDED.display_id,ifood_orders.display_id),
       merchant_id=COALESCE(EXCLUDED.merchant_id,ifood_orders.merchant_id),
       status=COALESCE(EXCLUDED.status,ifood_orders.status),
       order_type=COALESCE(EXCLUDED.order_type,ifood_orders.order_type),
+      order_timing=COALESCE(EXCLUDED.order_timing,ifood_orders.order_timing),
       category=COALESCE(EXCLUDED.category,ifood_orders.category),
       sales_channel=COALESCE(EXCLUDED.sales_channel,ifood_orders.sales_channel),
       delivered_by=COALESCE(EXCLUDED.delivered_by,ifood_orders.delivered_by),
       is_test=COALESCE(EXCLUDED.is_test,ifood_orders.is_test),
       order_created_at=COALESCE(EXCLUDED.order_created_at,ifood_orders.order_created_at),
+      preparation_start_at=COALESCE(EXCLUDED.preparation_start_at,ifood_orders.preparation_start_at),
       last_event_code=COALESCE(EXCLUDED.last_event_code,ifood_orders.last_event_code),
       last_event_at=COALESCE(EXCLUDED.last_event_at,ifood_orders.last_event_at),
       payload=COALESCE(EXCLUDED.payload,ifood_orders.payload),
@@ -1503,11 +1635,13 @@ async function upsertIfoodOrderFromDetails(order, fallback = {}) {
     merchantId ? String(merchantId) : null,
     lifecycleStatus,
     order?.orderType || null,
+    order?.orderTiming || null,
     order?.category || null,
     order?.salesChannel || null,
     order?.delivery?.deliveredBy || null,
     typeof order?.isTest === "boolean" ? order.isTest : null,
     order?.createdAt || null,
+    order?.preparationStartDateTime || null,
     lastEventCode,
     lastEventAt,
     JSON.stringify(order || {})
@@ -1978,6 +2112,10 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
       throw new Error("Nenhuma loja iFood vinculada às credenciais.");
     }
 
+    // v3.5: acompanha o "Meu Tempo de Preparo" configurado no próprio iFood.
+    // A falha deste endpoint não bloqueia a sincronização de pedidos/eventos.
+    const preparationTimes = await syncIfoodPreparationTimes(merchantIds);
+
     const url = new URL(`${IFOOD_EVENTS_BASE}/events:polling`);
     url.searchParams.set("categories", "FOOD");
     // Evita que esta integração de despacho altere presença/abertura da loja.
@@ -2132,7 +2270,8 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
       events: events.length,
       newEvents,
       ordersUpdated,
-      acknowledged
+      acknowledged,
+      preparationTimes
     };
   } catch (err) {
     await setIfoodSyncError(err);
@@ -5378,6 +5517,41 @@ app.post("/api/admin/conflicts/:id/resolve", auth, adminOnly, asyncRoute(async (
 }));
 
 
+function ifoodWallboardPreparationState(row, nowMs = Date.now()) {
+  const minutes = Number(row?.preparation_time_minutes || 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return {
+      preparation_status: "UNAVAILABLE",
+      preparation_base_at: null,
+      preparation_deadline_at: null
+    };
+  }
+
+  const scheduled = String(row?.order_timing || "").toUpperCase() === "SCHEDULED";
+  const baseValue = scheduled && row?.preparation_start_at
+    ? row.preparation_start_at
+    : (row?.confirmed_at || row?.order_created_at || row?.preparation_start_at);
+
+  const baseMs = Date.parse(baseValue || "");
+  if (!Number.isFinite(baseMs)) {
+    return {
+      preparation_status: "UNAVAILABLE",
+      preparation_base_at: null,
+      preparation_deadline_at: null
+    };
+  }
+
+  const totalMs = minutes * 60_000;
+  const elapsedMs = nowMs - baseMs;
+  const ratio = elapsedMs / totalMs;
+
+  return {
+    preparation_status: ratio >= 1 ? "LATE" : ratio >= 0.5 ? "ALERT" : "NORMAL",
+    preparation_base_at: new Date(baseMs).toISOString(),
+    preparation_deadline_at: new Date(baseMs + totalMs).toISOString()
+  };
+}
+
 app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => {
   const orders = (await pool.query(`
     WITH bounds AS (
@@ -5390,10 +5564,16 @@ app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => 
       o.display_id,
       o.status,
       o.delivered_by,
+      o.order_timing,
       o.order_created_at,
+      o.preparation_start_at,
       o.last_event_at,
       o.updated_at,
+      ce.confirmed_at,
       m.name AS merchant_name,
+      pt.preparation_time_minutes,
+      pt.synced_at AS preparation_time_synced_at,
+      pt.last_error AS preparation_time_error,
       l.ifood_dispatch_status,
       d.status AS local_dispatch_status,
       d.departed_at,
@@ -5414,6 +5594,15 @@ app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => 
     FROM ifood_orders o
     CROSS JOIN bounds b
     LEFT JOIN ifood_merchants m ON m.merchant_id=o.merchant_id
+    LEFT JOIN ifood_preparation_times pt ON pt.merchant_id=o.merchant_id
+    LEFT JOIN LATERAL (
+      SELECT e.event_created_at AS confirmed_at
+      FROM ifood_events e
+      WHERE e.order_id=o.order_id
+        AND UPPER(COALESCE(e.full_code,e.code,'')) IN ('CONFIRMED','CFM')
+      ORDER BY e.event_created_at ASC NULLS LAST,e.received_at ASC
+      LIMIT 1
+    ) ce ON TRUE
     LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
     LEFT JOIN ifood_delivery_confirmations dc ON dc.ifood_order_id=o.order_id
     LEFT JOIN dispatches d ON d.id=l.dispatch_id
@@ -5423,11 +5612,17 @@ app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => 
     ) OR (
       o.order_created_at IS NULL AND o.updated_at >= b.start_at AND o.updated_at < b.end_at
     )
-    ORDER BY COALESCE(o.last_event_at,o.order_created_at,o.updated_at) DESC
+    ORDER BY COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC,o.order_id ASC
   `)).rows;
 
   // KDS: cancelados deixam o quadro operacional, mas continuam preservados no histórico/iFood.
-  const visibleOrders = orders.filter(x => x.operational_status !== 'CANCELLED');
+  // O tempo de preparo vem do iFood (Meu Tempo de Preparo), nunca de um prazo fixo local.
+  const nowMs = Date.now();
+  const visibleOrders = orders
+    .filter(x => x.operational_status !== 'CANCELLED')
+    .map(x => x.operational_status === 'PREPARING'
+      ? { ...x, ...ifoodWallboardPreparationState(x, nowMs) }
+      : x);
   const preparing = visibleOrders.filter(x => x.operational_status === 'PREPARING').length;
   const onRoad = visibleOrders.filter(x => x.operational_status === 'ON_ROAD').length;
   const confirmed = visibleOrders.filter(x => x.operational_status === 'CONFIRMED').length;
@@ -5449,6 +5644,15 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     SELECT merchant_id AS id,name,corporate_name,last_seen_at
     FROM ifood_merchants
     ORDER BY name NULLS LAST,merchant_id
+  `)).rows;
+
+  const preparationTimes = (await pool.query(`
+    SELECT
+      p.merchant_id,p.preparation_time_minutes,p.source,p.synced_at,
+      p.last_error,p.last_error_at,p.updated_at,m.name AS merchant_name
+    FROM ifood_preparation_times p
+    LEFT JOIN ifood_merchants m ON m.merchant_id=p.merchant_id
+    ORDER BY m.name NULLS LAST,p.merchant_id
   `)).rows;
 
   const state = (await pool.query(`
@@ -5546,6 +5750,8 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
   res.json({
     configured: ifoodConfigured(),
     autoEnabled: ifoodAutoEnabled(),
+    preparationTimeConfigured: ifoodPreparationTimeConfigured(),
+    preparationTimes,
     dispatchEnabled: ifoodDispatchEnabled(),
     dispatchWorkerRunning: ifoodDispatchWorkerRunning,
     environment,
@@ -5556,7 +5762,7 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     automaticDispatchAllowed: automaticGate.allowed,
     automaticDispatchBlockReason: automaticGate.reason,
     syncAgeSeconds,
-    phase: "FASE_5_CONFIRMACAO_ENTREGA",
+    phase: "FASE_6_TEMPO_PREPARO_TELAO",
     tokenCached: Boolean(
       ifoodTokenCache.accessToken &&
       ifoodTokenCache.expiresAt > Date.now() + 60_000
@@ -7094,7 +7300,7 @@ setInterval(() => {
 
   syncIfoodOnce({ reason: "automatic_30s" })
     .then(result => {
-      if (result.events > 0) io.emit("ifood:changed");
+      if (result.events > 0 || Number(result.preparationTimes?.changed || 0) > 0) io.emit("ifood:changed");
     })
     .catch(err => {
       console.error("iFood automatic sync:", ifoodSafeError(err));
@@ -7106,7 +7312,7 @@ setTimeout(() => {
 
   syncIfoodOnce({ reason: "automatic_startup" })
     .then(result => {
-      if (result.events > 0) io.emit("ifood:changed");
+      if (result.events > 0 || Number(result.preparationTimes?.changed || 0) > 0) io.emit("ifood:changed");
     })
     .catch(err => {
       console.error("iFood startup sync:", ifoodSafeError(err));

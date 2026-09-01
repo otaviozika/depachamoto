@@ -19,3 +19,6 @@ services:
         sync: false
       - key: ADMIN_NAME
         value: Administrador
+      - key: IFOOD_CUSTOMER_ID
+        sync: false
+

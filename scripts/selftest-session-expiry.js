@@ -6,7 +6,7 @@ const html=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8
 const sw=fs.readFileSync(new URL("../public/service-worker.js",import.meta.url),"utf8");
 
 const checks={
-  version:server.includes('const VERSION = "3.4.0";')&&html.includes('<title>DespacheFull 3.4.0</title>'),
+  version:server.includes('const VERSION = "3.5.0";')&&html.includes('<title>DespacheFull 3.5.0</title>'),
   serverCode:server.includes('code: "SESSION_EXPIRED"'),
   redirectFunction:html.includes('function redirectExpiredSession()'),
   onlyAfterAuthenticatedSession:html.includes("response?.status!==401||!me"),
@@ -18,7 +18,7 @@ const checks={
   loginMessage:html.includes('Sua sessão expirou. Entre novamente para continuar.'),
   startupNotice:html.includes('showSessionNotice();'),
   heartbeatStillActive:html.includes("setInterval(()=>{if(me)heartbeat();},20000)"),
-  cacheBumped:sw.includes('despachefull-v3.4.0-sober-ui')
+  cacheBumped:sw.includes('despachefull-v3.5.0-preparation-time')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`Falhou: ${name}`);
-console.log(JSON.stringify({result:"PASS",version:"3.4.0",checks},null,2));
+console.log(JSON.stringify({result:"PASS",version:"3.5.0",checks},null,2));

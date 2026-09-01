@@ -12,7 +12,7 @@ const dashboard = server.match(/app\.get\("\/api\/admin\/dashboard"[\s\S]*?\n\}\
 const dailyReport = server.match(/app\.get\("\/api\/admin\/reports\/daily"[\s\S]*?\n\}\)\);/)?.[0] || '';
 
 const checks = {
-  version_300: /const VERSION = "3\.4\.0"/.test(server) && pkg.version === '3.4.0',
+  version_300: /const VERSION = "3\.5\.0"/.test(server) && pkg.version === '3.5.0',
   attendance_table: /CREATE TABLE IF NOT EXISTS courier_attendance/.test(server),
   attendance_unique_day: /UNIQUE\(courier_id,attendance_date\)/.test(server),
   legacy_backfill_once: /attendance_legacy_backfill_v3/.test(server) && /LEGACY_INFERRED/.test(server),
@@ -33,9 +33,9 @@ const checks = {
   ui_qr_login_survival: /ATTENDANCE_TOKEN_KEY/.test(ui) && /captureAttendanceTokenFromUrl/.test(ui) && /processPendingAttendanceToken/.test(ui),
   ui_courier_attendance_lock: /Confirme presença pelo QR/.test(ui) && /courierAttendancePresent/.test(ui),
   ui_report_presence_columns: /Presença e operação por motoboy/.test(ui) && /rDispatchedOrders/.test(ui),
-  cache_300: /despachefull-v3\.4\.0-sober-ui/.test(sw),
+  cache_300: /despachefull-v3\.5\.0-preparation-time/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
-console.log(JSON.stringify({ result: 'PASS', version: '3.4.0', checks }, null, 2));
+console.log(JSON.stringify({ result: 'PASS', version: '3.5.0', checks }, null, 2));

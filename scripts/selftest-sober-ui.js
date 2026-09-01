@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 const html=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
 const server=fs.readFileSync(new URL("../server.js",import.meta.url),"utf8");
 const checks={
-  version:server.includes('const VERSION = "3.4.0";')&&html.includes('Versão 3.4.0'),
+  version:server.includes('const VERSION = "3.5.0";')&&html.includes('Versão 3.5.0'),
   soberCss:html.includes('interface administrativa sóbria')&&html.includes('--admin-red:#e11d2e')&&html.includes('background:#0d1218!important'),
   neutralMetrics:html.includes('metric-neutral')&&html.includes('metric-positive')&&html.includes('metric-attention')&&!html.includes('class="card dashboard-metric-card metric-yellow"'),
   noMetricGlow:html.includes('.dashboard-metric-card:after{display:none!important}'),
@@ -17,4 +17,4 @@ const checks={
   oldYellowNavOverridden:html.includes('#adminApp .admin-nav button.active{background:#151a20')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`Falhou: ${name}`);
-console.log(JSON.stringify({result:"PASS",version:"3.4.0",checks},null,2));
+console.log(JSON.stringify({result:"PASS",version:"3.5.0",checks},null,2));
