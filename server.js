@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.2";
+const VERSION = "3.5.3";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -5973,6 +5973,53 @@ app.post("/api/admin/ifood/orders/:id/confirm-test", auth, adminOnly, asyncRoute
 }));
 
 
+function normalizeIfoodCancellationReasons(body) {
+  const raw = Array.isArray(body?.reasons)
+    ? body.reasons
+    : Array.isArray(body)
+      ? body
+      : [];
+
+  const normalized = raw.map((item, index) => {
+    if (item === null || item === undefined) return null;
+
+    if (typeof item === "string" || typeof item === "number") {
+      const code = String(item).trim();
+      return code ? { code, description: code, source_field: "scalar" } : null;
+    }
+
+    if (typeof item !== "object") return null;
+
+    const candidates = [
+      ["code", item.code],
+      ["cancelCodeId", item.cancelCodeId],
+      ["cancellationCode", item.cancellationCode],
+      ["reasonCode", item.reasonCode],
+      ["id", item.id],
+      ["value", item.value]
+    ];
+
+    const selected = candidates.find(([, value]) =>
+      value !== null && value !== undefined && String(value).trim() !== ""
+    );
+
+    const code = selected ? String(selected[1]).trim() : "";
+    if (!code) return null;
+
+    const description = String(
+      item.description ?? item.reasonDescription ?? item.name ?? item.label ?? `Motivo ${index + 1}`
+    ).trim();
+
+    return {
+      code,
+      description: description || `Motivo ${index + 1}`,
+      source_field: selected[0]
+    };
+  }).filter(Boolean);
+
+  return { raw, normalized };
+}
+
 app.get("/api/admin/ifood/orders/:id/cancellation-reasons-test", auth, adminOnly, asyncRoute(async (req, res) => {
   const orderId = String(req.params.id || "").trim();
 
@@ -5997,11 +6044,17 @@ app.get("/api/admin/ifood/orders/:id/cancellation-reasons-test", auth, adminOnly
     `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/cancellationReasons`
   );
 
-  const reasons = Array.isArray(body?.reasons)
-    ? body.reasons
-    : Array.isArray(body)
-      ? body
-      : [];
+  const { raw: rawReasons, normalized: reasons } = normalizeIfoodCancellationReasons(body);
+
+  if (!reasons.length && rawReasons.length) {
+    const keys = [...new Set(rawReasons.flatMap(item =>
+      item && typeof item === "object" ? Object.keys(item) : []
+    ))].slice(0, 12);
+    return res.status(502).json({
+      error: "O iFood retornou motivos de cancelamento sem um campo de código reconhecível.",
+      received_fields: keys
+    });
+  }
 
   await auditBestEffort(
     req.session.user.id,
@@ -6038,11 +6091,17 @@ app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(
   const { body: reasonsBody } = await ifoodApi(
     `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/cancellationReasons`
   );
-  const reasons = Array.isArray(reasonsBody?.reasons)
-    ? reasonsBody.reasons
-    : Array.isArray(reasonsBody)
-      ? reasonsBody
-      : [];
+  const { raw: rawReasons, normalized: reasons } = normalizeIfoodCancellationReasons(reasonsBody);
+
+  if (!reasons.length && rawReasons.length) {
+    const keys = [...new Set(rawReasons.flatMap(item =>
+      item && typeof item === "object" ? Object.keys(item) : []
+    ))].slice(0, 12);
+    return res.status(502).json({
+      error: "O iFood retornou motivos de cancelamento sem um campo de código reconhecível.",
+      received_fields: keys
+    });
+  }
 
   if (!reasons.length) {
     return res.status(409).json({ error: "O iFood não retornou motivos válidos de cancelamento para este pedido." });

@@ -1,0 +1,20 @@
+DespacheFull v3.5.3 — Validation Report
+
+Scope: hotfix for iFood homologation cancellation reason codes.
+
+PASS — node --check server.js
+PASS — inline JavaScript syntax check (public/index.html)
+PASS — all scripts/selftest-*.js
+PASS — normalization simulation with documented Order schema: {code, description}
+PASS — normalization simulation with alternate test schema: {cancelCodeId, description}
+PASS — reasons without a recognized code are blocked instead of sending undefined
+
+Behavior validated:
+- GET /orders/{id}/cancellationReasons remains the source of valid reasons.
+- No cancellation code is hardcoded or derived from the description.
+- Recognized identifiers: code, cancelCodeId, cancellationCode, reasonCode, id, value.
+- POST /orders/{id}/requestCancellation continues to send {reason: <returned code>}.
+- Test-only/admin-only guards remain active.
+- Existing operational selftests remain passing.
+
+No live cancellation request to iFood was executed during this validation.
