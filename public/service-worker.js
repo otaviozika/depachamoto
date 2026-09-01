@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v3.3.0-sober-ui";
+const CACHE = "despachefull-v3.4.0-sober-ui";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {

@@ -13,4 +13,4 @@ const checks={
   mobileConsolidated:html.includes('class="mobile-nav admin-mobile-nav"')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`FAIL: ${name}`);
-console.log(JSON.stringify({result:'PASS',version:'3.3.0',checks},null,2));
+console.log(JSON.stringify({result:'PASS',version:'3.4.0',checks},null,2));

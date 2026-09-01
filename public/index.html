@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.3.0</title>
+<title>DespacheFull 3.4.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -222,7 +222,7 @@
 #adminApp .admin-mobile-nav button{font-size:11px;font-weight:700;padding:6px 4px;min-width:0}
 @media(max-width:720px){#adminApp .admin-subnav{margin:-2px 0 14px;border-radius:10px}#adminApp .admin-subnav button{padding:8px 11px;font-size:12px}}
 
-/* v3.3.0 — interface administrativa sóbria */
+/* v3.4.0 — interface administrativa sóbria */
 #adminApp{--admin-red:#e11d2e;--admin-red-soft:rgba(225,29,46,.10);--admin-surface:#0a0e13;--admin-surface-2:#0d1218;--admin-border:#252b33;--admin-white:#f3f4f6;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #adminApp .admin-side{width:240px;background:#070a0e;border-right:1px solid #20252c;padding:18px 12px 14px}
 #adminApp .main{margin-left:240px;background:#070a0e}
@@ -327,7 +327,17 @@
 #adminApp .admin-account-actions{display:flex;justify-content:flex-end}
 @media(max-width:900px){#adminApp .dashboard-grid{grid-template-columns:1fr}#adminApp .dashboard-live-panel,#adminApp .dashboard-recent-panel{min-height:0}}
 
-/* v3.3.0 — modais administrativos no mesmo tema */
+/* v3.4.0 — dashboard operacional */
+#adminApp .dashboard-performance{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:-4px 0 16px;padding:9px;background:#090d12;border:1px solid #202730;border-radius:10px}
+#adminApp .dashboard-performance-item{min-width:0;padding:8px 10px;border-right:1px solid #202730}
+#adminApp .dashboard-performance-item:last-child{border-right:0}
+#adminApp .dashboard-performance-item span{display:block;color:#7f8996;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#adminApp .dashboard-performance-item b{display:block;margin-top:5px;color:#e8ebee;font-size:15px;font-weight:700;white-space:nowrap}
+#adminApp .dashboard-performance-item.has-exception b{color:#e5b74a}
+@media(max-width:1150px){#adminApp .dashboard-performance{grid-template-columns:repeat(3,1fr)}#adminApp .dashboard-performance-item:nth-child(3){border-right:0}}
+@media(max-width:620px){#adminApp .dashboard-performance{grid-template-columns:repeat(2,1fr)}#adminApp .dashboard-performance-item{border-right:0;border-bottom:1px solid #202730}#adminApp .dashboard-performance-item:nth-last-child(-n+2){border-bottom:0}}
+
+/* v3.4.0 — modais administrativos no mesmo tema */
 .admin-account-box,#manualDispatchModal .modal-box,#courierModal .modal-box,#courierProfileModal .modal-box,.admin-dark-modal .modal-box{background:#0d1218!important;color:#f3f4f6!important;border:1px solid #2c333d!important;box-shadow:0 24px 70px rgba(0,0,0,.5)!important}
 .admin-account-box h2,#manualDispatchModal h2,#courierModal h2,#courierProfileModal h2,.admin-dark-modal h2{color:#f3f4f6}
 .admin-account-box p{margin:5px 0 0;color:#838d9a;font-size:12px}
@@ -434,9 +444,17 @@
           <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Motoboys ativos</div><div id="mActive" class="metric">0</div><div class="dashboard-metric-note">Com expediente aberto hoje</div></div>
           <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Fora da loja</div><div id="mRoad" class="metric">0</div><div class="dashboard-metric-note">Em rota + retornando</div></div>
           <div class="card dashboard-metric-card metric-positive"><div class="dashboard-metric-label"><i class="metric-dot"></i> Disponíveis</div><div id="mAvailable" class="metric">0</div><div class="dashboard-metric-note">Presentes na loja</div></div>
-          <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Entraram no sistema</div></div>
-          <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Pedidos ativos</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Saídas ainda abertas</div></div>
-          <div class="card dashboard-metric-card metric-attention"><div class="dashboard-metric-label"><i class="metric-dot"></i> Cadastros pendentes</div><div id="mPending" class="metric">0</div><div class="dashboard-metric-note">Aguardando aprovação</div></div>
+          <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Pedidos hoje</div><div id="mToday" class="metric">0</div><div class="dashboard-metric-note">Todos que entraram no sistema</div></div>
+          <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Aguardando saída</div><div id="mWaiting" class="metric">0</div><div class="dashboard-metric-note">Entrega própria ainda sem motoboy</div></div>
+          <div class="card dashboard-metric-card metric-neutral"><div class="dashboard-metric-label"><i class="metric-dot"></i> Pedidos na rua</div><div id="mProgress" class="metric">0</div><div class="dashboard-metric-note">Vinculados a saídas abertas</div></div>
+        </div>
+        <div class="dashboard-performance" aria-label="Desempenho operacional de hoje">
+          <div class="dashboard-performance-item"><span>Entregues hoje</span><b id="pDelivered">0</b></div>
+          <div class="dashboard-performance-item"><span>Saídas concluídas</span><b id="pCompleted">0</b></div>
+          <div class="dashboard-performance-item"><span>Média em rota</span><b id="pAvgRoute">—</b></div>
+          <div class="dashboard-performance-item"><span>Média de retorno</span><b id="pAvgReturn">—</b></div>
+          <div class="dashboard-performance-item"><span>Dentro do SLA</span><b id="pSla">—</b></div>
+          <div class="dashboard-performance-item"><span>Exceções agora</span><b id="pExceptions">0</b></div>
         </div>
         <div class="grid dashboard-grid">
           <div class="section dashboard-panel dashboard-live-panel">
@@ -452,7 +470,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.3.0</span>
+          <span>Versão 3.4.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -1685,7 +1703,15 @@ async function loadAdmin(){
   alertSettings=dashboard.alerts||alertSettings;
   operationalSla=dashboard.operationalSla||operationalSla;
   const m=dashboard.metrics;
-  $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mProgress').textContent=m.activeOrders;$('mPending').textContent=m.pendingCouriers;
+  const tm=dashboard.timeMetrics||{};
+  $('mActive').textContent=m.activeCouriers;$('mRoad').textContent=m.onRoad;$('mAvailable').textContent=m.available;$('mToday').textContent=m.todayOrders;$('mWaiting').textContent=m.waitingDispatch||0;$('mProgress').textContent=m.activeOrders;
+  $('pDelivered').textContent=m.deliveredToday||0;
+  $('pCompleted').textContent=tm.completed||0;
+  $('pAvgRoute').textContent=tm.avgRouteMinutes?`${tm.avgRouteMinutes} min`:'—';
+  $('pAvgReturn').textContent=tm.avgReturnMinutes?`${tm.avgReturnMinutes} min`:'—';
+  $('pSla').textContent=tm.withinSlaPercent===null||tm.withinSlaPercent===undefined?'—':`${tm.withinSlaPercent}%`;
+  $('pExceptions').textContent=m.exceptions||0;
+  $('pExceptions').closest('.dashboard-performance-item')?.classList.toggle('has-exception',Number(m.exceptions||0)>0);
   if($('alertAttention'))$('alertAttention').value=alertSettings.attention;if($('alertDelayed'))$('alertDelayed').value=alertSettings.delayed;if($('alertCritical'))$('alertCritical').value=alertSettings.critical;
   for(let i=1;i<=5;i++){if($('slaRoute'+i))$('slaRoute'+i).value=operationalSla.route?.[i]??operationalSla.route?.[String(i)]??''}
   if($('slaReturn'))$('slaReturn').value=operationalSla.returnMinutes??15;

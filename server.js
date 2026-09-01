@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.3.0";
+const VERSION = "3.4.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -6274,9 +6274,29 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
               (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       )::int AS today_orders,
       (
+        SELECT COUNT(*)
+        FROM ifood_orders o
+        LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+        WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
+          AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
+          AND UPPER(COALESCE(o.status,o.last_event_code,'')) IN (
+            'CONFIRMED','READY_TO_PICKUP','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED'
+          )
+          AND l.ifood_order_id IS NULL
+      )::int AS waiting_dispatch,
+      (
         SELECT COUNT(o.id) FROM dispatch_orders o JOIN dispatches d ON d.id=o.dispatch_id
         WHERE d.status='ON_ROAD'
-      )::int AS active_orders
+      )::int AS active_orders,
+      (
+        SELECT COUNT(*)
+        FROM ifood_orders o
+        WHERE (COALESCE(o.order_created_at,o.updated_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND UPPER(COALESCE(o.status,o.last_event_code,'')) IN ('CONCLUDED','DELIVERED')
+      )::int AS delivered_today
   `)).rows[0];
 
   const activeRaw = (await pool.query(`
@@ -6399,7 +6419,9 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       returning: active.filter(x => x.operational_stage==='RETURNING').length,
       available: Math.max(0, metrics.active_couriers - metrics.on_road),
       todayOrders: metrics.today_orders,
+      waitingDispatch: metrics.waiting_dispatch,
       activeOrders: metrics.active_orders,
+      deliveredToday: metrics.delivered_today,
       exceptions: exceptions.length
     },
     active,

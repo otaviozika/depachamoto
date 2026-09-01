@@ -6,7 +6,7 @@ const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "
 const sw = fs.readFileSync(new URL("../public/service-worker.js", import.meta.url), "utf8");
 
 const checks = {
-  version: server.includes('const VERSION = "3.3.0";') && html.includes('<title>DespacheFull 3.3.0</title>'),
+  version: server.includes('const VERSION = "3.4.0";') && html.includes('<title>DespacheFull 3.4.0</title>'),
   endpoint: server.includes('app.get("/api/admin/wallboard"'),
   saoPauloDay: server.includes("America/Sao_Paulo"),
   confirmationJoin: server.includes("LEFT JOIN ifood_delivery_confirmations dc"),
@@ -25,8 +25,8 @@ const checks = {
   periodicRefresh: html.includes('loadWallboard()},15000'),
   clock: html.includes('id="kdsClockTime"') && html.includes('renderKdsClock()'),
   fullscreen: html.includes('#wallboard:fullscreen'),
-  cacheBumped: sw.includes('despachefull-v3.3.0-sober-ui')
+  cacheBumped: sw.includes('despachefull-v3.4.0-sober-ui')
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `Falhou: ${name}`);
-console.log(JSON.stringify({ result: "PASS", version: "3.3.0", checks }, null, 2));
+console.log(JSON.stringify({ result: "PASS", version: "3.4.0", checks }, null, 2));

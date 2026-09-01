@@ -13,7 +13,7 @@ const dashboard = server.match(/app\.get\("\/api\/admin\/dashboard"[\s\S]*?\n\}\
 const dailyReport = server.match(/app\.get\("\/api\/admin\/reports\/daily"[\s\S]*?\n\}\)\);/)?.[0] || '';
 
 const checks = {
-  version_320: server.includes('const VERSION = "3.3.0";') && pkg.version === '3.3.0',
+  version_320: server.includes('const VERSION = "3.4.0";') && pkg.version === '3.4.0',
   attendance_checkout_columns: /checked_out_at TIMESTAMPTZ/.test(server) && /checked_out_by INTEGER/.test(server) && /checkout_reason TEXT/.test(server),
   migration_safe_columns: /ADD COLUMN IF NOT EXISTS checked_out_at/.test(server) && /ADD COLUMN IF NOT EXISTS checked_out_by/.test(server),
   admin_only_checkout_endpoint: /auth, adminOnly/.test(checkoutEndpoint) && !/\/api\/courier\/attendance\/checkout/.test(server),
@@ -30,8 +30,8 @@ const checks = {
   ui_shift_ended_lock: /Expediente encerrado pelo Admin/.test(ui) && /courierShiftEnded/.test(ui),
   report_checkout_fields: /checked_out_at/.test(dailyReport) && /shift_minutes/.test(dailyReport) && /checkout_reason/.test(dailyReport),
   csv_checkout_fields: /Tempo de expediente \(min\)/.test(server) && /Admin encerramento/.test(server),
-  pwa_cache_bumped: /despachefull-v3\.3\.0-sober-ui/.test(sw)
+  pwa_cache_bumped: /despachefull-v3\.4\.0-sober-ui/.test(sw)
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
-console.log(JSON.stringify({ result: 'PASS', version: '3.3.0', checks }, null, 2));
+console.log(JSON.stringify({ result: 'PASS', version: '3.4.0', checks }, null, 2));
