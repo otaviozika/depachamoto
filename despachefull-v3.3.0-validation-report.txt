@@ -1,0 +1,41 @@
+DESPACHEFULL v3.3.0 — RELATÓRIO DE VALIDAÇÃO
+============================================
+
+ESCOPO
+- Redesign visual sóbrio do painel administrativo.
+- Menu lateral com ícones e barra vermelha discreta.
+- Dashboard com cards neutros e sem brilhos coloridos.
+- Cabeçalho simplificado.
+- Menu de conta do Administrador no rodapé da lateral.
+- Nenhuma alteração de banco ou regra operacional.
+
+VALIDAÇÕES
+- server.js syntax: PASS
+- frontend inline JavaScript syntax: PASS
+- selftest:sober-ui: PASS
+- selftest:navigation: PASS
+- selftest:dashboard-theme: PASS
+- selftest:rebrand: PASS
+- selftest:shift-control: PASS
+- selftest:attendance: PASS
+- selftest:ifood-only-courier: PASS
+- selftest:checkin-required: PASS
+- selftest:operational-time: PASS
+- selftest:payments: PASS
+- selftest:pix: PASS
+- selftest:delivery-confirmation: PASS
+- selftest:wallboard: PASS
+- selftest:session-expiry: PASS
+- selftest:brutal: PASS
+
+TESTE BRUTAL
+- 40 motoboys
+- 2.000 saídas criadas
+- 2.000 novas saídas bloqueadas até check-in
+- 1.960 retornos/check-ins concluídos
+- 400 replays idempotentes evitados
+- 200 duplicidades ativas bloqueadas
+
+BANCO
+- Sem migração nova.
+- DATABASE_URL permanece inalterada.
