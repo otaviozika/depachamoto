@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.4";
+const VERSION = "3.5.5";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -840,11 +840,21 @@ function ifoodCustomerId() {
   return String(process.env.IFOOD_CUSTOMER_ID || "").trim();
 }
 
+function ifoodPrimaryMerchantId() {
+  return String(process.env.IFOOD_MERCHANT_ID || "").trim();
+}
+
 function ifoodPreparationTimeConfigured() {
   return Boolean(ifoodConfigured() && ifoodCustomerId());
 }
 
 function ifoodAllowedMerchantIds() {
+  const primary = ifoodPrimaryMerchantId();
+
+  // Quando IFOOD_MERCHANT_ID está definido, ele é a trava principal da instância.
+  // Isso evita que uma allowlist antiga de sandbox libere outra loja por acidente.
+  if (primary) return [primary];
+
   return [...new Set(
     String(process.env.IFOOD_ALLOWED_MERCHANT_IDS || "")
       .split(",")
@@ -1418,6 +1428,40 @@ async function fetchIfoodMerchantOperationalData(merchantId) {
   };
 }
 
+async function upsertConfiguredIfoodMerchant(merchantId, {
+  name = null,
+  corporateName = null,
+  payload = null
+} = {}) {
+  const id = String(merchantId || "").trim();
+  if (!id) return null;
+
+  await pool.query(`
+    INSERT INTO ifood_merchants(merchant_id,name,corporate_name,payload,last_seen_at)
+    VALUES($1,$2,$3,$4,NOW())
+    ON CONFLICT(merchant_id) DO UPDATE SET
+      name=COALESCE(EXCLUDED.name,ifood_merchants.name),
+      corporate_name=COALESCE(EXCLUDED.corporate_name,ifood_merchants.corporate_name),
+      payload=COALESCE(EXCLUDED.payload,ifood_merchants.payload),
+      last_seen_at=NOW()
+  `, [
+    id,
+    name,
+    corporateName,
+    payload ? JSON.stringify(payload) : null
+  ]);
+
+  return (await pool.query(`
+    SELECT merchant_id AS id,name,corporate_name AS "corporateName",last_seen_at
+    FROM ifood_merchants
+    WHERE merchant_id=$1
+  `, [id])).rows[0] || {
+    id,
+    name: null,
+    corporateName: null
+  };
+}
+
 async function fetchAndStoreIfoodMerchants() {
   const { body } = await ifoodApi(`${IFOOD_MERCHANT_BASE}/merchants?page=1&size=100`);
   const merchants = Array.isArray(body) ? body : (body?.merchants || body?.content || []);
@@ -1425,20 +1469,11 @@ async function fetchAndStoreIfoodMerchants() {
   for (const merchant of merchants) {
     if (!merchant?.id) continue;
 
-    await pool.query(`
-      INSERT INTO ifood_merchants(merchant_id,name,corporate_name,payload,last_seen_at)
-      VALUES($1,$2,$3,$4,NOW())
-      ON CONFLICT(merchant_id) DO UPDATE SET
-        name=EXCLUDED.name,
-        corporate_name=EXCLUDED.corporate_name,
-        payload=EXCLUDED.payload,
-        last_seen_at=NOW()
-    `, [
-      String(merchant.id),
-      merchant.name || null,
-      merchant.corporateName || null,
-      JSON.stringify(merchant)
-    ]);
+    await upsertConfiguredIfoodMerchant(merchant.id, {
+      name: merchant.name || null,
+      corporateName: merchant.corporateName || null,
+      payload: merchant
+    });
   }
 
   return merchants
@@ -1446,8 +1481,29 @@ async function fetchAndStoreIfoodMerchants() {
     .map(x => ({
       id: String(x.id),
       name: x.name || "Loja iFood",
-      corporateName: x.corporateName || null
+      corporateName: x.corporateName || null,
+      source: "merchant_api"
     }));
+}
+
+async function resolveIfoodMerchantsForSync() {
+  const configuredMerchantId = ifoodPrimaryMerchantId();
+
+  // Produção por merchant_id: Order + Events não dependem do módulo Merchant.
+  // Quando este ID está definido, o polling fica travado explicitamente nessa loja.
+  if (configuredMerchantId) {
+    const known = await upsertConfiguredIfoodMerchant(configuredMerchantId);
+
+    return [{
+      id: configuredMerchantId,
+      name: known?.name || "Merchant configurado",
+      corporateName: known?.corporateName || null,
+      source: "environment"
+    }];
+  }
+
+  // Compatibilidade com sandbox/contas que possuem acesso ao módulo Merchant.
+  return fetchAndStoreIfoodMerchants();
 }
 
 function normalizeIfoodPreparationMinutes(body) {
@@ -1606,6 +1662,14 @@ async function upsertIfoodOrderFromDetails(order, fallback = {}) {
   const lifecycleStatus =
     normalizeIfoodLifecycleStatus(order?.status) ||
     ifoodLifecycleStatusFromEvent(fallback);
+
+  if (merchantId) {
+    await upsertConfiguredIfoodMerchant(merchantId, {
+      name: order?.merchant?.name || null,
+      corporateName: order?.merchant?.corporateName || null,
+      payload: order?.merchant || null
+    }).catch(() => {});
+  }
 
   await pool.query(`
     INSERT INTO ifood_orders(
@@ -2105,11 +2169,15 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
   ifoodSyncRunning = true;
 
   try {
-    const merchants = await fetchAndStoreIfoodMerchants();
-    const merchantIds = merchants.map(x => x.id);
+    const merchants = await resolveIfoodMerchantsForSync();
+    const merchantIds = merchants
+      .map(x => String(x.id || "").trim())
+      .filter(Boolean);
 
     if (!merchantIds.length) {
-      throw new Error("Nenhuma loja iFood vinculada às credenciais.");
+      throw new Error(
+        "Nenhuma loja iFood definida. Configure IFOOD_MERCHANT_ID em produção ou habilite acesso ao módulo Merchant."
+      );
     }
 
     // v3.5: acompanha o "Meu Tempo de Preparo" configurado no próprio iFood.
@@ -5641,6 +5709,8 @@ app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => 
 }));
 
 app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) => {
+  const configuredMerchantId = ifoodPrimaryMerchantId();
+
   const merchants = (await pool.query(`
     SELECT merchant_id AS id,name,corporate_name,last_seen_at
     FROM ifood_merchants
@@ -5682,15 +5752,18 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
           )
       )::int AS available_merchant_delivery
     FROM ifood_orders
-  `)).rows[0];
+    WHERE ($1::text IS NULL OR merchant_id=$1)
+  `, [configuredMerchantId || null])).rows[0];
 
   const dispatchCounts = (await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE status IN ('PENDING','RETRY','PROCESSING'))::int AS pending,
-      COUNT(*) FILTER (WHERE status='FAILED')::int AS failed,
-      COUNT(*) FILTER (WHERE status='SENT')::int AS sent
-    FROM ifood_dispatch_jobs
-  `)).rows[0] || { pending: 0, failed: 0, sent: 0 };
+      COUNT(*) FILTER (WHERE j.status IN ('PENDING','RETRY','PROCESSING'))::int AS pending,
+      COUNT(*) FILTER (WHERE j.status='FAILED')::int AS failed,
+      COUNT(*) FILTER (WHERE j.status='SENT')::int AS sent
+    FROM ifood_dispatch_jobs j
+    LEFT JOIN ifood_orders o ON o.order_id=j.ifood_order_id
+    WHERE ($1::text IS NULL OR o.merchant_id=$1)
+  `, [configuredMerchantId || null])).rows[0] || { pending: 0, failed: 0, sent: 0 };
 
   counts.dispatch_pending = dispatchCounts.pending || 0;
   counts.dispatch_failed = dispatchCounts.failed || 0;
@@ -5698,13 +5771,15 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
 
   const deliveryConfirmationCounts = (await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE status='VERIFIED')::int AS verified,
-      COUNT(*) FILTER (WHERE status='PROCESSING')::int AS processing,
-      COUNT(*) FILTER (WHERE status='FAILED')::int AS failed,
-      COUNT(*) FILTER (WHERE status='CONCLUDED')::int AS concluded
-    FROM ifood_delivery_confirmations
-    WHERE updated_at >= NOW()-INTERVAL '24 hours'
-  `)).rows[0] || {};
+      COUNT(*) FILTER (WHERE dc.status='VERIFIED')::int AS verified,
+      COUNT(*) FILTER (WHERE dc.status='PROCESSING')::int AS processing,
+      COUNT(*) FILTER (WHERE dc.status='FAILED')::int AS failed,
+      COUNT(*) FILTER (WHERE dc.status='CONCLUDED')::int AS concluded
+    FROM ifood_delivery_confirmations dc
+    LEFT JOIN ifood_orders o ON o.order_id=dc.ifood_order_id
+    WHERE dc.updated_at >= NOW()-INTERVAL '24 hours'
+      AND ($1::text IS NULL OR o.merchant_id=$1)
+  `, [configuredMerchantId || null])).rows[0] || {};
 
   counts.delivery_verified = deliveryConfirmationCounts.verified || 0;
   counts.delivery_processing = deliveryConfirmationCounts.processing || 0;
@@ -5728,14 +5803,28 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     LEFT JOIN ifood_delivery_confirmations dc ON dc.ifood_order_id=o.order_id
     LEFT JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN users u ON u.id=d.courier_id
+    WHERE ($1::text IS NULL OR o.merchant_id=$1)
     ORDER BY COALESCE(o.last_event_at,o.updated_at) DESC
     LIMIT 30
-  `)).rows;
+  `, [configuredMerchantId || null])).rows;
 
   const runtimeControl = await getIfoodRuntimeControl();
   const allowedMerchantIds = ifoodAllowedMerchantIds();
   const environment = ifoodEnvironment();
   const automaticGate = await ifoodAutomaticDispatchAllowed();
+
+  const configuredMerchantRow = configuredMerchantId
+    ? merchants.find(m => String(m.id) === configuredMerchantId)
+    : null;
+
+  const targetMerchants = configuredMerchantId
+    ? [{
+        id: configuredMerchantId,
+        name: configuredMerchantRow?.name || "Merchant configurado",
+        corporate_name: configuredMerchantRow?.corporate_name || null,
+        source: "IFOOD_MERCHANT_ID"
+      }]
+    : merchants.filter(m => ifoodMerchantAllowed(m.id));
 
   const lastSuccessMs = state?.last_success_at ? Date.parse(state.last_success_at) : NaN;
   const syncAgeSeconds = Number.isFinite(lastSuccessMs)
@@ -5756,6 +5845,9 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     dispatchEnabled: ifoodDispatchEnabled(),
     dispatchWorkerRunning: ifoodDispatchWorkerRunning,
     environment,
+    configuredMerchantId: configuredMerchantId || null,
+    merchantResolutionMode: configuredMerchantId ? "merchant_id" : "merchant_api",
+    targetMerchants,
     productionSafetyReady: ifoodProductionSafetyReady(),
     allowedMerchantCount: allowedMerchantIds.length,
     merchantSafety,
@@ -5763,7 +5855,7 @@ app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) 
     automaticDispatchAllowed: automaticGate.allowed,
     automaticDispatchBlockReason: automaticGate.reason,
     syncAgeSeconds,
-    phase: "FASE_6_TEMPO_PREPARO_TELAO",
+    phase: "FASE_7_PRODUCAO_MERCHANT_ID",
     tokenCached: Boolean(
       ifoodTokenCache.accessToken &&
       ifoodTokenCache.expiresAt > Date.now() + 60_000
@@ -5901,6 +5993,43 @@ app.post("/api/admin/ifood/test-connection", auth, adminOnly, asyncRoute(async (
     });
   }
 
+  const configuredMerchantId = ifoodPrimaryMerchantId();
+
+  if (configuredMerchantId) {
+    // Força token novo após a autorização do merchant no Portal do Parceiro.
+    await getIfoodAccessToken(true);
+
+    const known = await upsertConfiguredIfoodMerchant(configuredMerchantId);
+
+    const merchants = [{
+      id: configuredMerchantId,
+      name: known?.name || "Merchant configurado",
+      corporateName: known?.corporateName || null,
+      source: "environment"
+    }];
+
+    await auditBestEffort(
+      req.session.user.id,
+      "IFOOD_CONNECTION_TESTED",
+      "ifood",
+      null,
+      {
+        merchants: 1,
+        merchant_id: configuredMerchantId,
+        mode: "IFOOD_MERCHANT_ID"
+      }
+    );
+
+    return res.json({
+      ok: true,
+      connected: true,
+      merchantResolutionMode: "merchant_id",
+      merchants,
+      message:
+        "Credenciais autenticadas. Merchant de produção configurado por IFOOD_MERCHANT_ID. Use “Sincronizar agora” para validar ORDER + EVENTS."
+    });
+  }
+
   const merchants = await fetchAndStoreIfoodMerchants();
 
   await auditBestEffort(
@@ -5908,14 +6037,15 @@ app.post("/api/admin/ifood/test-connection", auth, adminOnly, asyncRoute(async (
     "IFOOD_CONNECTION_TESTED",
     "ifood",
     null,
-    { merchants: merchants.length }
+    { merchants: merchants.length, mode: "MERCHANT_API" }
   );
 
   res.json({
     ok: true,
     connected: true,
+    merchantResolutionMode: "merchant_api",
     merchants,
-    message: `${merchants.length} loja(s) acessível(is) com as credenciais configuradas.`
+    message: `${merchants.length} loja(s) acessível(is) via módulo Merchant.`
   });
 }));
 

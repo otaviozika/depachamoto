@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v3.5.4-cancel-reason-codes";
+const CACHE = "despachefull-v3.5.5-production-merchant-id";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {

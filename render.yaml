@@ -22,3 +22,5 @@ services:
       - key: IFOOD_CUSTOMER_ID
         sync: false
 
+      - key: IFOOD_MERCHANT_ID
+        sync: false
