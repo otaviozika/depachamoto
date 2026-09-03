@@ -4232,15 +4232,17 @@ socket.on('pix:changed',d=>{
   }
   if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-pix',loadMyPix,400,{visibleOnly:true});
 });
-socket.on('ifood:changed',()=>{
+socket.on('ifood:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,750,{visibleOnly:true});
   if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,750,{visibleOnly:true});
-  if(me?.role==='courier')queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,1000,{visibleOnly:true});
+  const scopedCouriers=Array.isArray(d?.courier_ids)?d.courier_ids:null;
+  const affectsCurrentCourier=d?.scope!=='admin'&&(!scopedCouriers||scopedCouriers.some(id=>Number(id)===Number(me?.id)));
+  if(me?.role==='courier'&&affectsCurrentCourier)queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,250,{visibleOnly:true});
 });
 socket.on('delivery:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});
   if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
-  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,300,{visibleOnly:true});
+  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,150,{visibleOnly:true});
 });
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
