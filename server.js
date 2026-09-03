@@ -778,8 +778,29 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function auth(req, res, next) {
-  if (!req.session.user) return res.status(401).json({ error: "Não autenticado.", code: "SESSION_EXPIRED" });
+async function auth(req, res, next) {
+  const sessionUser = req.session.user;
+  if (!sessionUser) {
+    return res.status(401).json({ error: "Não autenticado.", code: "SESSION_EXPIRED" });
+  }
+
+  // Contas de motoboy excluídas ou desativadas perdem acesso imediatamente,
+  // inclusive quando já havia uma sessão aberta em outro aparelho.
+  if (sessionUser.role === "courier") {
+    const account = (await pool.query(
+      "SELECT active,approval_status FROM users WHERE id=$1 AND role='courier'",
+      [sessionUser.id]
+    )).rows[0];
+
+    if (!account || !account.active || account.approval_status !== "APPROVED") {
+      await new Promise(resolve => req.session.destroy(() => resolve()));
+      return res.status(401).json({
+        error: "Este acesso de motoboy não está mais ativo.",
+        code: "SESSION_EXPIRED"
+      });
+    }
+  }
+
   next();
 }
 function adminOnly(req, res, next) {
@@ -6897,6 +6918,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
       ON a.courier_id=u.id
      AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
     WHERE u.role='courier'
+      AND u.approval_status<>'DELETED'
     ORDER BY
       CASE u.approval_status WHEN 'PENDING' THEN 0 WHEN 'REJECTED' THEN 2 ELSE 1 END,
       CASE
@@ -7027,11 +7049,139 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
   }
 }));
 
+app.delete("/api/admin/couriers/:id", auth, adminOnly, loginLimiter, asyncRoute(async (req, res) => {
+  const courierId = Number(req.params.id);
+  const adminPassword = String(req.body?.admin_password || "");
+
+  if (!Number.isInteger(courierId) || courierId < 1) {
+    return res.status(400).json({ error: "Motoboy inválido." });
+  }
+  if (!adminPassword) {
+    return res.status(400).json({
+      error: "Digite a senha do seu perfil para confirmar a exclusão.",
+      code: "ADMIN_PASSWORD_REQUIRED"
+    });
+  }
+
+  const admin = await currentUser(req.session.user.id);
+  const passwordOk = !!admin
+    && admin.role === "admin"
+    && admin.active
+    && await bcrypt.compare(adminPassword, admin.password_hash);
+
+  if (!passwordOk) {
+    await auditBestEffort(
+      req.session.user.id,
+      "COURIER_DELETE_PASSWORD_FAILED",
+      "user",
+      courierId,
+      requestMeta(req)
+    );
+    return res.status(403).json({
+      error: "Senha do administrador incorreta.",
+      code: "ADMIN_PASSWORD_INVALID"
+    });
+  }
+
+  const replacementPasswordHash = await bcrypt.hash(crypto.randomUUID(), 12);
+  const replacementUsername = `deleted_${courierId}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const client = await pool.connect();
+  let courier;
+
+  try {
+    await client.query("BEGIN");
+
+    courier = (await client.query(`
+      SELECT id,name,username,approval_status
+      FROM users
+      WHERE id=$1 AND role='courier' AND approval_status<>'DELETED'
+      FOR UPDATE
+    `, [courierId])).rows[0];
+
+    if (!courier) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Motoboy não encontrado ou já excluído." });
+    }
+
+    const activeDispatch = (await client.query(`
+      SELECT id,dispatch_code,operational_stage
+      FROM dispatches
+      WHERE courier_id=$1 AND status='ON_ROAD'
+      ORDER BY departed_at DESC,id DESC
+      LIMIT 1
+      FOR UPDATE
+    `, [courierId])).rows[0];
+
+    if (activeDispatch) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: `${courier.name} ainda está ${activeDispatch.operational_stage === "RETURNING" ? "retornando para a loja" : "em rota"}. Finalize a saída antes de excluir o perfil.`,
+        code: "COURIER_DELETE_ACTIVE_DISPATCH",
+        dispatch_id: activeDispatch.id
+      });
+    }
+
+    await client.query(`
+      UPDATE courier_attendance
+      SET checked_out_at=COALESCE(checked_out_at,NOW()),
+          checked_out_by=COALESCE(checked_out_by,$1),
+          checkout_reason=COALESCE(checkout_reason,'Perfil excluído pelo administrador')
+      WHERE courier_id=$2
+        AND attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+        AND checked_out_at IS NULL
+    `, [req.session.user.id, courierId]);
+
+    await client.query(`
+      UPDATE users
+      SET active=false,
+          approval_status='DELETED',
+          username=$1,
+          password_hash=$2,
+          must_change_password=false,
+          nickname=NULL,
+          pix_key=NULL,
+          pix_type=NULL,
+          pix_holder_name=NULL,
+          pix_status='NONE',
+          pix_verified_at=NULL,
+          pix_verified_by=NULL,
+          pix_updated_at=NOW()
+      WHERE id=$3 AND role='courier'
+    `, [replacementUsername, replacementPasswordHash, courierId]);
+
+    await client.query("DELETE FROM user_presence WHERE user_id=$1", [courierId]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await auditBestEffort(req.session.user.id, "COURIER_DELETED", "user", courierId, {
+    courier_name: courier.name,
+    former_username: courier.username,
+    history_preserved: true,
+    active_profile_data_removed: true,
+    ...requestMeta(req)
+  });
+
+  io.emit("courier:changed");
+  io.emit("attendance:changed", { courier_id: courierId, deleted: true });
+  io.emit("payment:changed");
+  io.emit("pix:changed", { courier_id: courierId, deleted: true });
+
+  res.json({
+    ok: true,
+    message: `${courier.name} foi excluído. O histórico de entregas e auditoria foi preservado.`
+  });
+}));
+
 app.patch("/api/admin/couriers/:id", auth, adminOnly, asyncRoute(async (req, res) => {
   const active = !!req.body.active;
   const q = await pool.query(`
     UPDATE users SET active=$1
-    WHERE id=$2 AND role='courier'
+    WHERE id=$2 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,active,approval_status,must_change_password
   `, [active, req.params.id]);
 
@@ -7045,7 +7195,7 @@ app.patch("/api/admin/couriers/:id", auth, adminOnly, asyncRoute(async (req, res
 app.post("/api/admin/couriers/:id/approve", auth, adminOnly, asyncRoute(async (req, res) => {
   const q = await pool.query(`
     UPDATE users SET approval_status='APPROVED',active=true
-    WHERE id=$1 AND role='courier'
+    WHERE id=$1 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,active,approval_status,must_change_password
   `, [req.params.id]);
 
@@ -7059,7 +7209,7 @@ app.post("/api/admin/couriers/:id/approve", auth, adminOnly, asyncRoute(async (r
 app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (req, res) => {
   const q = await pool.query(`
     UPDATE users SET approval_status='REJECTED',active=false
-    WHERE id=$1 AND role='courier'
+    WHERE id=$1 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,active,approval_status,must_change_password
   `, [req.params.id]);
 
@@ -7081,7 +7231,7 @@ app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (
   const existing = (await pool.query(`
     SELECT id,pix_key,pix_type,pix_holder_name,pix_status
     FROM users
-    WHERE id=$1 AND role='courier'
+    WHERE id=$1 AND role='courier' AND approval_status<>'DELETED'
   `, [req.params.id])).rows[0];
   if (!existing) return res.status(404).json({ error: "Motoboy não encontrado." });
 
@@ -7105,7 +7255,7 @@ app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (
         pix_verified_at=CASE WHEN $7::boolean THEN $8 ELSE pix_verified_at END,
         pix_verified_by=CASE WHEN $7::boolean THEN $9 ELSE pix_verified_by END,
         pix_updated_at=CASE WHEN $7::boolean THEN NOW() ELSE pix_updated_at END
-    WHERE id=$10 AND role='courier'
+    WHERE id=$10 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status,
               pix_verified_at,pix_updated_at,active,approval_status
   `, [
@@ -7145,7 +7295,7 @@ app.post("/api/admin/couriers/:id/pix/verify", auth, adminOnly, asyncRoute(async
   const courier = (await pool.query(`
     SELECT id,name,username,pix_key,pix_type,pix_holder_name,pix_status
     FROM users
-    WHERE id=$1 AND role='courier'
+    WHERE id=$1 AND role='courier' AND approval_status<>'DELETED'
   `, [req.params.id])).rows[0];
 
   if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
@@ -7160,7 +7310,7 @@ app.post("/api/admin/couriers/:id/pix/verify", auth, adminOnly, asyncRoute(async
         pix_verified_at=$1,
         pix_verified_by=$2,
         pix_updated_at=COALESCE(pix_updated_at,NOW())
-    WHERE id=$3 AND role='courier'
+    WHERE id=$3 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_updated_at
   `, [verifiedAt, req.session.user.id, courier.id]);
 
@@ -7199,7 +7349,7 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
   const q = await pool.query(`
     UPDATE users
     SET password_hash=$1,must_change_password=true
-    WHERE id=$2 AND role='courier'
+    WHERE id=$2 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,must_change_password
   `, [await bcrypt.hash(newPassword, 12), req.params.id]);
 
