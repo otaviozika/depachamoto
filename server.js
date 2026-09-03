@@ -2551,15 +2551,28 @@ async function recordSystemError(req, statusCode, err) {
 
 
 
+const PRESENCE_WRITE_INTERVAL_MS = Math.max(15000, Number(process.env.PRESENCE_WRITE_INTERVAL_MS || 45000));
+const recentPresenceWrites = new Map();
 async function touchPresence(userId, source = "WEB") {
   if (!userId) return;
-  await pool.query(`
-    INSERT INTO user_presence(user_id,last_seen_at,source)
-    VALUES($1,NOW(),$2)
-    ON CONFLICT(user_id) DO UPDATE SET
-      last_seen_at=NOW(),
-      source=EXCLUDED.source
-  `, [userId, source]);
+  const key = String(userId);
+  const now = Date.now();
+  const recent = recentPresenceWrites.get(key);
+  if (recent && recent.source === source && now - recent.at < PRESENCE_WRITE_INTERVAL_MS) return;
+  const marker = { source, at: now };
+  recentPresenceWrites.set(key, marker);
+  try {
+    await pool.query(`
+      INSERT INTO user_presence(user_id,last_seen_at,source)
+      VALUES($1,NOW(),$2)
+      ON CONFLICT(user_id) DO UPDATE SET
+        last_seen_at=NOW(),
+        source=EXCLUDED.source
+    `, [userId, source]);
+  } catch (err) {
+    if (recentPresenceWrites.get(key) === marker) recentPresenceWrites.delete(key);
+    throw err;
+  }
 }
 
 async function logOperationalConflict({
@@ -3023,7 +3036,7 @@ async function markDispatchReturning(dispatchId, { actorUserId = null, source = 
   if (actorUserId) {
     await auditBestEffort(actorUserId, "DISPATCH_RETURN_STARTED", "dispatch", dispatchId, { source, reason });
   }
-  io.emit("dispatch:changed");
+  io.emit("dispatch:changed", { courier_id: q.rows[0].courier_id, dispatch_id: q.rows[0].id, change: "RETURNING" });
   return q.rows[0];
 }
 
@@ -3079,7 +3092,7 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
     await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
     await client.query("COMMIT");
     await auditBestEffort(actorUserId, "DISPATCH_RETURN_COMPLETED", "dispatch", dispatchId, { source, reason });
-    io.emit("dispatch:changed");
+    io.emit("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
     await client.query("ROLLBACK");
@@ -3730,7 +3743,7 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
       a.admin_reason,admin_u.name AS checked_in_by_name,
       a.checked_out_at,a.checkout_reason,checkout_admin.name AS checked_out_by_name,
       p.last_seen_at,
-      (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
+      (p.last_seen_at >= NOW()-INTERVAL '150 seconds') AS is_online,
       active_dispatch.id AS active_dispatch_id,
       active_dispatch.operational_stage,
       active_dispatch.departed_at,
@@ -4289,7 +4302,7 @@ app.put("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
   }
 
   io.emit("courier:changed");
-  io.emit("payment:changed");
+  io.emit("payment:changed", { courier_id: current.id });
   io.emit("pix:changed", { courier_id: current.id });
 
   res.json({
@@ -4927,7 +4940,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
   }
 
-  io.emit("dispatch:changed");
+  io.emit("dispatch:changed", { courier_id: req.session.user.id, dispatch_id: result.dispatch.id, change: "CREATED" });
 
   const ifoodDispatchQueued = ifoodInspection.accepted.length;
 
@@ -5451,7 +5464,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     });
   }
 
-  io.emit("dispatch:changed");
+  io.emit("dispatch:changed", { courier_id: courierId, dispatch_id: result.dispatch.id, change: "CREATED" });
   res.status(result.duplicate ? 200 : 201).json({
     dispatch: result.dispatch,
     closed_previous: result.closedPrevious,
@@ -6683,7 +6696,7 @@ app.put("/api/admin/payments/rules", auth, adminOnly, asyncRoute(async (req, res
     base_fri_sun: baseFriSun
   });
 
-  io.emit("payment:changed");
+  io.emit("payment:changed", { all: true, change: "RULE_UPDATED" });
   res.json({
     rule: {
       ...q.rows[0],
@@ -6871,7 +6884,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
     pix_status: row.pix_status
   });
 
-  io.emit("payment:changed");
+  io.emit("payment:changed", { courier_id: courierId });
   res.json({ payment: row, message: "Pagamento atualizado.", server_now: new Date().toISOString() });
 }));
 
@@ -6995,7 +7008,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         WHERE d2.courier_id=u.id AND d2.status='ON_ROAD'
       ) AS on_road,
       p.last_seen_at,
-      (p.last_seen_at >= NOW()-INTERVAL '90 seconds') AS is_online,
+      (p.last_seen_at >= NOW()-INTERVAL '150 seconds') AS is_online,
       (SELECT MAX(d3.departed_at) FROM dispatches d3 WHERE d3.courier_id=u.id) AS last_departure,
       a.id AS attendance_id,
       a.checked_in_at,
@@ -7150,7 +7163,7 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
       pix_status: pixStatus
     });
     io.emit("courier:changed");
-    io.emit("payment:changed");
+    io.emit("payment:changed", { courier_id: q.rows[0].id });
     res.status(201).json({ user: q.rows[0] });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Esse usuário já existe." });
@@ -7277,7 +7290,7 @@ app.delete("/api/admin/couriers/:id", auth, adminOnly, loginLimiter, asyncRoute(
 
   io.emit("courier:changed");
   io.emit("attendance:changed", { courier_id: courierId, deleted: true });
-  io.emit("payment:changed");
+  io.emit("payment:changed", { courier_id: courierId });
   io.emit("pix:changed", { courier_id: courierId, deleted: true });
 
   res.json({
@@ -7395,7 +7408,7 @@ app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (
   });
 
   io.emit("courier:changed");
-  io.emit("payment:changed");
+  io.emit("payment:changed", { courier_id: q.rows[0].id });
   io.emit("pix:changed", { courier_id: q.rows[0].id });
   res.json({ user: q.rows[0] });
 }));
@@ -7440,7 +7453,7 @@ app.post("/api/admin/couriers/:id/pix/verify", auth, adminOnly, asyncRoute(async
   });
 
   io.emit("courier:changed");
-  io.emit("payment:changed");
+  io.emit("payment:changed", { courier_id: courier.id });
   io.emit("pix:changed", { courier_id: courier.id });
 
   res.json({
