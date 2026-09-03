@@ -4,7 +4,7 @@ const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8")
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 
 const checks = {
-  version: server.includes('const VERSION = "3.5.0";'),
+  version: server.includes('const VERSION = "3.5.6";'),
   table: server.includes("CREATE TABLE IF NOT EXISTS ifood_delivery_confirmations"),
   courierListEndpoint: server.includes('/api/courier/ifood/deliveries'),
   verifyEndpoint: server.includes('/api/courier/ifood/orders/:orderId/verify-delivery'),
@@ -18,7 +18,7 @@ const checks = {
   concludedEventSync: server.includes("SET status='CONCLUDED'"),
   courierCard: html.includes('id="courierDeliveriesCard"'),
   confirmationModal: html.includes('id="deliveryConfirmModal"'),
-  courierOnlyOwnOrders: html.includes("Minhas entregas iFood"),
+  courierOnlyOwnOrders: html.includes("Rota e pedidos") && html.includes("Entregas e confirmações"),
   successText: html.includes("Confirmar entrega")
 };
 

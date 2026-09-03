@@ -4,7 +4,7 @@ const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8')
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const checks = [
-  ['version 3.5.1', pkg.version === '3.5.1' && /const VERSION = "3\.5\.1"/.test(server)],
+  ['version 3.5.6', pkg.version === '3.5.6' && /const VERSION = "3\.5\.6"/.test(server)],
   ['polling endpoint exists', /events:polling/.test(server)],
   ['merchant filter exists', /x-polling-merchants/.test(server)],
   ['automatic polling remains 30s', /30 \* 1000/.test(server)],

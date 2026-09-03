@@ -6,7 +6,7 @@ const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "
 const sw = fs.readFileSync(new URL("../public/service-worker.js", import.meta.url), "utf8");
 
 const checks = {
-  version: server.includes('const VERSION = "3.5.0";') && html.includes('<title>DespacheFull 3.5.0</title>'),
+  version: server.includes('const VERSION = "3.5.6";') && html.includes('<title>DespacheFull 3.5.6</title>'),
   endpoint: server.includes('app.get("/api/admin/wallboard"'),
   saoPauloDay: server.includes("America/Sao_Paulo"),
   confirmationJoin: server.includes("LEFT JOIN ifood_delivery_confirmations dc"),
@@ -21,12 +21,12 @@ const checks = {
   independentScroll: html.includes('.kds-list{overflow-y:auto'),
   oldestPreparingFirst: html.includes("kdsSortTime(a,'PREPARING')-kdsSortTime(b,'PREPARING')"),
   newestConfirmedFirst: html.includes("kdsSortTime(b,'CONFIRMED')-kdsSortTime(a,'CONFIRMED')"),
-  realtimeIfood: html.includes("$('wallboard')?.classList.contains('active'))loadWallboard()"),
-  periodicRefresh: html.includes('loadWallboard()},15000'),
+  realtimeIfood: html.includes("socket.on('ifood:changed',d=>") && html.includes("queueRealtimeRefresh('wallboard',loadWallboard,750"),
+  periodicRefresh: html.includes("queueRealtimeRefresh('wallboard',loadWallboard,100,{visibleOnly:true})},15000"),
   clock: html.includes('id="kdsClockTime"') && html.includes('renderKdsClock()'),
   fullscreen: html.includes('#wallboard:fullscreen'),
-  cacheBumped: sw.includes('despachefull-v3.5.0-preparation-time')
+  cacheBumped: sw.includes('despachefull-v3.5.6-')
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `Falhou: ${name}`);
-console.log(JSON.stringify({ result: "PASS", version: "3.5.0", checks }, null, 2));
+console.log(JSON.stringify({ result: "PASS", version: "3.5.6", checks }, null, 2));

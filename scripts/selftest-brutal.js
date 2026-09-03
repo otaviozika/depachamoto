@@ -110,7 +110,7 @@ if (activeOrders.size !== COURIERS * 2) throw new Error(`Pedidos ativos finais: 
 
 console.log(JSON.stringify({
   result: 'PASS',
-  version: '3.5.0',
+  version: '3.5.6',
   couriers: COURIERS,
   attemptedMainDepartures: expectedMain,
   createdDispatches: created,

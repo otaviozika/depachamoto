@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v3.5.5-production-merchant-id";
+const CACHE = "despachefull-v3.5.6-repository-cleanup";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
 
 self.addEventListener("install", event => {
