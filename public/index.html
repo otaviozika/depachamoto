@@ -351,6 +351,117 @@
 #manualDispatchModal input,#manualDispatchModal select,#manualDispatchModal textarea,#courierModal input,#courierModal select,#courierModal textarea,#courierProfileModal input,#courierProfileModal select,#courierProfileModal textarea,.admin-dark-modal input,.admin-dark-modal select,.admin-dark-modal textarea{background:#0a0e13!important;border-color:#303640!important;color:#f3f4f6!important}
 #manualDispatchModal .btn.outline,#courierModal .btn.outline,#courierProfileModal .btn.outline,.admin-account-box .btn.outline,.admin-dark-modal .btn.outline{background:#0b1015;border-color:#303741;color:#cdd2d8}
 #manualDispatchModal .btn.primary,#courierModal .btn.primary,#courierProfileModal .btn.primary,.admin-dark-modal .btn.primary{background:#c91529;border-color:#d91b30;color:#fff}
+
+/* v3.5.6 — layout responsivo para notebooks, tablets e celulares */
+#adminApp{--admin-sidebar-width:clamp(184px,13vw,208px)}
+#adminApp .admin-side{width:var(--admin-sidebar-width);padding:14px 10px 12px}
+#adminApp .main{margin-left:var(--admin-sidebar-width);min-width:0}
+#adminApp .admin-brand{padding:6px 10px 14px;margin-bottom:10px}
+#adminApp .admin-nav{gap:4px}
+#adminApp .admin-nav button{min-height:44px;padding:9px 11px;gap:10px}
+#adminApp .admin-side-bottom{padding-top:10px}
+#adminApp .content{width:auto;max-width:1600px;padding:clamp(16px,2vw,25px) clamp(14px,2vw,26px) 28px}
+#adminApp .dashboard-metrics{grid-template-columns:repeat(6,minmax(0,1fr))}
+#adminApp .dashboard-grid{min-width:0}
+#adminApp .dashboard-panel,#adminApp .table-wrap{min-width:0}
+#adminApp .dashboard-recent-panel .table td:nth-child(2){white-space:normal;min-width:160px}
+
+@media(max-width:1250px){
+  #adminApp .dashboard-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #adminApp .dashboard-grid{grid-template-columns:1fr}
+}
+
+@media(min-width:721px) and (max-width:1100px){
+  #adminApp{--admin-sidebar-width:72px}
+  #adminApp .admin-side{padding:12px 8px 10px;overflow:visible}
+  #adminApp .admin-brand{height:48px;padding:0;margin:0 0 12px;display:grid;place-items:center;border-bottom:1px solid #1b2027}
+  #adminApp .admin-brand .brand-wordmark-sidebar,#adminApp .admin-brand .creator-signature{display:none}
+  #adminApp .admin-brand:before{content:"DF";display:grid;place-items:center;width:38px;height:32px;border:1px solid #303741;border-radius:9px;color:#f3f4f6;font-size:12px;font-weight:850;letter-spacing:-.04em}
+  #adminApp .admin-nav{overflow:visible;padding:0}
+  #adminApp .admin-nav button{justify-content:center;min-height:48px;padding:10px;gap:0}
+  #adminApp .admin-nav button>span:last-child{display:none}
+  #adminApp .admin-nav button:after{content:attr(aria-label);position:absolute;left:calc(100% + 10px);top:50%;z-index:80;transform:translate(4px,-50%);padding:7px 9px;border:1px solid #303741;border-radius:7px;background:#111820;color:#f3f4f6;font-size:11px;font-weight:650;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease,transform .15s ease;box-shadow:0 10px 28px rgba(0,0,0,.35)}
+  #adminApp .admin-nav button:hover:after,#adminApp .admin-nav button:focus-visible:after{opacity:1;transform:translate(0,-50%)}
+  #adminApp .admin-nav button.active:before{left:-8px}
+  #adminApp .admin-side-bottom{padding-top:8px}
+  #adminApp .side-user-card{justify-content:center;padding:9px}
+  #adminApp .side-user-copy,#adminApp .side-user-chevron{display:none}
+  #adminApp .admin-profile-menu{left:0;right:auto;width:220px}
+  #adminApp .content{padding-left:16px;padding-right:16px}
+}
+
+@media(max-height:820px) and (min-width:721px){
+  #adminApp .admin-side{padding-top:10px;padding-bottom:9px}
+  #adminApp .admin-brand{padding-top:2px;padding-bottom:10px;margin-bottom:7px}
+  #adminApp .admin-nav{gap:2px}
+  #adminApp .admin-nav button{min-height:40px;padding-top:7px;padding-bottom:7px}
+  #adminApp .admin-side-bottom{padding-top:7px}
+  #adminApp .side-user-card{padding-top:8px;padding-bottom:8px}
+  #adminApp .admin-top{height:60px}
+  #adminApp .content{padding-top:15px}
+  #adminApp .dashboard-metrics{margin:12px 0}
+  #adminApp .dashboard-metric-card{min-height:112px;padding:13px 14px}
+  #adminApp .dashboard-metric-card .metric{font-size:32px;margin-top:7px}
+  #adminApp .dashboard-metric-note{margin-top:7px}
+  #adminApp .dashboard-live-panel,#adminApp .dashboard-recent-panel{min-height:390px}
+  #adminApp .dashboard-live-panel .table-wrap{min-height:320px}
+  #adminApp .dashboard-empty-road{min-height:245px}
+}
+
+@media(max-width:720px){
+  html,body{max-width:100%;overflow-x:hidden}
+  #adminApp .admin-side{display:none}
+  #adminApp .main{margin-left:0;width:100%;min-width:0}
+  #adminApp .admin-top{height:60px;padding:0 10px}
+  #adminApp .admin-top-actions{min-width:0}
+  #adminApp .connection-pill{padding:7px 5px}
+  #adminApp .content{padding:14px 12px calc(82px + env(safe-area-inset-bottom))}
+  #adminApp .dashboard-heading{gap:12px}
+  #adminApp .dashboard-heading .title{font-size:25px;line-height:1.12}
+  #adminApp .dashboard-clock-card{width:100%;min-width:0}
+  #adminApp .dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:13px 0}
+  #adminApp .dashboard-metric-card{min-height:112px;padding:12px}
+  #adminApp .dashboard-metric-card .metric{font-size:30px;margin-top:7px}
+  #adminApp .dashboard-metric-label{font-size:10.5px}
+  #adminApp .dashboard-metric-note{font-size:9.5px;margin-top:7px}
+  #adminApp .dashboard-performance{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
+  #adminApp .dashboard-performance-item{border-right:0;border-bottom:1px solid #202730}
+  #adminApp .dashboard-performance-item:nth-last-child(-n+2){border-bottom:0}
+  #adminApp .dashboard-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  #adminApp .dashboard-panel .section-head{padding:13px;gap:10px;flex-wrap:wrap}
+  #adminApp .dashboard-live-panel,#adminApp .dashboard-recent-panel{min-height:0}
+  #adminApp .dashboard-live-panel .table-wrap{min-height:0}
+  #adminApp .dashboard-empty-road{min-height:220px;padding:22px 14px}
+  #adminApp .dashboard-footer{grid-template-columns:1fr;gap:8px;padding:13px;min-height:0}
+  #adminApp .table-wrap{max-width:calc(100vw - 24px);overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #adminApp .table{min-width:640px}
+  #adminApp .dashboard-recent-panel .table{min-width:520px}
+  #adminApp .admin-subnav{margin-bottom:12px;overscroll-behavior-inline:contain}
+  #adminApp .admin-mobile-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:7px 5px calc(7px + env(safe-area-inset-bottom));background:rgba(7,10,14,.98);border-top:1px solid #252c34;backdrop-filter:blur(12px)}
+  #adminApp .admin-mobile-nav button{min-height:42px;padding:6px 2px;border-radius:8px;color:#8e98a5}
+  #adminApp .admin-mobile-nav button.active{background:#171d24;color:#fff}
+  #adminApp .notification-panel{left:8px!important;right:8px!important;top:68px!important;bottom:calc(64px + env(safe-area-inset-bottom));width:auto!important;max-height:none!important}
+  .modal{padding:10px;align-items:start;overflow-y:auto}
+  .modal-box{max-height:calc(100dvh - 20px);overflow-y:auto}
+  #courierApp .top{height:auto;min-height:60px;padding:9px 10px;gap:8px;flex-wrap:wrap}
+  #courierApp .top .brand-wordmark-header{max-width:135px}
+  #courierApp .top .actions{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  #courierApp .top .btn{padding:8px 9px;font-size:11px}
+  #courierApp .content{padding:14px 12px 24px!important}
+  #courierApp .hero{padding:18px}
+}
+
+@media(max-width:420px){
+  #adminApp .admin-top .connection-pill{font-size:0;gap:0}
+  #adminApp .admin-top .connection-pill .status-dot{width:9px;height:9px}
+  #adminApp .dashboard-heading .title{font-size:23px}
+  #adminApp .dashboard-metric-card{min-height:108px;padding:11px}
+  #adminApp .dashboard-metric-card .metric{font-size:28px}
+  #adminApp .admin-mobile-nav button{font-size:10px}
+  #courierApp .top{display:grid;grid-template-columns:1fr auto}
+  #courierApp .top .connectionStatus,#courierApp #courierName{display:none}
+}
+
 </style>
 </head>
 <body>
@@ -386,19 +497,19 @@
   <aside class="side admin-side">
     <div class="admin-brand"><img class="brand-wordmark-sidebar" src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
     <nav class="nav admin-nav">
-      <button data-admin-group="dashboard" class="active">
+      <button data-admin-group="dashboard" class="active" aria-label="Dashboard" title="Dashboard">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 10.2 12 3l8.5 7.2v10.3H14v-6h-4v6H3.5z"/></svg></span><span>Dashboard</span>
       </button>
-      <button data-admin-group="operations">
+      <button data-admin-group="operations" aria-label="Operação" title="Operação">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="5.2" cy="17.2" r="2.7"/><circle cx="18.8" cy="17.2" r="2.7"/><path d="M7.8 17.2h4.7l2.2-5.1h-5l-2 5.1Zm2-5.1-2.1-3H5.4m9.3 3 2.2-3h2.5"/></svg></span><span>Operação</span>
       </button>
-      <button data-admin-group="ifood">
+      <button data-admin-group="ifood" aria-label="iFood" title="iFood">
         <span class="admin-nav-icon admin-nav-ifood" aria-hidden="true">iFood</span><span>iFood</span>
       </button>
-      <button data-admin-group="management">
+      <button data-admin-group="management" aria-label="Gestão" title="Gestão">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z"/><path d="M3 20.5h18"/></svg></span><span>Gestão</span>
       </button>
-      <button data-admin-group="system">
+      <button data-admin-group="system" aria-label="Sistema" title="Sistema">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 13.3c.1-.4.1-.8.1-1.3s0-.9-.1-1.3l2-1.5-2-3.5-2.5 1a8.8 8.8 0 0 0-2.2-1.3L14.2 3h-4.1l-.4 2.5c-.8.3-1.5.7-2.2 1.3l-2.4-1-2 3.5 2 1.5A8 8 0 0 0 5 12c0 .4 0 .9.1 1.3l-2 1.5 2 3.5 2.4-1c.7.6 1.4 1 2.2 1.3l.4 2.5h4.1l.4-2.5c.8-.3 1.5-.7 2.2-1.3l2.5 1 2-3.5-2.1-1.5Z"/></svg></span><span>Sistema</span>
       </button>
     </nav>
