@@ -1,3 +1,34 @@
+# Dependências
 node_modules/
+
+# Variáveis e credenciais
 .env
+.env.*
+!.env.example
+
+# Logs e resultados de testes
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+.nyc_output/
+test-results/
+artifacts/
+
+# Backups e exportações
+*.sql
+*.dump
+*.backup
+*.bak
+*.zip
+
+# Arquivos temporários e de editores
+tmp/
+temp/
+.cache/
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

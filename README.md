@@ -1,58 +1,47 @@
-# DespacheFull 2.9.0 — Motoboy somente com pedidos iFood
+# DespacheFull
 
-> Base: DespacheFull v2.8.0. Supabase/PostgreSQL, check-in obrigatório, controle de tempo, pagamentos, PIX, KDS, PWA, histórico e iFood permanecem preservados.
+Sistema de despacho para operação com administradores e motoboys, desenvolvido em Node.js, Express, PostgreSQL e Socket.IO.
 
-Perfis continuam sendo SOMENTE:
-- Admin
-- Motoboy
+Versão atual: **3.5.6**
 
-## Regra principal da v2.9.0
+## Estrutura do projeto
 
-O **motoboy não pode mais registrar saída manual**.
+- `server.js`: servidor, regras de negócio e integração com o banco.
+- `public/`: interface web, PWA, ícones e service worker.
+- `scripts/`: testes automatizados e testes de carga.
+- `docs/`: documentação operacional e de capacidade.
+- `.github/workflows/`: automações de teste.
+- `render.yaml`: configuração de implantação no Render.
 
-Para cada saída do motoboy, todos os pedidos precisam:
+## Configuração
 
-1. existir no iFood já sincronizado pelo DespacheFull;
-2. ser pedido de entrega (`DELIVERY`);
-3. ser entrega própria da loja (`deliveredBy=MERCHANT`);
-4. estar em estado válido para despacho;
-5. ainda não estar vinculados a outra saída.
+1. Instale o Node.js 20 ou superior.
+2. Copie `.env.example` para `.env`.
+3. Preencha os valores somente no ambiente local ou no painel do Render.
+4. Execute `npm install` e depois `npm start`.
 
-Se qualquer pedido não atender às regras, a saída inteira é bloqueada.
+Variáveis sensíveis, como conexão do banco, senha administrativa, segredo de sessão e credenciais do iFood, nunca devem ser enviadas ao GitHub.
 
-Pedidos fora do iFood só podem ser lançados pelo **Admin > Saída manual**.
+## Testes
 
-## Validação em duas camadas
+Os testes ficam exclusivamente em `scripts/`. Os principais comandos estão declarados em `package.json`, incluindo:
 
-### Interface do Motoboy
+- `npm run selftest:brutal`
+- `npm run selftest:attendance`
+- `npm run selftest:payments`
+- `npm run selftest:delivery-confirmation`
+- `npm run selftest:takeout-wallboard`
 
-O botão de saída só é liberado quando todos os campos exibirem validação positiva do iFood.
+Testes de carga que alteram dados devem ser executados somente em ambiente de homologação.
 
-### Backend
+## Implantação
 
-Mesmo que alguém tente contornar a interface e chamar a API diretamente, `/api/courier/depart` exige que 100% dos pedidos estejam vinculados ao iFood e aceitos pela validação.
+O Render utiliza `npm install` para instalar as dependências e `npm start` para iniciar `server.js`. As variáveis reais permanecem configuradas fora do repositório.
 
-## Sem saída offline para motoboy
+## Segurança
 
-A saída do motoboy agora exige conexão no momento do registro. Isso é necessário porque a autorização do pedido depende da validação iFood em tempo real.
+- Nunca publique arquivos `.env`, backups do banco, logs, ZIPs ou relatórios com dados reais.
+- Use uma senha administrativa exclusiva e forte.
+- Use um `SESSION_SECRET` aleatório com pelo menos 32 caracteres.
+- Revogue imediatamente qualquer credencial que tenha sido publicada acidentalmente.
 
-Se estiver sem internet:
-
-- o motoboy não inicia uma nova saída pelo sistema;
-- o Admin pode usar a saída manual quando a operação exigir.
-
-## Regras da v2.8 preservadas
-
-`DISPONÍVEL → EM ROTA → RETORNANDO → CHEGUEI NA LOJA → DISPONÍVEL`
-
-O motoboy continua impedido de pegar novos pedidos até confirmar que voltou à loja.
-
-## Banco / Supabase
-
-Não há migração de banco nesta versão.
-
-**Não altere `DATABASE_URL`. Não execute SQL manual.**
-
-## Deploy
-
-Use o pacote `UPDATE-ONLY` sobre a versão atual e faça o deploy normal no Render.

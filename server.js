@@ -25,8 +25,10 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-if (process.env.NODE_ENV === "production" && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
-  console.warn("AVISO: SESSION_SECRET ausente ou curta. Use pelo menos 32 caracteres em produção.");
+const sessionSecret = String(process.env.SESSION_SECRET || "").trim();
+if (sessionSecret.length < 32) {
+  console.error("SESSION_SECRET precisa ter pelo menos 32 caracteres.");
+  process.exit(1);
 }
 
 const pool = new Pool({
@@ -64,7 +66,7 @@ app.use(session({
     tableName: "user_sessions",
     createTableIfMissing: true
   }),
-  secret: process.env.SESSION_SECRET || "troque-esta-chave-em-producao",
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -756,13 +758,17 @@ async function seedAdmin() {
   const username = (process.env.ADMIN_USERNAME || "admin").toLowerCase();
   const exists = await pool.query("SELECT id FROM users WHERE username=$1", [username]);
   if (!exists.rowCount) {
+    const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+    if (adminPassword.length < 12) {
+      throw new Error("ADMIN_PASSWORD precisa ter pelo menos 12 caracteres para criar o administrador inicial.");
+    }
     await pool.query(
       `INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password)
        VALUES($1,$2,$3,'admin','APPROVED',true,false)`,
       [
         process.env.ADMIN_NAME || "Administrador",
         username,
-        await bcrypt.hash(process.env.ADMIN_PASSWORD || "admin123", 12)
+        await bcrypt.hash(adminPassword, 12)
       ]
     );
   } else {
@@ -2538,7 +2544,7 @@ async function setSetting(key, value) {
 
 function secretCipherKey() {
   return crypto.createHash("sha256")
-    .update(process.env.SESSION_SECRET || "despachamoto-dev-secret")
+    .update(sessionSecret)
     .digest();
 }
 
@@ -3216,9 +3222,7 @@ const ATTENDANCE_QR_TTL_MS = Math.max(
 );
 
 function attendanceQrSecret() {
-  return process.env.ATTENDANCE_QR_SECRET
-    || process.env.SESSION_SECRET
-    || crypto.createHash("sha256").update(process.env.DATABASE_URL || "despachefull").digest("hex");
+  return String(process.env.ATTENDANCE_QR_SECRET || sessionSecret);
 }
 
 function createAttendanceQrToken(attendanceDate) {
