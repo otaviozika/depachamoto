@@ -2096,6 +2096,7 @@ async function getCourierIfoodDeliveries(courierId) {
 
   const current = [];
   const pending = [];
+  const completed = [];
 
   for (const row of rows) {
     const ui = courierDeliveryUiState(row);
@@ -2124,10 +2125,12 @@ async function getCourierIfoodDeliveries(courierId) {
       item.confirmation_status !== "VERIFIED"
     ) {
       pending.push(item);
+    } else {
+      completed.push(item);
     }
   }
 
-  return { current, pending };
+  return { current, pending, completed };
 }
 
 async function acknowledgeIfoodEvents(eventIds) {
@@ -3414,6 +3417,85 @@ async function buildPaymentRow(courier, payment, date, rule, liveCount = null) {
   };
 }
 
+async function getCourierPaymentPeriodDays(courier, startDate, endDate) {
+  const rows = (await pool.query(`
+    WITH deliveries AS (
+      SELECT
+        (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date AS payment_date,
+        COUNT(o.id)::int AS delivery_count
+      FROM dispatches d
+      JOIN dispatch_orders o ON o.dispatch_id=d.id
+      WHERE d.courier_id=$1
+        AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date
+      GROUP BY 1
+    ), days AS (
+      SELECT payment_date FROM deliveries
+      UNION
+      SELECT payment_date
+      FROM courier_payments
+      WHERE courier_id=$1 AND payment_date BETWEEN $2::date AND $3::date
+    )
+    SELECT
+      to_char(days.payment_date,'YYYY-MM-DD') AS summary_date,
+      COALESCE(deliveries.delivery_count,0)::int AS live_delivery_count,
+      p.*
+    FROM days
+    LEFT JOIN deliveries ON deliveries.payment_date=days.payment_date
+    LEFT JOIN courier_payments p
+      ON p.courier_id=$1 AND p.payment_date=days.payment_date
+    ORDER BY days.payment_date
+  `, [courier.id,startDate,endDate])).rows;
+
+  if (!rows.length) return [];
+
+  const rules = (await pool.query(`
+    SELECT
+      id,to_char(effective_from,'YYYY-MM-DD') AS effective_from,
+      per_delivery,base_mon_thu,base_fri_sun,created_at
+    FROM payment_rate_rules
+    WHERE effective_from <= $1::date
+    ORDER BY effective_from DESC,id DESC
+  `, [endDate])).rows.map(r => ({
+    id: r.id,
+    effective_from: r.effective_from,
+    per_delivery: Number(r.per_delivery),
+    base_mon_thu: Number(r.base_mon_thu),
+    base_fri_sun: Number(r.base_fri_sun),
+    created_at: r.created_at || null
+  }));
+
+  const fallbackRule = {
+    id: null,
+    effective_from: "2000-01-01",
+    per_delivery: 6,
+    base_mon_thu: 60,
+    base_fri_sun: 75,
+    created_at: null
+  };
+
+  const out = [];
+  for (const row of rows) {
+    const rule = rules.find(r => r.effective_from <= row.summary_date) || fallbackRule;
+    out.push(await buildPaymentRow(
+      courier,
+      row.id ? row : null,
+      row.summary_date,
+      rule,
+      Number(row.live_delivery_count || 0)
+    ));
+  }
+  return out;
+}
+
+function summarizeCourierPaymentDays(days) {
+  return {
+    total_amount: roundMoney(days.reduce((sum, row) => sum + Number(row.total_amount || 0), 0)),
+    delivery_count: days.reduce((sum, row) => sum + Number(row.delivery_count || 0), 0),
+    worked_days: days.filter(row => Number(row.delivery_count || 0) > 0).length,
+    paid_days: days.filter(row => row.status === "PAID").length
+  };
+}
+
 async function getPaymentRows(date) {
   const rule = await getPaymentRateRule(date);
   const rows = (await pool.query(`
@@ -3932,7 +4014,10 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
         WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
               (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
       )::int AS today,
-      COUNT(o.id) FILTER (WHERE d.departed_at >= NOW()-INTERVAL '6 days')::int AS week,
+      COUNT(o.id) FILTER (
+        WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo') >=
+              date_trunc('week', NOW() AT TIME ZONE 'America/Sao_Paulo')
+      )::int AS week,
       COUNT(o.id) FILTER (
         WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo') >=
               date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
@@ -4037,9 +4122,33 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req, 
 
   const liveCount = await getCourierDeliveryCount(req.session.user.id, date);
   const row = await buildPaymentRow(courier, payment, date, rule, liveCount);
+  const boundaries = (await pool.query(`
+    SELECT
+      to_char(date_trunc('week',$1::date)::date,'YYYY-MM-DD') AS week_start,
+      to_char(date_trunc('month',$1::date)::date,'YYYY-MM-DD') AS month_start
+  `, [date])).rows[0];
+  const periodStart = boundaries.week_start < boundaries.month_start
+    ? boundaries.week_start
+    : boundaries.month_start;
+  const periodDays = await getCourierPaymentPeriodDays(courier, periodStart, date);
+  const weekDays = periodDays.filter(x => x.payment_date >= boundaries.week_start);
+  const monthDays = periodDays.filter(x => x.payment_date >= boundaries.month_start);
 
   res.json({
     payment: row,
+    summary: {
+      today: {
+        total_amount: Number(row.total_amount || 0),
+        delivery_count: Number(row.delivery_count || 0),
+        worked_days: Number(row.delivery_count || 0) > 0 ? 1 : 0,
+        paid_days: row.status === "PAID" ? 1 : 0
+      },
+      week: summarizeCourierPaymentDays(weekDays),
+      month: summarizeCourierPaymentDays(monthDays),
+      week_start: boundaries.week_start,
+      month_start: boundaries.month_start,
+      through: date
+    },
     formula: "entregas × valor por entrega + encosta + gorjeta - desconto + ajuste",
     server_now: new Date().toISOString()
   });
@@ -7854,4 +7963,3 @@ async function gracefulShutdown(signal) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
