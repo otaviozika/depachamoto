@@ -462,6 +462,15 @@
   #courierApp .top .connectionStatus,#courierApp #courierName{display:none}
 }
 
+
+/* Exclusão protegida de motoboys */
+#adminApp .courier-delete-button,#deleteCourierModal .btn.danger{background:#3a1015;border:1px solid #7f1d2d;color:#fda4af}
+#adminApp .courier-delete-button:hover,#deleteCourierModal .btn.danger:hover{background:#7f1423;border-color:#be263b;color:#fff}
+#adminApp .courier-delete-button:disabled{opacity:.42;cursor:not-allowed}
+#deleteCourierModal .delete-courier-warning{margin:16px 0;padding:13px;border:1px solid #6d2430;border-radius:10px;background:#251015;color:#fecdd3;font-size:12px;line-height:1.5}
+#deleteCourierModal .delete-courier-target{padding:12px 13px;border:1px solid #303640;border-radius:9px;background:#0a0e13;color:#f3f4f6}
+#deleteCourierModal .delete-courier-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+
 </style>
 </head>
 <body>
@@ -1168,6 +1177,29 @@
 
 <div id="courierProfileModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">Dados do motoboy</h2><div id="editCourierUsername" class="small muted"></div></div><button class="btn outline" onclick="closeCourierProfileModal()">×</button></div><div id="courierProfileMsg"></div><form id="courierProfileForm" class="form" style="margin-top:15px"><input id="editCourierId" type="hidden"><label>Nome<input id="editCourierName" required></label><label>Apelido (opcional)<input id="editCourierNickname"></label><div id="editCourierPixStatusBox" class="pix-status-box"></div><label>Titular do PIX<input id="editCourierPixHolder"></label><label>Chave PIX<input id="editCourierPixKey"></label><label>Tipo de PIX<select id="editCourierPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><div class="actions"><button class="btn primary" type="submit">Salvar dados</button><button id="verifyCourierPixBtn" class="btn success hidden" type="button" onclick="verifyCourierPixFromModal()">Confirmar PIX</button></div><div class="small muted">Se o Admin editar os dados do PIX e salvar, a nova chave será considerada verificada.</div></form></div></div>
 
+
+
+<div id="deleteCourierModal" class="modal admin-dark-modal">
+  <div class="modal-box" style="width:min(470px,100%)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div><h2 style="margin:0">Excluir motoboy</h2><div class="small muted" style="margin-top:4px">Confirmação protegida pela senha do administrador.</div></div>
+      <button class="btn outline" type="button" aria-label="Fechar" onclick="closeDeleteCourierModal()">×</button>
+    </div>
+    <div class="delete-courier-warning"><b>Atenção:</b> o acesso e os dados ativos do perfil serão removidos. O histórico de entregas, pagamentos e auditoria será preservado.</div>
+    <div class="delete-courier-target"><b id="deleteCourierName">Motoboy</b><div id="deleteCourierUsername" class="small muted" style="margin-top:4px"></div></div>
+    <div id="deleteCourierMsg"></div>
+    <form id="deleteCourierForm" class="form" style="margin-top:15px">
+      <input id="deleteCourierId" type="hidden">
+      <label>Senha do seu perfil de administrador
+        <input id="deleteCourierPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="delete-courier-actions">
+        <button class="btn outline" type="button" onclick="closeDeleteCourierModal()">Cancelar</button>
+        <button id="deleteCourierSubmit" class="btn danger" type="submit">Excluir motoboy</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <div id="manualDispatchModal" class="modal">
   <div class="modal-box" style="width:min(620px,100%)">
@@ -2048,6 +2080,9 @@ function renderCouriers(){
     const pixAction=pixStatus==='PENDING'
       ? `<button class="btn success" onclick="verifyCourierPix(${x.id})">Confirmar PIX</button>`
       : '';
+    const deleteAction=x.on_road
+      ? '<button class="btn courier-delete-button" type="button" disabled title="Finalize a saída ativa antes de excluir">Excluir</button>'
+      : `<button class="btn courier-delete-button" type="button" onclick="openDeleteCourierModal(${x.id})">Excluir</button>`;
 
     return `<tr class="${pixStatus==='PENDING'?'pix-pending-row':pixStatus==='VERIFIED'?'pix-verified-row':''}">
       <td><b>${escapeHtml(x.name)}</b>${x.nickname?`<div class="small muted">${escapeHtml(x.nickname)}</div>`:''}</td>
@@ -2060,7 +2095,7 @@ function renderCouriers(){
       <td>${approvalBadge(x.approval_status)}</td>
       <td><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVA':'INATIVA'}</span></td>
       <td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td>
-      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button></div></td>
+      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button>${deleteAction}</div></td>
     </tr>`;
   }).join('')||empty(11)
 }
@@ -2099,6 +2134,54 @@ async function resetCourierPassword(id,name){
   }catch(err){alert(err.message)}
 }
 
+
+function openDeleteCourierModal(id){
+  const courier=dashboard?.couriers?.find(x=>Number(x.id)===Number(id));
+  if(!courier)return alert('Motoboy não encontrado.');
+  if(courier.on_road)return alert('Finalize a saída ativa deste motoboy antes de excluir o perfil.');
+
+  $('deleteCourierForm').reset();
+  $('deleteCourierId').value=String(courier.id);
+  $('deleteCourierName').textContent=courier.name;
+  $('deleteCourierUsername').textContent='@'+courier.username;
+  message('deleteCourierMsg','','');
+  $('deleteCourierModal').style.display='grid';
+  setTimeout(()=>$('deleteCourierPassword')?.focus(),50);
+}
+function closeDeleteCourierModal(){
+  $('deleteCourierModal').style.display='none';
+  $('deleteCourierForm').reset();
+  $('deleteCourierId').value='';
+  message('deleteCourierMsg','','');
+}
+async function submitDeleteCourier(e){
+  e.preventDefault();
+  const courierId=Number($('deleteCourierId').value);
+  const adminPassword=$('deleteCourierPassword').value;
+  const submit=$('deleteCourierSubmit');
+
+  if(!courierId)return message('deleteCourierMsg','Motoboy inválido.','err');
+  if(!adminPassword)return message('deleteCourierMsg','Digite a senha do seu perfil para confirmar.','err');
+
+  submit.disabled=true;
+  submit.textContent='Excluindo...';
+  try{
+    const result=await api('/api/admin/couriers/'+courierId,{
+      method:'DELETE',
+      body:JSON.stringify({admin_password:adminPassword})
+    });
+    closeDeleteCourierModal();
+    await loadAdmin();
+    if($('attendance')?.classList.contains('active'))await loadAttendance();
+    alert(result.message||'Motoboy excluído.');
+  }catch(err){
+    message('deleteCourierMsg',err.message,'err');
+    $('deleteCourierPassword').select();
+  }finally{
+    submit.disabled=false;
+    submit.textContent='Excluir motoboy';
+  }
+}
 
 function paymentBadgeClass(status){return status==='PAID'?'green':status==='REVIEWED'?'blue':'gray'}
 function paymentStatusText(status){return status==='PAID'?'PAGO':status==='REVIEWED'?'CONFERIDO':'EM ABERTO'}
@@ -3611,7 +3694,7 @@ document.addEventListener('click',event=>{
   const wrap=document.querySelector('#adminApp .admin-profile-wrap');
   if(wrap&&!wrap.contains(event.target))closeAdminProfileMenu();
 });
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeAdminProfileMenu();if($('adminAccountModal'))closeAdminAccountModal();}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeAdminProfileMenu();if($('adminAccountModal'))closeAdminAccountModal();if($('deleteCourierModal')?.style.display==='grid')closeDeleteCourierModal();}});
 
 function openPasswordModal(force=false){$('passwordModal').classList.toggle('admin-dark-modal',me?.role==='admin');$('passwordModal').style.display='grid';$('passwordMsg').innerHTML='';$('passwordModal').dataset.force=force?'1':'0';$('currentPassword').focus()}
 function closePasswordModal(){if($('passwordModal').dataset.force==='1'&&me?.mustChangePassword)return alert('Você precisa alterar a senha temporária para continuar.');$('passwordModal').style.display='none';$('passwordForm').reset()}
@@ -3637,6 +3720,8 @@ const auditNames={
   COURIER_REJECTED:'Cadastro de motoboy recusado',
   COURIER_ACTIVATED:'Motoboy ativado',
   COURIER_DEACTIVATED:'Motoboy desativado',
+  COURIER_DELETED:'Motoboy excluído',
+  COURIER_DELETE_PASSWORD_FAILED:'Senha incorreta ao excluir motoboy',
   COURIER_CREATED_APPROVED:'Motoboy criado pelo administrador',
   PASSWORD_CHANGED:'Senha alterada pelo usuário',
   PASSWORD_CHANGE_FAILED:'Tentativa de troca de senha falhou',
@@ -3678,6 +3763,8 @@ function friendlyAuditDetails(x){
   if(x.action==='PAYMENT_UPDATED')return `${d.courier_name||'Motoboy'} • ${d.delivery_count||0} entrega(s) • ${brl(d.total_amount||0)} • ${paymentStatusText(d.status||'OPEN')}`;
   if(x.action==='PAYMENT_RULE_UPDATED')return `${brl(d.per_delivery||0)}/entrega • ${brl(d.base_mon_thu||0)} Seg–Qui • ${brl(d.base_fri_sun||0)} Sex–Dom`;
   if(x.action==='COURIER_PROFILE_UPDATED')return d.has_pix?`PIX ${d.pix_type||''} • ${d.pix_status||''}`:'Dados do motoboy atualizados';
+  if(x.action==='COURIER_DELETED')return `${d.courier_name||'Motoboy'} • histórico preservado`;
+  if(x.action==='COURIER_DELETE_PASSWORD_FAILED')return 'A senha do administrador não foi confirmada.';
   if(x.action==='COURIER_PIX_SUBMITTED')return `Tipo ${d.pix_type||'PIX'} • aguardando confirmação`;
   if(x.action==='COURIER_PIX_REMOVED')return 'Chave PIX removida';
   if(x.action==='COURIER_PIX_VERIFIED')return `Tipo ${d.pix_type||'PIX'} • verificado`;
@@ -3829,6 +3916,7 @@ $('registerForm').onsubmit=register;
 $('departureForm').onsubmit=depart;
 $('courierForm').onsubmit=createCourier;
 $('courierProfileForm').onsubmit=saveCourierProfile;
+$('deleteCourierForm').onsubmit=submitDeleteCourier;
 $('myPixForm').onsubmit=saveMyPix;
 $('deliveryConfirmForm').onsubmit=submitDeliveryConfirmation;
 $('passwordForm').onsubmit=changePassword;
