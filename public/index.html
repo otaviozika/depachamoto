@@ -471,6 +471,121 @@
 #deleteCourierModal .delete-courier-target{padding:12px 13px;border:1px solid #303640;border-radius:9px;background:#0a0e13;color:#f3f4f6}
 #deleteCourierModal .delete-courier-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 
+/* Motoboy mobile-first — ações rápidas, leitura clara e uso com uma mão */
+#courierApp{--courier-accent:#f59e0b;--courier-ink:#111827;--courier-soft:#f1f5f9;background:#f3f5f8;min-height:100dvh}
+#courierApp .courier-topbar{height:66px;padding:0 18px;box-shadow:0 1px 0 rgba(15,23,42,.06)}
+#courierApp .courier-top-actions{position:relative;align-items:center}
+#courierApp .courier-mobile-account{display:none;position:relative}
+#courierApp .courier-account-trigger{width:42px;height:42px;padding:0;border-radius:50%;display:grid;place-items:center;background:#111827;color:#fff;border:0;font-weight:900}
+#courierApp .courier-account-menu{position:absolute;right:0;top:50px;width:230px;padding:8px;border:1px solid #dbe1e8;border-radius:14px;background:#fff;box-shadow:0 18px 45px rgba(15,23,42,.2);z-index:50}
+#courierApp .courier-account-identity{padding:10px 11px 12px;border-bottom:1px solid #e5e7eb;margin-bottom:6px}
+#courierApp .courier-account-identity b{display:block;font-size:14px}
+#courierApp .courier-account-identity span{display:block;font-size:11px;color:#64748b;margin-top:3px}
+#courierApp .courier-account-menu button{width:100%;min-height:44px;text-align:left;background:transparent;border:0;border-radius:9px;padding:10px 11px;font-weight:750;color:#334155}
+#courierApp .courier-account-menu button:hover{background:#f1f5f9}
+#courierApp .courier-account-menu button.danger-link{color:#b91c1c}
+#courierApp .content{max-width:780px!important;padding-top:20px}
+#courierApp .courier-home-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 24px;margin-bottom:14px;border-radius:20px;background:linear-gradient(135deg,#111827,#253247);color:#fff;box-shadow:0 15px 40px rgba(15,23,42,.16)}
+#courierApp .courier-eyebrow{font-size:10px;font-weight:900;letter-spacing:1.3px;color:#fbbf24;text-transform:uppercase}
+#courierApp .courier-home-card h1{font-size:27px;line-height:1.12;margin:5px 0 5px}
+#courierApp .courier-home-card p{margin:0;color:#cbd5e1;font-size:13px}
+#courierApp .courier-today{flex:0 0 auto;min-width:112px;padding:13px 15px;border:1px solid rgba(255,255,255,.14);border-radius:15px;background:rgba(255,255,255,.08);text-align:center}
+#courierApp .courier-today strong{display:block;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+#courierApp .courier-today span{display:block;margin-top:5px;font-size:10px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.5px}
+#courierApp .attendance-checkin-banner{display:flex;align-items:flex-start;gap:11px;margin-bottom:14px;padding:14px 15px;line-height:1.4;font-size:13px;font-weight:650}
+#courierApp .courier-notice-icon{flex:0 0 auto;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.62);font-size:13px;font-weight:950}
+#courierApp .card,#courierApp .section{border-color:#e1e6ec;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.055)}
+#courierApp .courier-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:7px}
+#courierApp .courier-card-heading h2{font-size:21px;margin:4px 0 0}
+#courierApp .courier-helper{font-size:13px;line-height:1.5;margin:0 0 17px;color:#64748b}
+#courierApp #departureCard{padding:20px;border-top:4px solid var(--courier-accent);scroll-margin-top:78px}
+#courierApp #orderFields{display:grid;gap:11px}
+#courierApp .order-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
+#courierApp .order-row>label{min-width:0;font-size:12px;color:#475569}
+#courierApp .order-input-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:6px}
+#courierApp .order-input-wrap .order-input{min-width:0;height:50px;margin:0;padding:0 14px;border-radius:11px;background:#fff;font-size:18px;font-weight:850;letter-spacing:.2px}
+#courierApp .scan-btn{height:50px;min-width:52px;padding:0 13px;border:1px solid #d7dde5;background:#fff;color:#334155;border-radius:11px;font-size:18px}
+#courierApp .remove-order-btn{width:42px;height:50px;padding:0;font-size:20px;border-radius:11px}
+#courierApp .order-validation{margin:0;min-height:17px;line-height:1.35}
+#courierApp .courier-add-row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:12px 0 2px}
+#courierApp #addOrderBtn{min-height:46px}
+#courierApp #departureSubmit{width:100%;min-height:56px;margin-top:3px;border-radius:13px;font-size:16px;box-shadow:0 8px 18px rgba(245,158,11,.22)}
+#courierApp #departureSubmit:disabled{box-shadow:none}
+#courierApp .courier-route-card{position:relative;overflow:hidden;margin-bottom:14px;padding:22px 20px;background:linear-gradient(135deg,#7c2d12,#c2410c)}
+#courierApp .courier-route-card.return-hero{background:linear-gradient(135deg,#143b6b,#2563eb)!important}
+#courierApp .courier-route-kicker{font-size:10px;font-weight:950;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.7)}
+#courierApp .courier-route-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:5px 0 10px}
+#courierApp .courier-route-title-row h2{margin:0;font-size:25px}
+#courierApp .courier-route-orders .orders-list{margin-top:0}
+#courierApp .courier-route-clock{margin-top:15px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18)}
+#courierApp .courier-route-clock>span,#courierApp .courier-route-clock>small{display:block;color:rgba(255,255,255,.78);font-size:12px}
+#courierApp .courier-route-clock strong{display:block;margin:5px 0;font-size:38px}
+#courierApp .courier-route-action{width:100%;min-height:54px;margin-top:16px!important;background:#fff!important;border-color:#fff!important;color:#111827!important;font-size:15px}
+#courierApp #activeDispatch{scroll-margin-top:78px}
+#courierApp .delivery-item{padding:15px;border-radius:14px}
+#courierApp .delivery-actions .btn{width:100%;min-height:50px}
+#courierApp .courier-refresh-btn{min-height:42px}
+#courierApp .courier-stats{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px;margin:14px 0}
+#courierApp .courier-stats .card{padding:14px 12px;text-align:center}
+#courierApp .courier-stats .label{min-height:32px;font-size:11px}
+#courierApp .courier-stats .metric{font-size:27px}
+#courierApp .courier-payment-card,#courierApp .courier-pix-card{scroll-margin-top:78px}
+#courierApp .courier-history-card{scroll-margin-top:78px}
+#courierApp .courier-mobile-nav{display:none}
+
+@media(max-width:720px){
+  #courierApp .courier-topbar{display:flex!important;height:60px;min-height:60px;padding:0 12px;flex-wrap:nowrap;background:rgba(255,255,255,.97);backdrop-filter:blur(14px)}
+  #courierApp .brand-wordmark-header{width:132px;max-width:38vw}
+  #courierApp .courier-top-actions{gap:8px;flex-wrap:nowrap}
+  #courierApp .courier-top-actions>.courier-desktop-action{display:none!important}
+  #courierApp .courier-top-actions>.connectionStatus{display:inline-flex!important;font-size:10px;padding:7px 8px}
+  #courierApp .courier-top-actions>#installBtnCourier:not(.hidden){display:inline-flex;min-height:38px;padding:7px 9px;font-size:10px}
+  #courierApp .courier-mobile-account{display:block}
+  #courierApp .content{padding:12px 11px calc(88px + env(safe-area-inset-bottom))!important}
+  #courierApp .courier-home-card{padding:18px 16px;border-radius:17px;gap:12px}
+  #courierApp .courier-home-card h1{font-size:23px}
+  #courierApp .courier-home-card p{font-size:11px;max-width:190px}
+  #courierApp .courier-today{min-width:88px;padding:11px 9px}
+  #courierApp .courier-today strong{font-size:30px}
+  #courierApp .attendance-checkin-banner{padding:13px;margin-bottom:12px}
+  #courierApp .card{padding:16px}
+  #courierApp .courier-card-heading h2{font-size:20px}
+  #courierApp #departureCard{padding:17px 15px}
+  #courierApp .order-row{padding:10px}
+  #courierApp .order-input-wrap .order-input{font-size:16px}
+  #courierApp .scan-btn{padding:0 12px}
+  #courierApp #addOrderBtn{flex:1;padding:10px 11px}
+  #courierApp .courier-route-card{padding:19px 17px}
+  #courierApp .courier-route-title-row h2{font-size:23px}
+  #courierApp .courier-route-clock strong{font-size:34px}
+  #courierApp .payment-mini{gap:8px}
+  #courierApp .payment-mini>div{padding:10px}
+  #courierApp .courier-history-card .table-wrap{overflow:visible}
+  #courierApp .courier-history-card .table{display:block;min-width:0}
+  #courierApp .courier-history-card thead{display:none}
+  #courierApp .courier-history-card tbody{display:grid;gap:8px;padding:10px}
+  #courierApp .courier-history-card tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;padding:12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff}
+  #courierApp .courier-history-card td{display:block;padding:0;border:0;white-space:normal;font-size:12px}
+  #courierApp .courier-history-card td:nth-child(1){font-weight:850}
+  #courierApp .courier-history-card td:nth-child(2){grid-column:1/2;color:#64748b}
+  #courierApp .courier-history-card td:nth-child(3){grid-column:2/3;grid-row:1/3;align-self:center}
+  #courierApp .courier-mobile-nav{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:22;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;padding:6px;border:1px solid rgba(255,255,255,.1);border-radius:17px;background:rgba(17,24,39,.97);box-shadow:0 14px 40px rgba(15,23,42,.35);backdrop-filter:blur(16px)}
+  #courierApp .courier-mobile-nav button{min-width:0;min-height:49px;padding:5px 2px;border:0;border-radius:11px;background:transparent;color:#9ca3af;font-size:10px;font-weight:800;display:grid;place-items:center;gap:1px}
+  #courierApp .courier-mobile-nav button span{display:block;font-size:18px;line-height:1}
+  #courierApp .courier-mobile-nav button.active{background:#2b3442;color:#fff}
+  #deliveryConfirmModal .modal-box{padding:20px 16px}
+  #deliveryConfirmModal .delivery-code-input{height:58px;font-size:26px!important}
+  #deliveryConfirmModal #deliveryConfirmBtn{width:100%;min-height:54px}
+}
+
+@media(max-width:365px){
+  #courierApp .brand-wordmark-header{width:112px}
+  #courierApp .courier-top-actions>.connectionStatus{font-size:0;padding:9px}
+  #courierApp .courier-home-card p{display:none}
+  #courierApp .courier-today{min-width:80px}
+  #courierApp .courier-stats .label{font-size:10px}
+}
+
 </style>
 </head>
 <body>
@@ -1071,43 +1186,70 @@
 </div>
 
 <div id="courierApp" class="hidden">
-  <div class="top"><img class="brand-wordmark-header" src="/brand-wordmark.png" alt="DespacheFull"><div class="actions"><span class="connection-pill online connectionStatus">🟢 Online</span><button id="installBtnCourier" class="btn outline hidden" onclick="installApp()">Instalar app</button><button class="btn outline" onclick="openPasswordModal()">Minha senha</button><span id="courierName"></span><button class="btn outline" onclick="logout()">Sair</button></div></div>
+  <header class="top courier-topbar">
+    <img class="brand-wordmark-header" src="/brand-wordmark.png" alt="DespacheFull">
+    <div class="actions courier-top-actions">
+      <span class="connection-pill online connectionStatus"><i class="status-dot"></i>Online</span>
+      <button id="installBtnCourier" class="btn outline hidden" type="button" onclick="installApp()">Instalar app</button>
+      <button class="btn outline courier-desktop-action" type="button" onclick="openPasswordModal()">Minha senha</button>
+      <span id="courierName" class="courier-desktop-action"></span>
+      <button class="btn outline courier-desktop-action" type="button" onclick="logout()">Sair</button>
+      <div class="courier-mobile-account">
+        <button id="courierAccountButton" class="courier-account-trigger" type="button" aria-label="Abrir minha conta" aria-expanded="false" onclick="toggleCourierAccountMenu(event)"><span id="courierMobileAvatar">M</span></button>
+        <div id="courierAccountMenu" class="courier-account-menu hidden">
+          <div class="courier-account-identity"><b id="courierMobileName">Minha conta</b><span>Perfil de motoboy</span></div>
+          <button type="button" onclick="closeCourierAccountMenu();openPasswordModal()">🔐 Alterar minha senha</button>
+          <button class="danger-link" type="button" onclick="logout()">↪ Sair do aplicativo</button>
+        </div>
+      </div>
+    </div>
+  </header>
   <main class="content" style="max-width:760px">
+    <section id="courierHome" class="courier-home-card">
+      <div>
+        <div class="courier-eyebrow">Minha operação</div>
+        <h1>Olá, <span id="hello"></span> 👋</h1>
+        <p>Acompanhe seu turno e registre cada saída.</p>
+      </div>
+      <div class="courier-today"><strong id="myToday">0</strong><span>pedidos hoje</span></div>
+    </section>
     <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
     <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
     <div id="attendanceCheckinStatus"></div>
-    <div class="hero"><h2>Olá, <span id="hello"></span> 👋</h2><div class="muted">Registre somente pedidos iFood de entrega própria validados pelo sistema.</div><div style="margin-top:15px">Pedidos hoje<div id="myToday" class="big">0</div></div></div>
     <div id="activeDispatch"></div>
     <div id="courierDeliveriesCard" class="card hidden" style="margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div class="courier-card-heading">
         <div>
-          <h2 style="margin:0">📦 Minhas entregas iFood</h2>
+          <div class="courier-eyebrow">Durante a rota</div>
+          <h2 style="margin:4px 0 0">📦 Minhas entregas iFood</h2>
           <div class="small muted" style="margin-top:4px">Confirme a entrega usando o código/localizador informado pelo cliente.</div>
         </div>
-        <button type="button" class="btn outline" onclick="loadCourierDeliveries()">Atualizar</button>
+        <button type="button" class="btn outline courier-refresh-btn" onclick="loadCourierDeliveries()">Atualizar</button>
       </div>
       <div id="courierDeliveriesList" class="delivery-list"></div>
     </div>
     <div id="departureCard" class="card">
-      <h2 style="margin-top:0">Registrar saída</h2>
-      <p class="muted">Informe de 1 a 5 pedidos. <b>Somente pedidos iFood vinculados e disponíveis</b> podem ser registrados pelo motoboy. Saídas manuais são exclusivas do Admin.</p>
+      <div class="courier-card-heading">
+        <div><div class="courier-eyebrow">Próxima saída</div><h2>Adicionar pedidos</h2></div>
+        <span id="orderCounter" class="badge gray">1 de 5</span>
+      </div>
+      <p class="courier-helper">Digite ou escaneie de 1 a 5 pedidos iFood. O sistema valida cada pedido automaticamente.</p>
       <form id="departureForm" class="form">
         <div id="orderFields"></div>
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="courier-add-row">
           <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
-          <span id="orderCounter" class="small muted">1 de 5 pedidos</span>
         </div>
-        <button id="departureSubmit" class="btn primary">🛵 Registrar saída</button>
+        <button id="departureSubmit" class="btn primary">🛵 Confirmar e sair para entrega</button>
       </form>
       <div id="departureMsg"></div>
     </div>
-    <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+    <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
       <div class="card"><div class="label">Pedidos hoje</div><div id="statToday" class="metric">0</div></div>
       <div class="card"><div class="label">Últimos 7 dias</div><div id="statWeek" class="metric">0</div></div>
       <div class="card"><div class="label">Este mês</div><div id="statMonth" class="metric">0</div></div>
     </div>
     
-    <div id="myPaymentCard" class="card" style="margin-bottom:18px">
+    <div id="myPaymentCard" class="card courier-payment-card" style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
         <div><div class="label">Meu pagamento de hoje</div><div id="myPaymentTotal" class="payment-own-total">R$ 0,00</div></div>
         <span id="myPaymentStatus" class="badge gray">EM ABERTO</span>
@@ -1120,7 +1262,7 @@
       </div>
       <div id="myPaymentMessage" class="small muted" style="margin-top:10px">Calculado automaticamente pelas entregas registradas hoje.</div>
     </div>
-    <div id="myPixCard" class="card" style="margin-bottom:18px">
+    <div id="myPixCard" class="card courier-pix-card" style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
         <div>
           <h2 style="margin:0">Meu PIX</h2>
@@ -1147,8 +1289,14 @@
       </form>
       <div id="myPixMsg"></div>
     </div>
-    <div class="section"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
+    <div class="section courier-history-card"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
   </main>
+  <nav class="courier-mobile-nav" aria-label="Navegação do motoboy">
+    <button class="active" type="button" data-courier-nav="home" onclick="scrollCourierTo('home',this)"><span>⌂</span>Início</button>
+    <button type="button" data-courier-nav="departure" onclick="scrollCourierTo('departure',this)"><span>＋</span>Saída</button>
+    <button type="button" data-courier-nav="route" onclick="scrollCourierTo('route',this)"><span>🛵</span>Rota</button>
+    <button type="button" data-courier-nav="earnings" onclick="scrollCourierTo('earnings',this)"><span>R$</span>Ganhos</button>
+  </nav>
 </div>
 
 <div id="deliveryConfirmModal" class="modal">
@@ -1357,7 +1505,8 @@ function clearPendingAttendanceToken(){
 }
 function renderAttendanceCheckinNotice(text,type='ok'){
   if(!$('attendanceCheckinStatus'))return;
-  $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}">${escapeHtml(text)}</div>`:'';
+  const icon=type==='ok'?'✓':type==='err'?'!':'i';
+  $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}"><span class="courier-notice-icon" aria-hidden="true">${icon}</span><span>${escapeHtml(text)}</span></div>`:'';
 }
 async function processPendingAttendanceToken(){
   const token=getPendingAttendanceToken();
@@ -1533,7 +1682,7 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" oninput="scheduleIfoodFieldLookup(this)"></label>${count>0?'<button type="button" class="btn danger" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"><button type="button" class="btn scan-btn" aria-label="Escanear pedido ${count+1}" title="Escanear com a câmera" onclick="openOrderScanner(this)">▣</button></span></label>${count>0?'<button type="button" class="btn danger remove-order-btn" aria-label="Remover pedido" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
 function allCourierOrdersIfoodValidated(){
@@ -1556,12 +1705,12 @@ function updateCourierDepartureEligibility(){
   else if(offline)btn.textContent='🔒 Conexão necessária para validar iFood';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
   else if(!valid)btn.textContent='🔒 Valide os pedidos iFood';
-  else btn.textContent='🛵 Registrar saída';
+  else btn.textContent='🛵 Confirmar e sair para entrega';
 
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
   if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||shiftLocked||checkinLocked||n>=5;
 }
-function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5 pedidos`;updateCourierDepartureEligibility()}
+function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5`;updateCourierDepartureEligibility()}
 
 
 
@@ -1832,6 +1981,8 @@ function showApp(){
     $('courierApp').classList.remove('hidden');
     $('courierName').textContent=me.name;
     $('hello').textContent=me.name.split(' ')[0];
+    if($('courierMobileName'))$('courierMobileName').textContent=me.name;
+    if($('courierMobileAvatar'))$('courierMobileAvatar').textContent=(me.name||'M').trim().charAt(0).toUpperCase();
     resetOrderFields();
     renderOfflineQueueStatus();
     processPendingAttendanceToken()
@@ -2528,9 +2679,16 @@ async function loadCourier(){
     const returning=x.operational_stage==='RETURNING';
     const stageStart=returning?(x.returning_at||x.departed_at):x.departed_at;
     const action=returning
-      ? `<button class="btn primary" style="margin-top:16px" onclick="arriveAtStore(${x.id})">✓ Cheguei na loja</button>`
-      : `<button class="btn outline" style="margin-top:16px" onclick="startMyReturn(${x.id})">↩ Todos entregues — iniciar retorno</button>`;
-    $('activeDispatch').innerHTML=`<div class="hero ${returning?'return-hero':''}"><h2>${returning?'🔵 Retornando para a loja':'🟠 Em rota'}</h2>${ordersHtml(x)}<div class="op-progress"><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div><div style="margin-top:14px">${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></div><div style="margin-top:8px">${returning?'Tempo de retorno':'Tempo de rota'}<div class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</div></div><div class="small" style="margin-top:8px">Meta desta etapa: <b>${x.sla_minutes} min</b> • Tempo total fora: ${x.total_elapsed_minutes} min</div>${action}</div>`;
+      ? `<button class="btn primary courier-route-action" onclick="arriveAtStore(${x.id})">✓ Cheguei na loja</button>`
+      : `<button class="btn outline courier-route-action" onclick="startMyReturn(${x.id})">↩ Todos entregues — iniciar retorno</button>`;
+    $('activeDispatch').innerHTML=`<section class="hero courier-route-card ${returning?'return-hero':''}">
+      <div class="courier-route-kicker">Rota ativa</div>
+      <div class="courier-route-title-row"><h2>${returning?'🔵 Retornando para a loja':'🟠 Em rota'}</h2><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div>
+      <div class="courier-route-orders">${ordersHtml(x)}</div>
+      <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div>
+      <div class="courier-route-clock"><span>${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></span><strong class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</strong><small>${returning?'Tempo de retorno':'Tempo de rota'} • meta <b>${x.sla_minutes} min</b> • total fora ${x.total_elapsed_minutes} min</small></div>
+      ${action}
+    </section>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');
       note.id='currentDepartureNote';
@@ -3670,6 +3828,29 @@ async function loadSystemHealth(){
   }catch(err){$('healthBox').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`}
 }
 
+function closeCourierAccountMenu(){
+  const menu=$('courierAccountMenu'),btn=$('courierAccountButton');
+  if(menu)menu.classList.add('hidden');
+  if(btn)btn.setAttribute('aria-expanded','false');
+}
+function toggleCourierAccountMenu(event){
+  event?.stopPropagation?.();
+  const menu=$('courierAccountMenu'),btn=$('courierAccountButton');
+  if(!menu||!btn)return;
+  const open=menu.classList.contains('hidden');
+  menu.classList.toggle('hidden',!open);
+  btn.setAttribute('aria-expanded',open?'true':'false');
+}
+function scrollCourierTo(section,button){
+  const routeTarget=$('activeDispatch')?.children.length
+    ? $('activeDispatch')
+    : (!$('courierDeliveriesCard')?.classList.contains('hidden')?$('courierDeliveriesCard'):$('departureCard'));
+  const target={home:$('courierHome'),departure:$('departureCard'),route:routeTarget,earnings:$('myPaymentCard')}[section];
+  if(!target)return;
+  document.querySelectorAll('#courierApp [data-courier-nav]').forEach(x=>x.classList.toggle('active',x===button));
+  target.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
 function closeAdminProfileMenu(){
   const menu=$('adminProfileMenu'),btn=$('adminProfileButton');
   if(menu)menu.classList.add('hidden');
@@ -3693,8 +3874,10 @@ function closeAdminAccountModal(){$('adminAccountModal').style.display='none'}
 document.addEventListener('click',event=>{
   const wrap=document.querySelector('#adminApp .admin-profile-wrap');
   if(wrap&&!wrap.contains(event.target))closeAdminProfileMenu();
+  const courierWrap=document.querySelector('#courierApp .courier-mobile-account');
+  if(courierWrap&&!courierWrap.contains(event.target))closeCourierAccountMenu();
 });
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeAdminProfileMenu();if($('adminAccountModal'))closeAdminAccountModal();if($('deleteCourierModal')?.style.display==='grid')closeDeleteCourierModal();}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeAdminProfileMenu();closeCourierAccountMenu();if($('adminAccountModal'))closeAdminAccountModal();if($('deleteCourierModal')?.style.display==='grid')closeDeleteCourierModal();}});
 
 function openPasswordModal(force=false){$('passwordModal').classList.toggle('admin-dark-modal',me?.role==='admin');$('passwordModal').style.display='grid';$('passwordMsg').innerHTML='';$('passwordModal').dataset.force=force?'1':'0';$('currentPassword').focus()}
 function closePasswordModal(){if($('passwordModal').dataset.force==='1'&&me?.mustChangePassword)return alert('Você precisa alterar a senha temporária para continuar.');$('passwordModal').style.display='none';$('passwordForm').reset()}
