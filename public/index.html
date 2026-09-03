@@ -24,19 +24,6 @@
 .badge{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#ffedd5;color:#9a3412}.badge.yellow{background:#fef9c3;color:#854d0e}.badge.gray{background:#eef2f7;color:#475569}.badge.red{background:#fee2e2;color:#991b1b}.badge.blue{background:#dbeafe;color:#1d4ed8}
 .hero{background:linear-gradient(135deg,#111827,#1f2937);color:#fff;padding:24px;border-radius:17px;margin-bottom:18px}.hero h2{margin:0 0 7px}.big{font-size:40px;font-weight:900}.mobile-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;padding:20px;z-index:30}.modal-box{width:min(480px,100%);background:#fff;border-radius:17px;padding:24px}.empty{text-align:center;padding:26px;color:var(--muted)}.status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.search{display:flex;gap:8px;padding:15px}.search input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
 .order-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
-.scan-btn{white-space:nowrap;min-height:42px}
-.scanner-box{width:min(560px,100%);padding:18px}
-.scanner-stage{position:relative;background:#05070a;border-radius:14px;overflow:hidden;aspect-ratio:4/3;margin-top:14px}
-.scanner-stage video{width:100%;height:100%;object-fit:cover;display:block}
-.scanner-guide{position:absolute;inset:18% 10%;border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.34);pointer-events:none}
-.scanner-guide:before,.scanner-guide:after{content:"";position:absolute;width:38px;height:38px;border-color:#ff9f0a;border-style:solid}
-.scanner-guide:before{top:-3px;left:-3px;border-width:4px 0 0 4px;border-radius:12px 0 0 0}
-.scanner-guide:after{right:-3px;bottom:-3px;border-width:0 4px 4px 0;border-radius:0 0 12px 0}
-.scanner-help{font-size:13px;color:var(--muted);line-height:1.45;margin-top:10px}
-.scanner-status{padding:10px 12px;border-radius:10px;background:#f3f4f6;margin-top:10px;font-size:13px}
-.scanner-status.ok{background:#dcfce7;color:#166534}
-
-.scanner-status.err{background:#fee2e2;color:#991b1b}
 .ifood-queue{display:grid;gap:9px;margin-top:12px}
 .ifood-order-card{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
 .ifood-order-card.selected{opacity:.55}
@@ -485,6 +472,14 @@
 #courierApp .courier-account-menu button:hover{background:#f1f5f9}
 #courierApp .courier-account-menu button.danger-link{color:#b91c1c}
 #courierApp .content{max-width:780px!important;padding-top:20px}
+#courierApp .courier-desktop-tabs{display:flex;gap:5px;margin-bottom:16px;padding:5px;border:1px solid #e1e6ec;border-radius:14px;background:#fff}
+#courierApp .courier-desktop-tabs button{flex:1;min-height:42px;border:0;border-radius:10px;background:transparent;color:#64748b;font-weight:850;cursor:pointer}
+#courierApp .courier-desktop-tabs button.active{background:#111827;color:#fff}
+#courierApp .courier-tab-panel{display:none}
+#courierApp .courier-tab-panel.active{display:block}
+#courierApp .courier-tab-heading{margin-bottom:15px;padding:4px 2px}
+#courierApp .courier-tab-heading h1{margin:4px 0;font-size:27px;color:#111827}
+#courierApp .courier-tab-heading p{margin:0;color:#64748b;font-size:13px;line-height:1.45}
 #courierApp .courier-home-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 24px;margin-bottom:14px;border-radius:20px;background:linear-gradient(135deg,#111827,#253247);color:#fff;box-shadow:0 15px 40px rgba(15,23,42,.16)}
 #courierApp .courier-eyebrow{font-size:10px;font-weight:900;letter-spacing:1.3px;color:#fbbf24;text-transform:uppercase}
 #courierApp .courier-home-card h1{font-size:27px;line-height:1.12;margin:5px 0 5px}
@@ -492,6 +487,9 @@
 #courierApp .courier-today{flex:0 0 auto;min-width:112px;padding:13px 15px;border:1px solid rgba(255,255,255,.14);border-radius:15px;background:rgba(255,255,255,.08);text-align:center}
 #courierApp .courier-today strong{display:block;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
 #courierApp .courier-today span{display:block;margin-top:5px;font-size:10px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.5px}
+#courierApp .courier-home-direct{display:block;padding:23px 24px}
+#courierApp .courier-home-direct h1{font-size:34px;margin-top:7px}
+#courierApp .courier-home-direct h1 span{font-size:46px;font-variant-numeric:tabular-nums}
 #courierApp .attendance-checkin-banner{display:flex;align-items:flex-start;gap:11px;margin-bottom:14px;padding:14px 15px;line-height:1.4;font-size:13px;font-weight:650}
 #courierApp .courier-notice-icon{flex:0 0 auto;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.62);font-size:13px;font-weight:950}
 #courierApp .card,#courierApp .section{border-color:#e1e6ec;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.055)}
@@ -502,9 +500,8 @@
 #courierApp #orderFields{display:grid;gap:11px}
 #courierApp .order-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
 #courierApp .order-row>label{min-width:0;font-size:12px;color:#475569}
-#courierApp .order-input-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:6px}
+#courierApp .order-input-wrap{display:block;margin-top:6px}
 #courierApp .order-input-wrap .order-input{min-width:0;height:50px;margin:0;padding:0 14px;border-radius:11px;background:#fff;font-size:18px;font-weight:850;letter-spacing:.2px}
-#courierApp .scan-btn{height:50px;min-width:52px;padding:0 13px;border:1px solid #d7dde5;background:#fff;color:#334155;border-radius:11px;font-size:18px}
 #courierApp .remove-order-btn{width:42px;height:50px;padding:0;font-size:20px;border-radius:11px}
 #courierApp .order-validation{margin:0;min-height:17px;line-height:1.35}
 #courierApp .courier-add-row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:12px 0 2px}
@@ -529,6 +526,17 @@
 #courierApp .courier-stats .card{padding:14px 12px;text-align:center}
 #courierApp .courier-stats .label{min-height:32px;font-size:11px}
 #courierApp .courier-stats .metric{font-size:27px}
+#courierApp .courier-section-heading{margin:20px 2px 0}
+#courierApp .courier-section-heading h2{margin:0;font-size:19px}
+#courierApp .courier-section-heading p{margin:4px 0 0;color:#64748b;font-size:12px}
+#courierApp .courier-earnings-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#courierApp .courier-earning-card{padding:17px 15px;border:1px solid #e1e6ec;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.055)}
+#courierApp .courier-earning-card.today{border-color:#f5c35b;background:#fffaf0}
+#courierApp .courier-earning-card span{display:block;font-size:11px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.55px}
+#courierApp .courier-earning-card strong{display:block;margin-top:8px;font-size:23px;line-height:1.1;color:#111827;font-variant-numeric:tabular-nums}
+#courierApp .courier-earning-card small{display:block;margin-top:7px;color:#64748b;font-size:10px}
+#courierApp .courier-nav-icon{position:relative}
+#courierApp #courierRouteBadge{position:absolute;top:-7px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:9px;font-style:normal;line-height:16px;text-align:center}
 #courierApp .courier-payment-card,#courierApp .courier-pix-card{scroll-margin-top:78px}
 #courierApp .courier-history-card{scroll-margin-top:78px}
 #courierApp .courier-mobile-nav{display:none}
@@ -541,6 +549,7 @@
   #courierApp .courier-top-actions>.connectionStatus{display:inline-flex!important;font-size:10px;padding:7px 8px}
   #courierApp .courier-top-actions>#installBtnCourier:not(.hidden){display:inline-flex;min-height:38px;padding:7px 9px;font-size:10px}
   #courierApp .courier-mobile-account{display:block}
+  #courierApp .courier-desktop-tabs{display:none}
   #courierApp .content{padding:12px 11px calc(88px + env(safe-area-inset-bottom))!important}
   #courierApp .courier-home-card{padding:18px 16px;border-radius:17px;gap:12px}
   #courierApp .courier-home-card h1{font-size:23px}
@@ -553,7 +562,6 @@
   #courierApp #departureCard{padding:17px 15px}
   #courierApp .order-row{padding:10px}
   #courierApp .order-input-wrap .order-input{font-size:16px}
-  #courierApp .scan-btn{padding:0 12px}
   #courierApp #addOrderBtn{flex:1;padding:10px 11px}
   #courierApp .courier-route-card{padding:19px 17px}
   #courierApp .courier-route-title-row h2{font-size:23px}
@@ -569,7 +577,11 @@
   #courierApp .courier-history-card td:nth-child(1){font-weight:850}
   #courierApp .courier-history-card td:nth-child(2){grid-column:1/2;color:#64748b}
   #courierApp .courier-history-card td:nth-child(3){grid-column:2/3;grid-row:1/3;align-self:center}
-  #courierApp .courier-mobile-nav{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:22;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;padding:6px;border:1px solid rgba(255,255,255,.1);border-radius:17px;background:rgba(17,24,39,.97);box-shadow:0 14px 40px rgba(15,23,42,.35);backdrop-filter:blur(16px)}
+  #courierApp .courier-earnings-summary{grid-template-columns:1fr}
+  #courierApp .courier-earning-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px;padding:15px}
+  #courierApp .courier-earning-card strong{grid-column:2;grid-row:1/3;margin:0;font-size:22px;text-align:right}
+  #courierApp .courier-earning-card small{margin:0}
+  #courierApp .courier-mobile-nav{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:22;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:6px;border:1px solid rgba(255,255,255,.1);border-radius:17px;background:rgba(17,24,39,.97);box-shadow:0 14px 40px rgba(15,23,42,.35);backdrop-filter:blur(16px)}
   #courierApp .courier-mobile-nav button{min-width:0;min-height:49px;padding:5px 2px;border:0;border-radius:11px;background:transparent;color:#9ca3af;font-size:10px;font-weight:800;display:grid;place-items:center;gap:1px}
   #courierApp .courier-mobile-nav button span{display:block;font-size:18px;line-height:1}
   #courierApp .courier-mobile-nav button.active{background:#2b3442;color:#fff}
@@ -1205,97 +1217,125 @@
     </div>
   </header>
   <main class="content" style="max-width:760px">
-    <section id="courierHome" class="courier-home-card">
-      <div>
-        <div class="courier-eyebrow">Minha operação</div>
-        <h1>Olá, <span id="hello"></span> 👋</h1>
-        <p>Acompanhe seu turno e registre cada saída.</p>
+    <nav class="courier-desktop-tabs" aria-label="Áreas do motoboy">
+      <button class="active" type="button" data-courier-nav="home" onclick="activateCourierTab('home',this)">Início</button>
+      <button type="button" data-courier-nav="route" onclick="activateCourierTab('route',this)">Rota</button>
+      <button type="button" data-courier-nav="earnings" onclick="activateCourierTab('earnings',this)">Ganhos</button>
+    </nav>
+    <section id="courierHomeTab" class="courier-tab-panel active" data-courier-panel="home">
+      <div id="courierHome" class="courier-home-card courier-home-direct">
+        <div>
+          <div class="courier-eyebrow">Pedidos de hoje</div>
+          <h1><span id="myToday">0</span> pedidos</h1>
+          <p>Total despachado por você hoje.</p>
+        </div>
       </div>
-      <div class="courier-today"><strong id="myToday">0</strong><span>pedidos hoje</span></div>
+      <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
+      <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
+      <div id="attendanceCheckinStatus"></div>
+      <div id="departureCard" class="card">
+        <div class="courier-card-heading">
+          <div><div class="courier-eyebrow">Despachar pedidos</div><h2>Nova saída</h2></div>
+          <span id="orderCounter" class="badge gray">1 de 5</span>
+        </div>
+        <p class="courier-helper">Digite de 1 a 5 pedidos iFood. Cada pedido será validado automaticamente.</p>
+        <form id="departureForm" class="form">
+          <div id="orderFields"></div>
+          <div class="courier-add-row">
+            <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
+          </div>
+          <button id="departureSubmit" class="btn primary">🛵 Confirmar e sair para entrega</button>
+        </form>
+        <div id="departureMsg"></div>
+      </div>
     </section>
-    <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
-    <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
-    <div id="attendanceCheckinStatus"></div>
-    <div id="activeDispatch"></div>
-    <div id="courierDeliveriesCard" class="card hidden" style="margin-bottom:18px">
-      <div class="courier-card-heading">
-        <div>
-          <div class="courier-eyebrow">Durante a rota</div>
-          <h2 style="margin:4px 0 0">📦 Minhas entregas iFood</h2>
-          <div class="small muted" style="margin-top:4px">Confirme a entrega usando o código/localizador informado pelo cliente.</div>
+
+    <section id="courierRouteTab" class="courier-tab-panel" data-courier-panel="route">
+      <div class="courier-tab-heading">
+        <div class="courier-eyebrow">Minha operação</div>
+        <h1>Rota e pedidos</h1>
+        <p>Acompanhe a rota ativa e confirme as entregas pendentes.</p>
+      </div>
+      <div id="activeDispatch"></div>
+      <div id="courierDeliveriesCard" class="card" style="margin-bottom:18px">
+        <div class="courier-card-heading">
+          <div>
+            <div class="courier-eyebrow">Pedidos de hoje</div>
+            <h2 style="margin:4px 0 0">Entregas e confirmações</h2>
+            <div class="small muted" style="margin-top:4px">Pedidos concluídos aparecem aqui. O que ainda precisar de código ficará pendente.</div>
+          </div>
+          <button type="button" class="btn outline courier-refresh-btn" onclick="loadCourierDeliveries()">Atualizar</button>
         </div>
-        <button type="button" class="btn outline courier-refresh-btn" onclick="loadCourierDeliveries()">Atualizar</button>
+        <div id="courierDeliveriesList" class="delivery-list"></div>
       </div>
-      <div id="courierDeliveriesList" class="delivery-list"></div>
-    </div>
-    <div id="departureCard" class="card">
-      <div class="courier-card-heading">
-        <div><div class="courier-eyebrow">Próxima saída</div><h2>Adicionar pedidos</h2></div>
-        <span id="orderCounter" class="badge gray">1 de 5</span>
+      <div class="section courier-history-card"><div class="section-head"><b>Histórico de saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
+    </section>
+
+    <section id="courierEarningsTab" class="courier-tab-panel" data-courier-panel="earnings">
+      <div class="courier-tab-heading">
+        <div class="courier-eyebrow">Meu resumo</div>
+        <h1>Ganhos</h1>
+        <p>Valores parciais calculados pelas entregas registradas.</p>
       </div>
-      <p class="courier-helper">Digite ou escaneie de 1 a 5 pedidos iFood. O sistema valida cada pedido automaticamente.</p>
-      <form id="departureForm" class="form">
-        <div id="orderFields"></div>
-        <div class="courier-add-row">
-          <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
+      <div class="courier-earnings-summary">
+        <div class="courier-earning-card today"><span>Hoje</span><strong id="myEarningsToday">R$ 0,00</strong><small>Parcial do dia</small></div>
+        <div class="courier-earning-card"><span>Semana</span><strong id="myEarningsWeek">R$ 0,00</strong><small>Segunda até hoje</small></div>
+        <div class="courier-earning-card"><span>Mês</span><strong id="myEarningsMonth">R$ 0,00</strong><small>Do dia 1 até hoje</small></div>
+      </div>
+
+      <div class="courier-section-heading"><h2>Entregas realizadas</h2><p>Quantidade de pedidos em cada período.</p></div>
+      <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
+        <div class="card"><div class="label">Hoje</div><div id="statToday" class="metric">0</div></div>
+        <div class="card"><div class="label">Semana atual</div><div id="statWeek" class="metric">0</div></div>
+        <div class="card"><div class="label">Mês atual</div><div id="statMonth" class="metric">0</div></div>
+      </div>
+
+      <div id="myPaymentCard" class="card courier-payment-card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
+          <div><div class="label">Detalhes de hoje</div><div id="myPaymentTotal" class="payment-own-total">R$ 0,00</div></div>
+          <span id="myPaymentStatus" class="badge gray">EM ABERTO</span>
         </div>
-        <button id="departureSubmit" class="btn primary">🛵 Confirmar e sair para entrega</button>
-      </form>
-      <div id="departureMsg"></div>
-    </div>
-    <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
-      <div class="card"><div class="label">Pedidos hoje</div><div id="statToday" class="metric">0</div></div>
-      <div class="card"><div class="label">Últimos 7 dias</div><div id="statWeek" class="metric">0</div></div>
-      <div class="card"><div class="label">Este mês</div><div id="statMonth" class="metric">0</div></div>
-    </div>
-    
-    <div id="myPaymentCard" class="card courier-payment-card" style="margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
-        <div><div class="label">Meu pagamento de hoje</div><div id="myPaymentTotal" class="payment-own-total">R$ 0,00</div></div>
-        <span id="myPaymentStatus" class="badge gray">EM ABERTO</span>
-      </div>
-      <div class="payment-mini">
-        <div><div class="label">Entregas</div><b id="myPaymentDeliveries">0</b></div>
-        <div><div class="label">Valor/entrega</div><b id="myPaymentPerDelivery">R$ 0,00</b></div>
-        <div><div class="label">Encosta</div><b id="myPaymentBase">R$ 0,00</b></div>
-        <div><div class="label">Ajustes líquidos</div><b id="myPaymentAdjustments">R$ 0,00</b></div>
-      </div>
-      <div id="myPaymentMessage" class="small muted" style="margin-top:10px">Calculado automaticamente pelas entregas registradas hoje.</div>
-    </div>
-    <div id="myPixCard" class="card courier-pix-card" style="margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
-        <div>
-          <h2 style="margin:0">Meu PIX</h2>
-          <div class="small muted" style="margin-top:4px">Cadastre sua chave. Ela só será usada em pagamentos depois que o administrador confirmar.</div>
+        <div class="payment-mini">
+          <div><div class="label">Entregas</div><b id="myPaymentDeliveries">0</b></div>
+          <div><div class="label">Valor/entrega</div><b id="myPaymentPerDelivery">R$ 0,00</b></div>
+          <div><div class="label">Encosta</div><b id="myPaymentBase">R$ 0,00</b></div>
+          <div><div class="label">Ajustes líquidos</div><b id="myPaymentAdjustments">R$ 0,00</b></div>
         </div>
-        <span id="myPixStatus" class="badge gray">NÃO CADASTRADO</span>
+        <div id="myPaymentMessage" class="small muted" style="margin-top:10px">Calculado automaticamente pelas entregas registradas hoje.</div>
       </div>
-      <form id="myPixForm" class="form" style="margin-top:14px">
-        <div class="pix-self-grid">
-          <label>Titular do PIX<input id="myPixHolder" maxlength="160" placeholder="Nome do titular"></label>
-          <label>Tipo de chave
-            <select id="myPixType">
-              <option value="">Selecione</option>
-              <option>CPF</option>
-              <option>Celular</option>
-              <option>E-mail</option>
-              <option>Chave aleatória</option>
-            </select>
-          </label>
+      <div id="myPixCard" class="card courier-pix-card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">Meu PIX</h2>
+            <div class="small muted" style="margin-top:4px">Cadastre sua chave. Ela só será usada em pagamentos depois que o administrador confirmar.</div>
+          </div>
+          <span id="myPixStatus" class="badge gray">NÃO CADASTRADO</span>
         </div>
-        <label style="font-size:12px;font-weight:800">Chave PIX<input id="myPixKey" maxlength="220" placeholder="Digite sua chave PIX"></label>
-        <div id="myPixInfo" class="small muted"></div>
-        <button id="myPixSaveBtn" class="btn primary" type="submit">Salvar meu PIX</button>
-      </form>
-      <div id="myPixMsg"></div>
-    </div>
-    <div class="section courier-history-card"><div class="section-head"><b>Minhas últimas saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
+        <form id="myPixForm" class="form" style="margin-top:14px">
+          <div class="pix-self-grid">
+            <label>Titular do PIX<input id="myPixHolder" maxlength="160" placeholder="Nome do titular"></label>
+            <label>Tipo de chave
+              <select id="myPixType">
+                <option value="">Selecione</option>
+                <option>CPF</option>
+                <option>Celular</option>
+                <option>E-mail</option>
+                <option>Chave aleatória</option>
+              </select>
+            </label>
+          </div>
+          <label style="font-size:12px;font-weight:800">Chave PIX<input id="myPixKey" maxlength="220" placeholder="Digite sua chave PIX"></label>
+          <div id="myPixInfo" class="small muted"></div>
+          <button id="myPixSaveBtn" class="btn primary" type="submit">Salvar meu PIX</button>
+        </form>
+        <div id="myPixMsg"></div>
+      </div>
+    </section>
   </main>
   <nav class="courier-mobile-nav" aria-label="Navegação do motoboy">
-    <button class="active" type="button" data-courier-nav="home" onclick="scrollCourierTo('home',this)"><span>⌂</span>Início</button>
-    <button type="button" data-courier-nav="departure" onclick="scrollCourierTo('departure',this)"><span>＋</span>Saída</button>
-    <button type="button" data-courier-nav="route" onclick="scrollCourierTo('route',this)"><span>🛵</span>Rota</button>
-    <button type="button" data-courier-nav="earnings" onclick="scrollCourierTo('earnings',this)"><span>R$</span>Ganhos</button>
+    <button class="active" type="button" data-courier-nav="home" onclick="activateCourierTab('home',this)"><span>⌂</span>Início</button>
+    <button type="button" data-courier-nav="route" onclick="activateCourierTab('route',this)"><span class="courier-nav-icon">🛵<i id="courierRouteBadge" class="hidden">0</i></span>Rota</button>
+    <button type="button" data-courier-nav="earnings" onclick="activateCourierTab('earnings',this)"><span>R$</span>Ganhos</button>
   </nav>
 </div>
 
@@ -1384,34 +1424,6 @@
 <div id="adminAccountModal" class="modal admin-account-modal"><div class="modal-box admin-account-box"><div class="modal-title-row"><div><h2>Minha conta</h2><p>Informações do acesso administrativo.</p></div><button class="btn outline modal-close" type="button" onclick="closeAdminAccountModal()">×</button></div><div class="admin-account-details"><div><span>Nome</span><b id="adminAccountName">Administrador</b></div><div><span>Usuário</span><b id="adminAccountUsername">admin</b></div><div><span>Perfil</span><b>Administrador</b></div></div><div class="admin-account-actions"><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordModal()">Alterar minha senha</button></div></div></div>
 
 <div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<input id="currentPassword" type="password" required></label><label>Nova senha<input id="newPassword" type="password" minlength="8" required></label><label>Confirmar nova senha<input id="newPassword2" type="password" minlength="8" required></label><button class="btn primary">Alterar senha</button></form></div></div>
-
-<div id="scannerModal" class="modal">
-  <div class="modal-box scanner-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-      <div>
-        <h2 style="margin:0">📷 Escanear pedido</h2>
-        <div class="small muted">Leia somente o pedido selecionado.</div>
-      </div>
-      <button class="btn outline" type="button" onclick="closeOrderScanner()">×</button>
-    </div>
-
-    <div id="scannerStage" class="scanner-stage">
-      <video id="scannerVideo" autoplay muted playsinline></video>
-      <div class="scanner-guide"></div>
-    </div>
-
-    <div id="scannerStatus" class="scanner-status">Preparando câmera...</div>
-    <div class="scanner-help">
-      Aponte para o QR Code ou código de barras do pedido. O scanner preenche apenas um campo e não registra a saída automaticamente.
-    </div>
-
-    <div class="actions" style="margin-top:12px">
-      <button id="scannerTorchBtn" class="btn outline hidden" type="button" onclick="toggleScannerTorch()">🔦 Lanterna</button>
-      <button class="btn outline" type="button" onclick="closeOrderScanner()">Cancelar</button>
-    </div>
-  </div>
-</div>
-
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
@@ -1682,7 +1694,7 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"><button type="button" class="btn scan-btn" aria-label="Escanear pedido ${count+1}" title="Escanear com a câmera" onclick="openOrderScanner(this)">▣</button></span></label>${count>0?'<button type="button" class="btn danger remove-order-btn" aria-label="Remover pedido" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"></span></label>${count>0?'<button type="button" class="btn danger remove-order-btn" aria-label="Remover pedido" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
 function allCourierOrdersIfoodValidated(){
@@ -1980,9 +1992,9 @@ function showApp(){
   }else{
     $('courierApp').classList.remove('hidden');
     $('courierName').textContent=me.name;
-    $('hello').textContent=me.name.split(' ')[0];
     if($('courierMobileName'))$('courierMobileName').textContent=me.name;
     if($('courierMobileAvatar'))$('courierMobileAvatar').textContent=(me.name||'M').trim().charAt(0).toUpperCase();
+    activateCourierTab('home',null,false);
     resetOrderFields();
     renderOfflineQueueStatus();
     processPendingAttendanceToken()
@@ -2468,6 +2480,10 @@ async function loadMyPayment(){
   try{
     const d=await api('/api/courier/payment/today');
     const p=d.payment;
+    const summary=d.summary||{};
+    $('myEarningsToday').textContent=brl(summary.today?.total_amount??p.total_amount);
+    $('myEarningsWeek').textContent=brl(summary.week?.total_amount||0);
+    $('myEarningsMonth').textContent=brl(summary.month?.total_amount||0);
     $('myPaymentTotal').textContent=brl(p.total_amount);
     $('myPaymentDeliveries').textContent=p.delivery_count;
     $('myPaymentPerDelivery').textContent=brl(p.per_delivery);
@@ -2481,6 +2497,9 @@ async function loadMyPayment(){
       ? `Fechamento ${paymentStatusText(p.status).toLowerCase()}. Os valores estão congelados.`
       : 'Valor parcial: atualiza automaticamente conforme novas entregas são registradas.';
   }catch(err){
+    $('myEarningsToday').textContent='R$ 0,00';
+    $('myEarningsWeek').textContent='R$ 0,00';
+    $('myEarningsMonth').textContent='R$ 0,00';
     $('myPaymentMessage').textContent='Pagamento indisponível no momento.';
   }
 }
@@ -2576,26 +2595,34 @@ async function loadCourierDeliveries(){
     const d=await api('/api/courier/ifood/deliveries');
     const current=d.current||[];
     const pending=d.pending||[];
-    const hasAny=current.length||pending.length;
+    const completed=d.completed||[];
+    const hasAny=current.length||pending.length||completed.length;
+    const attentionCount=current.filter(x=>x.can_confirm===true).length+pending.length;
+    const routeBadge=$('courierRouteBadge');
+    if(routeBadge){
+      routeBadge.textContent=String(attentionCount);
+      routeBadge.classList.toggle('hidden',attentionCount===0);
+    }
 
-    $('courierDeliveriesCard').classList.toggle('hidden',!hasAny);
     if(!hasAny){
-      $('courierDeliveriesList').innerHTML='';
+      $('courierDeliveriesList').innerHTML='<div class="empty">Nenhum pedido registrado hoje.</div>';
       return;
     }
 
     let out='';
     if(current.length){
-      out+=`<div class="delivery-section-label">Com você agora</div>${current.map(courierDeliveryRow).join('')}`;
+      out+=`<div class="delivery-section-label">Em rota agora</div>${current.map(courierDeliveryRow).join('')}`;
     }
     if(pending.length){
       out+=`<div class="delivery-section-label">Pendentes de confirmação</div>
-        <div class="small muted" style="margin-bottom:6px">Pedidos de saídas anteriores de hoje que ainda precisam de confirmação.</div>
+        <div class="small muted" style="margin-bottom:6px">Estes pedidos ainda precisam ser confirmados.</div>
         ${pending.map(courierDeliveryRow).join('')}`;
+    }
+    if(completed.length){
+      out+=`<div class="delivery-section-label">Confirmados hoje</div>${completed.map(courierDeliveryRow).join('')}`;
     }
     $('courierDeliveriesList').innerHTML=out;
   }catch(err){
-    $('courierDeliveriesCard').classList.remove('hidden');
     $('courierDeliveriesList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
   }
 }
@@ -2647,6 +2674,7 @@ async function submitDeliveryConfirmation(e){
 }
 
 let courierActiveDispatch=null;
+let courierFirstDashboardLoad=true;
 async function loadCourier(){
   const d=await api('/api/courier/dashboard');
   me.mustChangePassword=!!d.mustChangePassword;
@@ -2701,6 +2729,9 @@ async function loadCourier(){
     $('currentDepartureNote')?.remove();
   }
 
+  if(courierFirstDashboardLoad&&d.active)activateCourierTab('route',null,false);
+  courierFirstDashboardLoad=false;
+
   loadMyPayment();
   loadMyPix();
   loadCourierDeliveries();
@@ -2717,6 +2748,7 @@ async function arriveAtStore(id){
   try{
     await api('/api/courier/dispatches/'+id+'/arrive',{method:'POST'});
     await loadCourier();
+    activateCourierTab('home',null,true);
   }catch(err){alert(err.message)}
 }
 
@@ -2778,6 +2810,7 @@ async function depart(e){
         }
         message('departureMsg',successText,'ok');
         await loadCourier();
+        activateCourierTab('route',null,true);
         return;
       }
 
@@ -3841,14 +3874,18 @@ function toggleCourierAccountMenu(event){
   menu.classList.toggle('hidden',!open);
   btn.setAttribute('aria-expanded',open?'true':'false');
 }
-function scrollCourierTo(section,button){
-  const routeTarget=$('activeDispatch')?.children.length
-    ? $('activeDispatch')
-    : (!$('courierDeliveriesCard')?.classList.contains('hidden')?$('courierDeliveriesCard'):$('departureCard'));
-  const target={home:$('courierHome'),departure:$('departureCard'),route:routeTarget,earnings:$('myPaymentCard')}[section];
-  if(!target)return;
-  document.querySelectorAll('#courierApp [data-courier-nav]').forEach(x=>x.classList.toggle('active',x===button));
-  target.scrollIntoView({behavior:'smooth',block:'start'});
+function activateCourierTab(section,button=null,scroll=true){
+  const panel=document.querySelector(`#courierApp [data-courier-panel="${section}"]`);
+  if(!panel)return;
+  document.querySelectorAll('#courierApp [data-courier-panel]').forEach(x=>x.classList.toggle('active',x===panel));
+  document.querySelectorAll('#courierApp [data-courier-nav]').forEach(x=>x.classList.toggle('active',x.dataset.courierNav===section));
+  closeCourierAccountMenu();
+  if(section==='route')loadCourierDeliveries().catch(()=>{});
+  if(section==='earnings'){
+    loadMyPayment().catch(()=>{});
+    loadMyPix().catch(()=>{});
+  }
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function closeAdminProfileMenu(){
