@@ -836,6 +836,21 @@ let ifoodTokenCache = {
 };
 
 let ifoodSyncRunning = false;
+const configuredIfoodPreparationSyncIntervalMs = Number(
+  process.env.IFOOD_PREPARATION_SYNC_INTERVAL_MS || 5 * 60 * 1000
+);
+const IFOOD_PREPARATION_SYNC_INTERVAL_MS = Number.isFinite(configuredIfoodPreparationSyncIntervalMs)
+  ? Math.max(60 * 1000, configuredIfoodPreparationSyncIntervalMs)
+  : 5 * 60 * 1000;
+let ifoodPreparationSyncRunning = false;
+let ifoodPreparationSyncLastStartedAt = 0;
+let ifoodPreparationSyncLastResult = {
+  configured: false,
+  checked: 0,
+  changed: 0,
+  failed: 0,
+  scheduled: false
+};
 
 function ifoodConfigured() {
   return Boolean(
@@ -1627,6 +1642,69 @@ async function syncIfoodPreparationTimes(merchantIds = []) {
   };
 }
 
+function queueIfoodPreparationTimeSync(merchantIds = [], reason = "scheduled") {
+  if (!ifoodPreparationTimeConfigured()) {
+    ifoodPreparationSyncLastResult = {
+      configured: false,
+      checked: 0,
+      changed: 0,
+      failed: 0,
+      scheduled: false,
+      skipped: true,
+      reason: "IFOOD_CUSTOMER_ID_MISSING"
+    };
+    return ifoodPreparationSyncLastResult;
+  }
+
+  const now = Date.now();
+  if (ifoodPreparationSyncRunning || now - ifoodPreparationSyncLastStartedAt < IFOOD_PREPARATION_SYNC_INTERVAL_MS) {
+    return {
+      ...ifoodPreparationSyncLastResult,
+      scheduled: false,
+      skipped: true,
+      reason: ifoodPreparationSyncRunning ? "already_running" : "not_due"
+    };
+  }
+
+  ifoodPreparationSyncRunning = true;
+  ifoodPreparationSyncLastStartedAt = now;
+  const uniqueMerchantIds = [...new Set(merchantIds.map(String).filter(Boolean))];
+
+  setImmediate(async () => {
+    try {
+      const result = await syncIfoodPreparationTimes(uniqueMerchantIds);
+      ifoodPreparationSyncLastResult = {
+        ...result,
+        scheduled: false,
+        reason,
+        completed_at: new Date().toISOString()
+      };
+      if (Number(result.changed || 0) > 0) {
+        io.emit("ifood:changed", { scope: "admin", reason: "preparation_time" });
+      }
+    } catch (err) {
+      ifoodPreparationSyncLastResult = {
+        ...ifoodPreparationSyncLastResult,
+        scheduled: false,
+        failed: Number(ifoodPreparationSyncLastResult.failed || 0) + 1,
+        reason,
+        error: ifoodSafeError(err)
+      };
+      console.error("iFood preparation time background sync:", ifoodSafeError(err));
+    } finally {
+      ifoodPreparationSyncRunning = false;
+    }
+  });
+
+  return {
+    ...ifoodPreparationSyncLastResult,
+    configured: true,
+    scheduled: true,
+    skipped: false,
+    reason
+  };
+}
+
 function normalizeIfoodEvents(body) {
   if (Array.isArray(body)) return body;
   if (Array.isArray(body?.events)) return body.events;
@@ -2204,10 +2282,6 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
       );
     }
 
-    // v3.5: acompanha o "Meu Tempo de Preparo" configurado no próprio iFood.
-    // A falha deste endpoint não bloqueia a sincronização de pedidos/eventos.
-    const preparationTimes = await syncIfoodPreparationTimes(merchantIds);
-
     const url = new URL(`${IFOOD_EVENTS_BASE}/events:polling`);
     url.searchParams.set("categories", "FOOD");
     // PDV/Food: NÃO usar excludeHeartbeat. O heartbeat do polling é usado pelo iFood
@@ -2227,6 +2301,7 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
     let ordersUpdated = 0;
     let newEvents = 0;
     const detailsFetched = new Set();
+    const changedOrderIds = new Set();
 
     for (const event of events) {
       if (!event?.id) continue;
@@ -2238,11 +2313,13 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
 
       if (event.orderId) {
         const orderId = String(event.orderId);
+        changedOrderIds.add(orderId);
         const already = await ifoodOrderAlreadyStored(orderId);
 
-        // Para evento novo, ou caso ainda não tenhamos detalhes do pedido,
-        // recupera a estrutura completa antes do ACK.
-        if ((!already || stored.stored) && !detailsFetched.has(orderId)) {
+        // Os detalhes completos só são necessários quando o pedido ainda não existe
+        // localmente. Eventos de status de pedidos conhecidos são aplicados direto,
+        // evitando uma chamada extra ao iFood em cada mudança de etapa.
+        if (!already && !detailsFetched.has(orderId)) {
           try {
             const order = await fetchIfoodOrderDetails(orderId);
             await upsertIfoodOrderFromDetails(order, event);
@@ -2356,6 +2433,30 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
     const acknowledged = await acknowledgeIfoodEvents(ackIds);
     await setIfoodSyncSuccess(events.length);
 
+    let affectedCourierIds = [];
+    if (changedOrderIds.size) {
+      affectedCourierIds = (await pool.query(`
+        SELECT DISTINCT d.courier_id
+        FROM ifood_dispatch_links l
+        JOIN dispatches d ON d.id=l.dispatch_id
+        WHERE l.ifood_order_id=ANY($1::text[])
+      `, [[...changedOrderIds]])).rows
+        .map(row => Number(row.courier_id))
+        .filter(Number.isInteger);
+    }
+
+    if (events.length > 0) {
+      io.emit("ifood:changed", {
+        reason: "events_processed",
+        event_count: events.length,
+        courier_ids: affectedCourierIds
+      });
+    }
+
+    // O tempo de preparo continua sincronizado, mas fora do caminho crítico dos
+    // eventos. Assim uma consulta auxiliar lenta nunca atrasa uma baixa de pedido.
+    const preparationTimes = queueIfoodPreparationTimeSync(merchantIds, reason);
+
     return {
       ok: true,
       reason,
@@ -2364,6 +2465,8 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
       newEvents,
       ordersUpdated,
       acknowledged,
+      affectedCourierIds,
+      realtimeEmitted: events.length > 0,
       preparationTimes
     };
   } catch (err) {
@@ -6558,7 +6661,7 @@ app.post("/api/admin/ifood/sync-now", auth, adminOnly, asyncRoute(async (req, re
     result
   );
 
-  io.emit("ifood:changed");
+  if (!result.realtimeEmitted) io.emit("ifood:changed", { reason: "admin_manual" });
   res.json(result);
 }));
 
@@ -7893,9 +7996,6 @@ setInterval(() => {
   if (!ifoodAutoEnabled() || !ifoodConfigured()) return;
 
   syncIfoodOnce({ reason: "automatic_30s" })
-    .then(result => {
-      if (result.events > 0 || Number(result.preparationTimes?.changed || 0) > 0) io.emit("ifood:changed");
-    })
     .catch(err => {
       console.error("iFood automatic sync:", ifoodSafeError(err));
     });
@@ -7905,9 +8005,6 @@ setTimeout(() => {
   if (!ifoodAutoEnabled() || !ifoodConfigured()) return;
 
   syncIfoodOnce({ reason: "automatic_startup" })
-    .then(result => {
-      if (result.events > 0 || Number(result.preparationTimes?.changed || 0) > 0) io.emit("ifood:changed");
-    })
     .catch(err => {
       console.error("iFood startup sync:", ifoodSafeError(err));
     });
