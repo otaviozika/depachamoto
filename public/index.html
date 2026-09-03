@@ -1476,13 +1476,22 @@ async function stopForExpiredSession(response){
   return true;
 }
 
+const apiGetInFlight=new Map();
 async function api(url,opt={}){
-  const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
-  let d={};try{d=await r.json()}catch{}
-  await stopForExpiredSession(r);
-  if(!r.ok){const err=new Error(d.error||'Erro na operação.');err.status=r.status;err.code=d.code;err.payload=d;throw err}
-  if(d.server_now)syncServerTime(d.server_now);
-  return d;
+  const method=String(opt.method||'GET').toUpperCase();
+  const request=async()=>{
+    const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
+    let d={};try{d=await r.json()}catch{}
+    await stopForExpiredSession(r);
+    if(!r.ok){const err=new Error(d.error||'Erro na operação.');err.status=r.status;err.code=d.code;err.payload=d;throw err}
+    if(d.server_now)syncServerTime(d.server_now);
+    return d;
+  };
+  if(method!=='GET')return request();
+  if(apiGetInFlight.has(url))return apiGetInFlight.get(url);
+  const pending=request();
+  apiGetInFlight.set(url,pending);
+  try{return await pending}finally{if(apiGetInFlight.get(url)===pending)apiGetInFlight.delete(url)}
 }
 function syncServerTime(serverNow){const t=Date.parse(serverNow);if(Number.isFinite(t))serverOffsetMs=t-Date.now()}
 function serverNowMs(){return Date.now()+serverOffsetMs}
@@ -2675,7 +2684,7 @@ async function submitDeliveryConfirmation(e){
 
 let courierActiveDispatch=null;
 let courierFirstDashboardLoad=true;
-async function loadCourier(){
+async function loadCourier({related=true}={}){
   const d=await api('/api/courier/dashboard');
   me.mustChangePassword=!!d.mustChangePassword;
   courierActiveDispatch=d.active||null;
@@ -2732,9 +2741,11 @@ async function loadCourier(){
   if(courierFirstDashboardLoad&&d.active)activateCourierTab('route',null,false);
   courierFirstDashboardLoad=false;
 
-  loadMyPayment();
-  loadMyPix();
-  loadCourierDeliveries();
+  if(related){
+    loadMyPayment();
+    loadMyPix();
+    loadCourierDeliveries();
+  }
 }
 async function startMyReturn(id){
   if(!confirm('Confirmar que você terminou todas as entregas desta saída e está retornando para a loja?'))return;
@@ -3782,9 +3793,15 @@ async function loadConflicts(){
 async function resolveConflict(id){
   try{await api('/api/admin/conflicts/'+id+'/resolve',{method:'POST'});await loadConflicts()}catch(err){alert(err.message)}
 }
-async function heartbeat(){
-  if(!me)return;
-  try{await api('/api/presence',{method:'POST'})}catch{}
+let heartbeatInFlight=false;
+let lastHeartbeatAt=0;
+async function heartbeat({force=false}={}){
+  if(!me||document.hidden||!navigator.onLine||heartbeatInFlight)return;
+  const now=Date.now();
+  if(!force&&now-lastHeartbeatAt<45000)return;
+  heartbeatInFlight=true;
+  lastHeartbeatAt=now;
+  try{await api('/api/presence',{method:'POST'})}catch{}finally{heartbeatInFlight=false}
 }
 
 async function loadReport(){
@@ -4144,39 +4161,86 @@ $('manualDispatchForm').onsubmit=submitManualDispatch;
 $('attendanceManualForm').onsubmit=submitManualAttendance;
 $('manualCourier').onchange=updateManualActiveInfo;
 
+const realtimeRefreshState=new Map();
+function queueRealtimeRefresh(key,task,delay=500,{visibleOnly=false}={}){
+  let state=realtimeRefreshState.get(key);
+  if(!state){state={task,delay,visibleOnly,timer:null,running:false,queued:false};realtimeRefreshState.set(key,state)}
+  state.task=task;state.delay=delay;state.visibleOnly=visibleOnly;state.queued=true;
+  if(state.timer||state.running||(visibleOnly&&document.hidden))return;
+  state.timer=setTimeout(()=>flushRealtimeRefresh(key),delay);
+}
+async function flushRealtimeRefresh(key){
+  const state=realtimeRefreshState.get(key);
+  if(!state||state.running)return;
+  if(state.timer){clearTimeout(state.timer);state.timer=null}
+  if(state.visibleOnly&&document.hidden)return;
+  if(!state.queued)return;
+  state.queued=false;state.running=true;
+  try{await state.task()}catch(err){console.warn('Atualização em tempo real:',err)}finally{
+    state.running=false;
+    if(state.queued&&!(state.visibleOnly&&document.hidden))state.timer=setTimeout(()=>flushRealtimeRefresh(key),Math.max(state.delay,750));
+  }
+}
+function flushVisibleRealtimeRefreshes(){
+  for(const [key,state] of realtimeRefreshState){
+    if(state.queued&&!state.running&&!state.timer)state.timer=setTimeout(()=>flushRealtimeRefresh(key),50);
+  }
+}
+function eventIsForCurrentCourier(data){
+  return !data?.courier_id||Number(data.courier_id)===Number(me?.id);
+}
+function refreshAdminCore(){
+  return loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))return loadOperations()});
+}
+
 const socket=io();
-socket.on('connect',()=>{updateConnectionState();if(me?.role==='courier')flushOfflineQueue()});
-socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')});
-socket.on('server:time',d=>syncServerTime(d.now));
-socket.on('dispatch:changed',()=>{if(me?.role==='admin'){loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();});if($('wallboard')?.classList.contains('active'))loadWallboard();}else if(me?.role==='courier')loadCourier()});
-socket.on('courier:changed',()=>{if(me?.role==='admin')loadAdmin()});
-socket.on('attendance:changed',d=>{
-  if(me?.role==='admin'){
-    loadAdmin();
-    if($('attendance')?.classList.contains('active'))loadAttendance();
-    if($('operations')?.classList.contains('active'))loadOperations();
-  }else if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id)){
-    loadCourier();
+socket.on('connect',()=>{
+  updateConnectionState();
+  if(me?.role==='courier'){
+    flushOfflineQueue();
+    queueRealtimeRefresh('courier-reconnect',()=>loadCourier(),250,{visibleOnly:true});
   }
 });
-socket.on('settings:changed',()=>{if(me?.role==='admin')loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))loadOperations();})});
-socket.on('payment:changed',()=>{
-  if(me?.role==='admin'&&$('payments')?.classList.contains('active'))loadPayments();
-  if(me?.role==='courier'){loadMyPayment();loadMyPix();}
+socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')});
+socket.on('server:time',d=>syncServerTime(d.now));
+socket.on('dispatch:changed',d=>{
+  if(me?.role==='admin'){
+    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    if($('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
+  }else if(me?.role==='courier'&&eventIsForCurrentCourier(d)){
+    queueRealtimeRefresh('courier-dispatch',async()=>{await loadCourier({related:false});await loadCourierDeliveries()},350,{visibleOnly:true});
+  }
+});
+socket.on('courier:changed',()=>{if(me?.role==='admin')queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true})});
+socket.on('attendance:changed',d=>{
+  if(me?.role==='admin'){
+    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    if($('attendance')?.classList.contains('active'))queueRealtimeRefresh('attendance',loadAttendance,400,{visibleOnly:true});
+  }else if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id)){
+    queueRealtimeRefresh('courier-attendance',()=>loadCourier({related:false}),300,{visibleOnly:true});
+  }
+});
+socket.on('settings:changed',()=>{if(me?.role==='admin')queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true})});
+socket.on('payment:changed',d=>{
+  if(me?.role==='admin'&&$('payments')?.classList.contains('active'))queueRealtimeRefresh('payments',loadPayments,500,{visibleOnly:true});
+  if(me?.role==='courier'&&eventIsForCurrentCourier(d))queueRealtimeRefresh('courier-payment',loadMyPayment,500,{visibleOnly:true});
 });
 socket.on('pix:changed',d=>{
-  if(me?.role==='admin'){loadAdmin();if($('payments')?.classList.contains('active'))loadPayments();}
-  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))loadMyPix();
+  if(me?.role==='admin'){
+    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    if($('payments')?.classList.contains('active'))queueRealtimeRefresh('payments',loadPayments,500,{visibleOnly:true});
+  }
+  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-pix',loadMyPix,400,{visibleOnly:true});
 });
 socket.on('ifood:changed',()=>{
-  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
-  if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard();
-  if(me?.role==='courier')loadCourierDeliveries();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,750,{visibleOnly:true});
+  if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,750,{visibleOnly:true});
+  if(me?.role==='courier')queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,1000,{visibleOnly:true});
 });
 socket.on('delivery:changed',d=>{
-  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))loadIfoodStatus();
-  if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard();
-  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))loadCourierDeliveries();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});
+  if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
+  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,300,{visibleOnly:true});
 });
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{
@@ -4192,9 +4256,14 @@ socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotific
 socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
 socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
 
-setInterval(()=>{document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
-setInterval(()=>{if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))loadWallboard()},15000);
-setInterval(()=>{if(me)heartbeat();},20000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)return;
+  flushVisibleRealtimeRefreshes();
+  heartbeat({force:true});
+});
+setInterval(()=>{if(document.hidden)return;document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
+setInterval(()=>{if(!document.hidden&&me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,100,{visibleOnly:true})},15000);
+setInterval(()=>{heartbeat();},60000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});
