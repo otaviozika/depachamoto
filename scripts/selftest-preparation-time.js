@@ -18,7 +18,7 @@ function state(elapsedMin, totalMin) {
 }
 
 const checks = {
-  version_350: server.includes('const VERSION = "3.5.6";') && pkg.version === '3.5.6' && html.includes('<title>DespacheFull 3.5.6</title>'),
+  version_350: server.includes('const VERSION = "3.6.0";') && pkg.version === '3.6.0' && html.includes('<title>DespacheFull 3.6.0</title>'),
   schema_order_timing: server.includes('ADD COLUMN IF NOT EXISTS order_timing TEXT'),
   schema_preparation_start: server.includes('ADD COLUMN IF NOT EXISTS preparation_start_at TIMESTAMPTZ'),
   schema_preparation_times: server.includes('CREATE TABLE IF NOT EXISTS ifood_preparation_times'),
@@ -40,12 +40,12 @@ const checks = {
   scheduled_base: server.includes('scheduled && row?.preparation_start_at'),
   immediate_base: server.includes('row?.confirmed_at || row?.order_created_at'),
   unavailable_is_safe: html.includes('AGUARDANDO IFOOD'),
-  pwa_cache: sw.includes('despachefull-v3.5.6-')
+  pwa_cache: sw.includes('despachefull-v3.6.0-')
 };
 
 const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name);
 if (failed.length) {
-  console.error(JSON.stringify({ result: 'FAIL', version: '3.5.6', failed, checks }, null, 2));
+  console.error(JSON.stringify({ result: 'FAIL', version: '3.6.0', failed, checks }, null, 2));
   process.exit(1);
 }
-console.log(JSON.stringify({ result: 'PASS', version: '3.5.6', checks }, null, 2));
+console.log(JSON.stringify({ result: 'PASS', version: '3.6.0', checks }, null, 2));

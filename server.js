@@ -8,7 +8,7 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import pg from "pg";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import webpush from "web-push";
@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.5.6";
+const VERSION = "3.6.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -82,15 +82,34 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
+const loginIpBurstLimiter = rateLimit({
+  // Proteção contra flood: permite uma operação inteira entrar ao mesmo tempo.
+  windowMs: Number(process.env.LOGIN_BURST_WINDOW_MS || 60 * 1000),
+  limit: Number(process.env.LOGIN_BURST_LIMIT || 300),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skip: req => !!process.env.LOAD_TEST_KEY &&
+    req.get("x-load-test-key") === process.env.LOAD_TEST_KEY,
+  message: { error: "Muitos acessos simultâneos. Aguarde alguns segundos e tente novamente." }
+});
+
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
+  // Falhas são controladas por conta + IP, não apenas pelo IP da hamburgueria.
+  windowMs: Number(process.env.LOGIN_RATE_WINDOW_MS || 15 * 60 * 1000),
+  limit: Number(process.env.LOGIN_RATE_LIMIT || 20),
   standardHeaders: "draft-8",
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  keyGenerator: req => {
+    const ip = ipKeyGenerator(req.ip);
+    const username = String(req.body?.username || "").trim().toLowerCase().slice(0, 120);
+    if (username) return `login:${username}:${ip}`;
+    if (req.session?.user?.id) return `session:${req.session.user.id}:${ip}`;
+    return `ip:${ip}`;
+  },
   skip: req => !!process.env.LOAD_TEST_KEY &&
     req.get("x-load-test-key") === process.env.LOAD_TEST_KEY,
-  message: { error: "Muitas tentativas de login. Aguarde alguns minutos e tente novamente." }
+  message: { error: "Muitas tentativas de login para esta conta. Confira usuário e senha ou aguarde alguns minutos." }
 });
 
 const registrationLimiter = rateLimit({
@@ -1099,6 +1118,7 @@ async function ensureIfoodDispatchJob(orderId) {
     FROM ifood_dispatch_links l
     JOIN ifood_orders o ON o.order_id=l.ifood_order_id
     WHERE l.ifood_order_id=$1
+      AND l.ifood_dispatch_status <> 'DISPATCHED'
       AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
       AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
     ON CONFLICT(ifood_order_id) DO NOTHING
@@ -1869,7 +1889,45 @@ function plainLocalOrderNumber(value) {
   return String(value || "").trim().replace(/^#/, "").toLowerCase();
 }
 
-async function inspectIfoodOrdersForDeparture(orders) {
+async function refreshIfoodOrderClassificationForDeparture(row) {
+  const orderType = String(row?.order_type || "").trim().toUpperCase();
+  const deliveredBy = String(row?.delivered_by || "").trim().toUpperCase();
+  const needsRefresh = orderType !== "DELIVERY" ||
+    !["MERCHANT","IFOOD"].includes(deliveredBy);
+
+  if (!needsRefresh || !row?.order_id || !ifoodConfigured()) return row;
+
+  try {
+    const details = await fetchIfoodOrderDetails(row.order_id);
+    await upsertIfoodOrderFromDetails(details, {
+      orderId: row.order_id,
+      merchantId: row.merchant_id || null
+    });
+
+    const refreshed = (await pool.query(`
+      SELECT
+        o.order_id,o.display_id,o.merchant_id,o.status,o.order_type,o.category,
+        o.sales_channel,o.delivered_by,o.is_test,o.order_created_at,
+        o.last_event_code,o.last_event_at,
+        l.dispatch_id AS linked_dispatch_id,
+        d.status AS linked_dispatch_status,
+        u.name AS linked_courier_name
+      FROM ifood_orders o
+      LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
+      LEFT JOIN dispatches d ON d.id=l.dispatch_id
+      LEFT JOIN users u ON u.id=d.courier_id
+      WHERE o.order_id=$1
+      LIMIT 1
+    `, [String(row.order_id)])).rows[0];
+
+    return refreshed || row;
+  } catch (err) {
+    console.error(`iFood classification refresh failed [${row.order_id}]:`, ifoodSafeError(err));
+    return row;
+  }
+}
+
+async function inspectIfoodOrdersForDeparture(orders, { recovery = false } = {}) {
   const requested = [...new Set(
     orders.map(plainLocalOrderNumber).filter(Boolean)
   )];
@@ -1910,18 +1968,64 @@ async function inspectIfoodOrdersForDeparture(orders) {
     // Não encontrado no iFood = pedido manual. Mantém compatibilidade com outros canais.
     if (!candidates.length) continue;
 
-    const current = candidates.filter(x => !ifoodOrderIsTerminal(x.status || x.last_event_code));
+    const configuredMerchantId = String(process.env.IFOOD_MERCHANT_ID || "")
+      .trim()
+      .toLowerCase();
+
+    let scopedCandidates = candidates;
+    if (configuredMerchantId) {
+      scopedCandidates = candidates.filter(x =>
+        String(x.merchant_id || "").trim().toLowerCase() === configuredMerchantId
+      );
+
+      if (!scopedCandidates.length) {
+        blocked.push({
+          order_number: localOrder,
+          code: "IFOOD_MERCHANT_MISMATCH",
+          message: "Esse número foi encontrado no iFood, mas pertence a outra loja. Atualize e tente novamente."
+        });
+        continue;
+      }
+    }
+
+    const candidateTimestamp = x => {
+      const created = Date.parse(String(x.order_created_at || ""));
+      const eventAt = Date.parse(String(x.last_event_at || ""));
+      return Math.max(
+        Number.isFinite(created) ? created : 0,
+        Number.isFinite(eventAt) ? eventAt : 0
+      );
+    };
+
+    const recentCutoff = Date.now() - (36 * 60 * 60 * 1000);
+    const recentCandidates = scopedCandidates.filter(x => candidateTimestamp(x) >= recentCutoff);
+    const selectionPool = (recentCandidates.length ? recentCandidates : scopedCandidates)
+      .slice()
+      .sort((a, b) => candidateTimestamp(b) - candidateTimestamp(a));
+
+    const current = selectionPool.filter(x =>
+      (recovery ? canonicalIfoodOrderStatus(x.status || x.last_event_code) === "DISPATCHED" : !ifoodOrderIsTerminal(x.status || x.last_event_code))
+    );
 
     if (current.length > 1) {
       blocked.push({
         order_number: localOrder,
         code: "IFOOD_ORDER_AMBIGUOUS",
-        message: "Há mais de um pedido iFood ativo com esse número. Procure o administrador."
+        message: "Há mais de um pedido iFood ativo com esse número nesta loja. Procure o administrador."
       });
       continue;
     }
 
-    const row = current[0] || candidates[0];
+    let row = current[0] || selectionPool[0];
+    // Always consult iFood details before selecting; lifecycle comes from polling when absent.
+    const details = await fetchIfoodOrderDetails(row.order_id);
+    if (String(details?.id || '') !== String(row.order_id) ||
+        String(details?.merchant?.id || '').toLowerCase() !== String(row.merchant_id || '').toLowerCase()) {
+      throw Object.assign(new Error("Não foi possível confirmar o pedido e a loja no iFood."), { status: 409 });
+    }
+    await upsertIfoodOrderFromDetails(details, { orderId: row.order_id, merchantId: row.merchant_id });
+    row = { ...row, ...(await pool.query('SELECT * FROM ifood_orders WHERE order_id=$1', [row.order_id])).rows[0],
+      order_type: details.orderType, delivered_by: details.delivery?.deliveredBy };
     const status = canonicalIfoodOrderStatus(row.status);
 
     matched.push({
@@ -1933,12 +2037,23 @@ async function inspectIfoodOrdersForDeparture(orders) {
       is_test: row.is_test
     });
 
-    if (String(row.order_type || "").toUpperCase() !== "DELIVERY") {
+    const orderType = String(row.order_type || "").trim().toUpperCase();
+    if (orderType === "TAKEOUT") {
       blocked.push({
         order_number: localOrder,
         order_id: row.order_id,
-        code: "IFOOD_NOT_DELIVERY",
-        message: "Esse pedido iFood não é uma entrega."
+        code: "IFOOD_TAKEOUT",
+        message: "Esse pedido é retirada e não pode ser despachado por motoboy."
+      });
+      continue;
+    }
+
+    if (orderType !== "DELIVERY") {
+      blocked.push({
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "IFOOD_ORDER_TYPE_UNKNOWN",
+        message: "Não foi possível identificar o tipo deste pedido no iFood. Atualize e tente novamente."
       });
       continue;
     }
@@ -1963,7 +2078,7 @@ async function inspectIfoodOrdersForDeparture(orders) {
       continue;
     }
 
-    if (ifoodOrderIsTerminal(status)) {
+    if (recovery ? status !== "DISPATCHED" : ifoodOrderIsTerminal(status)) {
       blocked.push({
         order_number: localOrder,
         order_id: row.order_id,
@@ -1973,7 +2088,7 @@ async function inspectIfoodOrdersForDeparture(orders) {
       continue;
     }
 
-    if (!ifoodOrderCanBeSelected(status)) {
+    if (!recovery && !ifoodOrderCanBeSelected(status)) {
       blocked.push({
         order_number: localOrder,
         order_id: row.order_id,
@@ -2168,8 +2283,8 @@ async function getCourierIfoodDeliveries(courierId) {
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
     WHERE d.courier_id=$1
-      AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
-          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      AND (d.status='ON_ROAD' OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date)
       AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
       AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
     ORDER BY
@@ -2793,7 +2908,9 @@ async function createDispatchTransaction({
   adminReason = null,
   clientToken = null,
   departedAt = null,
-  ifoodLinks = []
+  ifoodLinks = [],
+  append = false,
+  recovery = false
 }) {
   const operationalSla = await getOperationalSlaSettings();
   const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
@@ -2830,7 +2947,7 @@ async function createDispatchTransaction({
       FOR UPDATE
     `, [courierId]);
 
-    if (activeDispatch.rowCount) {
+    if (activeDispatch.rowCount && !append && !recovery) {
       const err = new Error(
         operationalStage(activeDispatch.rows[0].operational_stage) === "RETURNING"
           ? "Você ainda está retornando. Confirme sua chegada à loja antes de registrar outra saída."
@@ -2842,13 +2959,36 @@ async function createDispatchTransaction({
       throw err;
     }
 
-    const effectiveDeparture = departedAt || new Date().toISOString();
+    if (append && !activeDispatch.rowCount) throw Object.assign(new Error("Não há rota ativa. Atualize a tela."), { status: 409 });
+    const existingRoute = (append || recovery) ? activeDispatch.rows[0] : null;
+    if (existingRoute && operationalStage(existingRoute.operational_stage) === 'RETURNING') {
+      throw Object.assign(new Error("A rota está retornando. Não é possível adicionar pedidos."), { status: 409 });
+    }
+    if (existingRoute) {
+      const count = Number((await client.query('SELECT COUNT(*)::int AS count FROM dispatch_orders WHERE dispatch_id=$1', [existingRoute.id])).rows[0].count);
+      if (count + orders.length > 5) throw Object.assign(new Error("A rota pode conter no máximo 5 pedidos."), { status: 409 });
+    }
+    // Lock UUIDs in a stable order and recheck lifecycle after waiting for the route lock.
+    for (const link of [...ifoodLinks].sort((a,b)=>a.order_id.localeCompare(b.order_id))) {
+      const current = (await client.query('SELECT * FROM ifood_orders WHERE order_id=$1 FOR UPDATE', [link.order_id])).rows[0];
+      if (!current || current.order_type !== 'DELIVERY' || current.delivered_by !== 'MERCHANT' ||
+          (recovery ? canonicalIfoodOrderStatus(current.status) !== 'DISPATCHED' : !ifoodOrderCanBeSelected(current.status))) {
+        throw Object.assign(new Error("O pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
+      }
+    }
+    const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
+    if (append || recovery) {
+      const payment = (await client.query(`SELECT status FROM courier_payments
+        WHERE courier_id=$1 AND payment_date=($2::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date
+        FOR UPDATE`, [courierId, effectiveDeparture])).rows[0];
+      if (payment && payment.status !== 'OPEN') throw Object.assign(new Error('O pagamento deste dia já foi revisado ou pago. Reabra-o no Financeiro antes de vincular o pedido.'), { status: 409 });
+    }
     const closedPrevious = null;
 
     const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
       Math.random().toString(36).slice(2, 6).toUpperCase();
 
-    const result = await client.query(`
+    const result = existingRoute ? { rows: [existingRoute] } : await client.query(`
       INSERT INTO dispatches(
         dispatch_code,order_number,courier_id,
         registered_by,registration_source,admin_reason,client_token,departed_at,
@@ -2889,10 +3029,10 @@ async function createDispatchTransaction({
         INSERT INTO ifood_dispatch_links(
           ifood_order_id,dispatch_id,local_order_number,ifood_dispatch_status
         )
-        VALUES($1,$2,$3,'NOT_SENT')
+        VALUES($1,$2,$3,$4)
         ON CONFLICT(ifood_order_id) DO NOTHING
         RETURNING ifood_order_id
-      `, [link.order_id, dispatch.id, link.order_number]);
+      `, [link.order_id, dispatch.id, link.order_number, recovery ? "DISPATCHED" : "NOT_SENT"]);
 
       if (!linked.rowCount) {
         const err = new Error(`Pedido iFood ${link.order_number} já foi vinculado a outra saída.`);
@@ -2901,7 +3041,7 @@ async function createDispatchTransaction({
         throw err;
       }
 
-      await client.query(`
+      if (!recovery) await client.query(`
         INSERT INTO ifood_dispatch_jobs(
           ifood_order_id,dispatch_id,status,next_attempt_at
         )
@@ -2910,8 +3050,19 @@ async function createDispatchTransaction({
       `, [link.order_id, dispatch.id]);
     }
 
+    if (existingRoute) {
+      await client.query('UPDATE dispatches SET route_sla_minutes=$2 WHERE id=$1', [dispatch.id,
+        operationalRouteSlaMinutes(Number((await client.query('SELECT COUNT(*)::int AS count FROM dispatch_orders WHERE dispatch_id=$1', [dispatch.id])).rows[0].count), operationalSla)]);
+    }
+    if (append || recovery) await client.query(
+      'INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5::jsonb)',
+      [actorUserId, recovery ? 'EXTERNAL_DISPATCH_LINKED' : 'ROUTE_ORDER_ADDED', 'dispatch', dispatch.id,
+        JSON.stringify({ courier_id: courierId, order_numbers: orders, ifood_order_ids: ifoodLinks.map(x=>x.order_id),
+          reason: adminReason, recovered_departure: recovery && !existingRoute,
+          departure_time_source: recovery && !existingRoute ? 'ADMIN_REPORTED' : 'EXISTING_ROUTE', departed_at: effectiveDeparture,
+          external_dispatch: recovery })]);
+    dispatch.order_numbers = (await client.query('SELECT order_number FROM dispatch_orders WHERE dispatch_id=$1 ORDER BY id', [dispatch.id])).rows.map(x=>x.order_number);
     await client.query("COMMIT");
-    dispatch.order_numbers = orders;
 
     return { dispatch, closedPrevious, duplicate: false };
   } catch (e) {
@@ -3061,12 +3212,12 @@ function operationalTiming(row, progress, sla, nowMs = Date.now()) {
   };
 }
 
-async function getDispatchProgressMap(dispatchIds) {
+async function getDispatchProgressMap(dispatchIds, client = pool) {
   const ids = [...new Set((dispatchIds || []).map(Number).filter(Number.isFinite))];
   const map = new Map();
   if (!ids.length) return map;
 
-  const rows = (await pool.query(`
+  const rows = (await client.query(`
     SELECT d.id AS dispatch_id,
       COUNT(DISTINCT o.id)::int AS total_orders,
       COUNT(DISTINCT o.id) FILTER (
@@ -3131,7 +3282,24 @@ function decorateOperationalDispatches(rows, progressMap, sla, nowMs = Date.now(
 }
 
 async function markDispatchReturning(dispatchId, { actorUserId = null, source = "MANUAL", reason = null } = {}) {
-  const q = await pool.query(`
+  const client = await pool.connect();
+  let q;
+  try {
+    await client.query('BEGIN');
+    // The same row is locked when appending: a completed-order event must not
+    // switch the route to RETURNING after a new pending order was attached.
+    await client.query('SELECT id FROM dispatches WHERE id=$1 FOR UPDATE', [dispatchId]);
+    if (source.startsWith('AUTO_') || source === 'COURIER_MANUAL') {
+      const progress = (await getDispatchProgressMap([dispatchId], client)).get(Number(dispatchId));
+      const blocked = source.startsWith('AUTO_') ? !progress?.all_orders_resolved
+        : !progress || progress.resolved_orders < progress.trackable_orders;
+      if (blocked) {
+        await client.query('ROLLBACK');
+        if (source === 'COURIER_MANUAL') throw Object.assign(new Error('Confirme as entregas pendentes antes de iniciar o retorno.'), { status: 409 });
+        return null;
+      }
+    }
+    q = await client.query(`
     UPDATE dispatches
     SET operational_stage='RETURNING',
         returning_at=COALESCE(returning_at,NOW()),
@@ -3140,6 +3308,11 @@ async function markDispatchReturning(dispatchId, { actorUserId = null, source = 
     WHERE id=$1 AND status='ON_ROAD' AND COALESCE(operational_stage,'EN_ROUTE')<>'RETURNING'
     RETURNING *
   `, [dispatchId, source, reason]);
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally { client.release(); }
 
   if (!q.rowCount) return null;
   if (actorUserId) {
@@ -3688,7 +3861,7 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
   });
 }));
 
-app.post("/api/login", loginLimiter, asyncRoute(async (req, res) => {
+app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const q = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
@@ -4788,7 +4961,55 @@ app.get("/api/courier/ifood/lookup", auth, courierOnly, asyncRoute(async (req, r
   });
 }));
 
+function validateDepartureCount(body) {
+  const count = body.order_count;
+  const raw = body.order_numbers;
+  if (!Number.isInteger(count) || count < 1 || count > 5 || !Array.isArray(raw) || raw.length !== count ||
+      raw.some(x=>typeof x !== 'string' || !plainLocalOrderNumber(x)) ||
+      new Set(raw.map(plainLocalOrderNumber)).size !== count) {
+    throw Object.assign(new Error("Escolha de 1 a 5 pedidos e preencha exatamente essa quantidade, sem repetir."), { status: 400 });
+  }
+}
+
+
+async function addRouteOrder(req, res, recovery) {
+  const courierId = recovery ? Number(req.body.courier_id) : req.session.user.id;
+  if (!Number.isInteger(courierId) || courierId < 1) return res.status(400).json({error:'Selecione um motoboy.'});
+  const courier = (await pool.query("SELECT * FROM users WHERE id=$1 AND role='courier'", [courierId])).rows[0];
+  if (!courier?.active || courier.approval_status !== 'APPROVED' || (!recovery && courier.must_change_password)) return res.status(403).json({error:'Motoboy indisponível para esta operação.'});
+  const attendance = await getCourierAttendance(courierId, await getSPDate());
+  if (!attendance || attendance.checked_out_at) return res.status(403).json({error:'É necessário estar com presença confirmada e expediente aberto.'});
+  const orders = normalizeOrders(req.body);
+  if (orders.length !== 1 || !Array.isArray(req.body.order_numbers) || req.body.order_numbers.length !== 1) return res.status(400).json({error:'Informe exatamente um pedido.'});
+  const reason = String(req.body.reason || '').trim();
+  if (recovery && (reason.length < 3 || reason.length > 250)) return res.status(400).json({error:'Informe o motivo do vínculo (3 a 250 caracteres).'});
+  let departedAt = null;
+  if (recovery) {
+    departedAt = req.body.departed_at;
+    const time = Date.parse(departedAt);
+    if (!Number.isFinite(time) || time > Date.now() || time < Date.now()-23*60*60*1000) return res.status(400).json({error:'Informe o horário real da saída, nas últimas 23 horas.'});
+  }
+  const inspection = await inspectIfoodOrdersForDeparture(orders, { recovery });
+  if (inspection.blocked.length || inspection.accepted.length !== 1) return res.status(409).json({error:inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'});
+  let result;
+  try {
+    result = await createDispatchTransaction({actorUserId:req.session.user.id,courierId,orders,
+      source:recovery ? 'ADMIN_RECOVERED' : 'COURIER', adminReason:reason || null,
+      departedAt, ifoodLinks:inspection.accepted, append:!recovery, recovery});
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({error:'Este pedido já está vinculado. Atualize a rota.'});
+    throw err;
+  }
+  io.emit('dispatch:changed',{courier_id:courierId,dispatch_id:result.dispatch.id,change:'ORDER_ADDED'});
+  io.emit('payment:changed',{courier_id:courierId,change:'ORDER_ADDED'});
+  res.status(201).json({dispatch:result.dispatch,external_dispatch:recovery});
+  if (!recovery) setImmediate(() => runIfoodDispatchWorkerOnce().catch(err => console.error('iFood dispatch after route addition:', ifoodDispatchErrorText(err))));
+}
+app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
+app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
+
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
+  validateDepartureCount(req.body);
   await touchPresence(req.session.user.id, "COURIER_WEB");
 
   const user = await currentUser(req.session.user.id);

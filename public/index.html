@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.5.6</title>
+<title>DespacheFull 3.6.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -209,7 +209,7 @@
 #adminApp .admin-mobile-nav button{font-size:11px;font-weight:700;padding:6px 4px;min-width:0}
 @media(max-width:720px){#adminApp .admin-subnav{margin:-2px 0 14px;border-radius:10px}#adminApp .admin-subnav button{padding:8px 11px;font-size:12px}}
 
-/* v3.5.6 — interface administrativa sóbria */
+/* v3.6.0 — interface administrativa sóbria */
 #adminApp{--admin-red:#e11d2e;--admin-red-soft:rgba(225,29,46,.10);--admin-surface:#0a0e13;--admin-surface-2:#0d1218;--admin-border:#252b33;--admin-white:#f3f4f6;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #adminApp .admin-side{width:240px;background:#070a0e;border-right:1px solid #20252c;padding:18px 12px 14px}
 #adminApp .main{margin-left:240px;background:#070a0e}
@@ -339,7 +339,7 @@
 #manualDispatchModal .btn.outline,#courierModal .btn.outline,#courierProfileModal .btn.outline,.admin-account-box .btn.outline,.admin-dark-modal .btn.outline{background:#0b1015;border-color:#303741;color:#cdd2d8}
 #manualDispatchModal .btn.primary,#courierModal .btn.primary,#courierProfileModal .btn.primary,.admin-dark-modal .btn.primary{background:#c91529;border-color:#d91b30;color:#fff}
 
-/* v3.5.6 — layout responsivo para notebooks, tablets e celulares */
+/* v3.6.0 — layout responsivo para notebooks, tablets e celulares */
 #adminApp{--admin-sidebar-width:clamp(184px,13vw,208px)}
 #adminApp .admin-side{width:var(--admin-sidebar-width);padding:14px 10px 12px}
 #adminApp .main{margin-left:var(--admin-sidebar-width);min-width:0}
@@ -672,7 +672,7 @@
       <div class="admin-top-page"><b id="pageTitle">Dashboard</b></div>
       <div class="actions admin-top-actions">
         <span class="connection-pill online connectionStatus"><i class="status-dot"></i>Online</span>
-        <button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()"><span class="manual-plus">+</span> Saída manual</button>
+        <button class="btn outline" onclick="openRouteOrderModal(true)">Vincular pedido despachado</button><button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()"><span class="manual-plus">+</span> Saída manual</button>
         <div class="bell-wrap">
           <button class="btn outline bell-btn" aria-label="Notificações" onclick="toggleNotificationPanel()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5"/></svg><span id="notificationCount" class="bell-count hidden">0</span></button>
         </div>
@@ -717,7 +717,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.5.6</span>
+          <span>Versão 3.6.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -1240,9 +1240,11 @@
         </div>
         <p class="courier-helper">Digite de 1 a 5 pedidos iFood. Cada pedido será validado automaticamente.</p>
         <form id="departureForm" class="form">
-          <div id="orderFields"></div>
+          <label>Quantos pedidos você vai levar?
+            <select id="departureCount" required onchange="resetOrderFields()"><option value="">Selecione a quantidade</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+          </label><div id="orderFields"></div>
           <div class="courier-add-row">
-            <button id="addOrderBtn" type="button" class="btn outline" onclick="addOrderField()">+ Adicionar outro pedido</button>
+            <span class="small muted">Preencha todos os campos da quantidade escolhida.</span>
           </div>
           <button id="departureSubmit" class="btn primary">🛵 Confirmar e sair para entrega</button>
         </form>
@@ -1389,6 +1391,17 @@
   </div>
 </div>
 
+<div id="routeOrderModal" class="modal admin-dark-modal"><div class="modal-box" style="width:min(560px,100%)">
+  <div style="display:flex;justify-content:space-between;gap:12px"><h2 id="routeOrderTitle">Adicionar pedido à rota</h2><button type="button" class="btn outline" onclick="closeRouteOrderModal()">Fechar</button></div>
+  <p id="routeOrderHelp" class="small muted"></p><div id="routeOrderMsg"></div>
+  <form id="routeOrderForm" class="form" onsubmit="submitRouteOrder(event)">
+    <label id="routeCourierLabel">Motoboy<select id="routeCourier"></select></label>
+    <label>Pedido iFood<input id="routeOrderNumber" required maxlength="50" placeholder="#4415" autocomplete="off"></label>
+    <label id="routeReasonLabel">Motivo do vínculo<input id="routeReason" minlength="3" maxlength="250" placeholder="Ex.: motoboy esqueceu de registrar no aplicativo"></label>
+    <label id="routeTimeLabel">Horário real da saída<input id="routeDepartureTime" type="datetime-local"><span class="small muted">Usado se for necessário recuperar uma saída. Informe quando o motoboy saiu com o pedido.</span></label>
+    <button id="routeOrderSubmit" class="btn primary">Validar e vincular pedido</button>
+  </form>
+</div></div>
 <div id="manualDispatchModal" class="modal">
   <div class="modal-box" style="width:min(620px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1702,13 +1715,15 @@ function applyManualPaste(){
   $('manualOrderFields').innerHTML='';
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
-function resetOrderFields(){$('orderFields').innerHTML='';addOrderField()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"></span></label>${count>0?'<button type="button" class="btn danger remove-order-btn" aria-label="Remover pedido" onclick="removeOrderField(this)">×</button>':'<span></span>'}<div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function resetOrderFields(){$('orderFields').innerHTML='';for(let i=0;i<Number($('departureCount').value);i++)addOrderField();updateOrderUi()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
 function allCourierOrdersIfoodValidated(){
-  const inputs=[...document.querySelectorAll('.order-input')].filter(i=>i.value.trim());
-  return inputs.length>0&&inputs.every(i=>i.dataset.ifoodValid==='true');
+  const inputs=[...$('orderFields').querySelectorAll('.order-input')];
+  const count=Number($('departureCount').value);
+  const values=inputs.map(i=>normalizedUiOrder(i.value).toLowerCase());
+  return count>=1&&count<=5&&inputs.length===count&&new Set(values).size===count&&inputs.every(i=>i.value.trim()&&i.dataset.ifoodValid==='true'&&i.dataset.validatedValue===normalizedUiOrder(i.value));
 }
 function updateCourierDepartureEligibility(){
   const btn=$('departureSubmit');
@@ -1731,7 +1746,7 @@ function updateCourierDepartureEligibility(){
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
   if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||shiftLocked||checkinLocked||n>=5;
 }
-function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=`${n} de 5`;updateCourierDepartureEligibility()}
+function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=n?`${n} pedido(s)`:'Escolha a quantidade';updateCourierDepartureEligibility()}
 
 
 
@@ -1772,7 +1787,9 @@ async function lookupIfoodField(input){
   try{
     const d=await api(`/api/courier/ifood/lookup?order=${encodeURIComponent(value)}`);
 
+    if(normalizedUiOrder(input.value)!==value)return;
     if(d.found&&d.valid){
+      input.dataset.validatedValue=value;
       input.dataset.ifoodValid='true';
       box.className='order-validation ok';
       box.textContent=`✓ iFood • entrega própria • ${d.status||'disponível'}`;
@@ -2219,7 +2236,7 @@ async function loadHistory(){
   try{
     const d=await api('/api/admin/history?'+p.toString());
     historyState={...historyState,...d.pagination};
-    $('historyTable').innerHTML=d.rows.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td></tr>`}).join('')||empty(6);
+    $('historyTable').innerHTML=d.rows.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN_RECOVERED'?'SAÍDA RECUPERADA':x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td></tr>`}).join('')||empty(6);
     $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
     $('historyPrev').disabled=historyState.page<=1;
     $('historyNext').disabled=historyState.page>=historyState.pages;
@@ -2725,12 +2742,13 @@ async function loadCourier({related=true}={}){
       <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div>
       <div class="courier-route-clock"><span>${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></span><strong class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</strong><small>${returning?'Tempo de retorno':'Tempo de rota'} • meta <b>${x.sla_minutes} min</b> • total fora ${x.total_elapsed_minutes} min</small></div>
       ${action}
+      ${!returning?'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>':''}
     </section>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');
       note.id='currentDepartureNote';
       note.className='current-active-note';
-      note.innerHTML='<b>Nova saída bloqueada:</b> para manter o tempo operacional exato, você só poderá levar novos pedidos depois de confirmar <b>Cheguei na loja</b>.';
+      note.innerHTML='<b>Nova saída bloqueada:</b> para manter o tempo operacional exato, use <b>Adicionar pedido à rota atual</b> para incluir um pedido esquecido. Para iniciar outra saída, confirme <b>Cheguei na loja</b>.';
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
@@ -2763,6 +2781,29 @@ async function arriveAtStore(id){
   }catch(err){alert(err.message)}
 }
 
+let routeOrderRecovery=false;
+function closeRouteOrderModal(){$('routeOrderModal').style.display='none'}
+function openRouteOrderModal(recovery){
+  routeOrderRecovery=recovery;
+  $('routeOrderForm').reset();$('routeOrderMsg').innerHTML='';
+  $('routeOrderTitle').textContent=recovery?'Vincular pedido despachado':'Adicionar pedido à rota atual';
+  $('routeOrderHelp').textContent=recovery?'Somente entrega própria já despachada no iFood. O pedido entra na rota ativa; sem rota, será criada uma saída recuperada com motivo e horário registrados.':'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
+  for(const id of ['routeCourierLabel','routeReasonLabel','routeTimeLabel'])$(id).classList.toggle('hidden',!recovery);
+  for(const id of ['routeCourier','routeReason','routeDepartureTime'])$(id).required=recovery;
+  $('routeCourier').innerHTML='<option value="">Selecione...</option>'+(dashboard?.couriers||[]).map(c=>'<option value="'+Number(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
+  $('routeOrderModal').style.display='grid';
+}
+async function submitRouteOrder(e){
+  e.preventDefault();const btn=$('routeOrderSubmit');btn.disabled=true;
+  try{
+    const payload={order_numbers:[$('routeOrderNumber').value.trim()]};
+    if(routeOrderRecovery){payload.courier_id=Number($('routeCourier').value);payload.reason=$('routeReason').value.trim();payload.departed_at=new Date($('routeDepartureTime').value).toISOString()}
+    await api(routeOrderRecovery?'/api/admin/dispatches/link-external':'/api/courier/route/orders',{method:'POST',body:JSON.stringify(payload)});
+    message('routeOrderMsg','Pedido vinculado com sucesso.','ok');
+    if(routeOrderRecovery)await loadAdmin();else await loadCourier();
+    closeRouteOrderModal();
+  }catch(err){message('routeOrderMsg',err.message,'err')}finally{btn.disabled=false}
+}
 async function depart(e){
   e.preventDefault();
   message('departureMsg','','');
@@ -2788,11 +2829,13 @@ async function depart(e){
     return message('departureMsg','Todos os pedidos precisam aparecer como ✓ iFood antes de registrar a saída. Pedido manual é exclusivo do Admin.','err');
   }
 
+  if(!confirm(`Você está saindo com ${orders.length} pedidos: ${orders.join(', ')}. Confirma?`))return;
   const btn=$('departureSubmit');
   btn.disabled=true;
 
   const payload={
     order_numbers:orders,
+    order_count:Number($('departureCount').value),
     confirm_recent_orders:false,
     client_token:makeClientToken(),
     offline_queued:false,
@@ -3763,7 +3806,7 @@ async function searchOrderNow(){
   if(!q)return;
   try{
     const d=await api('/api/admin/orders/search?q='+encodeURIComponent(q));
-    $('quickOrderResults').innerHTML=d.rows.map(x=>`<div class="search-result"><div style="display:flex;justify-content:space-between;gap:10px"><b>${escapeHtml(x.order_number)} • ${escapeHtml(x.courier_name)}</b><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></div><div class="small muted" style="margin-top:5px">Saída: ${localDate(x.departed_at)} • Origem: ${x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</div></div>`).join('')||'<div class="empty">Pedido não encontrado.</div>';
+    $('quickOrderResults').innerHTML=d.rows.map(x=>`<div class="search-result"><div style="display:flex;justify-content:space-between;gap:10px"><b>${escapeHtml(x.order_number)} • ${escapeHtml(x.courier_name)}</b><span class="badge ${x.status==='ON_ROAD'?'orange':'green'}">${x.status==='ON_ROAD'?'NA RUA':'LIBERADO'}</span></div><div class="small muted" style="margin-top:5px">Saída: ${localDate(x.departed_at)} • Origem: ${x.registration_source==='ADMIN_RECOVERED'?'SAÍDA RECUPERADA':x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</div></div>`).join('')||'<div class="empty">Pedido não encontrado.</div>';
   }catch(err){alert(err.message)}
 }
 function conflictLabel(t){
@@ -3977,6 +4020,8 @@ const auditNames={
   FULL_HISTORY_EXPORTED:'Backup completo exportado',
   PERIOD_REPORT_EXPORTED:'Relatório por período exportado',
   MANUAL_DEPARTURE_REGISTERED:'Saída manual registrada pelo administrador',
+  EXTERNAL_DISPATCH_LINKED:'Pedido despachado externamente vinculado pelo Admin',
+  ROUTE_ORDER_ADDED:'Pedido adicionado à rota ativa',
   NOTIFICATIONS_MARKED_READ:'Notificações marcadas como lidas',
   NOTIFICATION_SETTINGS_UPDATED:'Configurações de notificações alteradas',
   COURIER_PROFILE_UPDATED:'Dados / PIX do motoboy atualizados',
@@ -3989,6 +4034,7 @@ const auditNames={
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
+  if(['EXTERNAL_DISPATCH_LINKED','ROUTE_ORDER_ADDED'].includes(x.action))return `${(d.order_numbers||[]).join(', ')} • ${d.recovered_departure?'Saída recuperada • ':''}${d.reason||'Mesma rota'}${d.recovered_departure?' • Horário informado: '+localDate(d.departed_at):''}`;
   if(x.action==='DEPARTURE_REGISTERED')return `${(d.order_numbers||[]).length} pedido(s): ${(d.order_numbers||[]).join(', ')}`;
   if(x.action==='ATTENDANCE_QR_CHECKIN')return `Presença de ${d.attendance_date||'hoje'} via QR da loja`;
   if(x.action==='ATTENDANCE_MANUAL_CHECKIN')return `${d.courier_name||'Motoboy'} • ${d.attendance_date||''} • ${d.reason||''}`;
