@@ -1,14 +1,14 @@
 {
   "name": "despachefull",
-  "version": "3.5.7",
+  "version": "3.6.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "node scripts/apply-login-capacity-patch.js && node scripts/apply-ifood-order-resolution-patch.js && node server.js",
-    "dev": "node scripts/apply-login-capacity-patch.js && node scripts/apply-ifood-order-resolution-patch.js && node --watch server.js",
+    "start": "node server.js",
+    "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
     "selftest:brutal": "node scripts/selftest-brutal.js",
     "loadtest:brutal": "node scripts/loadtest-brutal.js",
@@ -29,18 +29,22 @@
     "selftest:dashboard-operations": "node scripts/selftest-dashboard-operations.js",
     "selftest:pdv-presence": "node scripts/selftest-pdv-presence.js",
     "selftest:production-merchant-id": "node scripts/selftest-production-merchant-id.js",
-    "selftest:takeout-wallboard": "node scripts/selftest-takeout-wallboard.js"
+    "selftest:takeout-wallboard": "node scripts/selftest-takeout-wallboard.js",
+    "selftest:route-orders": "node scripts/selftest-route-orders.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "connect-pg-simple": "^10.0.0",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
     "pg": "^8.16.3",
     "socket.io": "^4.8.1",
-    "express-rate-limit": "^8.1.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

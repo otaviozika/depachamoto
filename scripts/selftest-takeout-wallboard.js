@@ -12,9 +12,9 @@ const wallboardEndpoint = server.match(
 
 const checks = {
   version:
-    pkg.version === "3.5.6" &&
-    server.includes('const VERSION = "3.5.6";') &&
-    html.includes("<title>DespacheFull 3.5.6</title>"),
+    pkg.version === "3.6.0" &&
+    server.includes('const VERSION = "3.6.0";') &&
+    html.includes("<title>DespacheFull 3.6.0</title>"),
   wallboardEndpoint: wallboardEndpoint.length > 0,
   onlyDeliveryInWallboard:
     wallboardEndpoint.includes("UPPER(COALESCE(o.order_type,''))='DELIVERY'"),
@@ -29,8 +29,8 @@ const checks = {
     html.includes("PEDIDOS EM PREPARO") &&
     html.includes("PEDIDOS NA RUA") &&
     html.includes("PEDIDOS CONFIRMADOS"),
-  currentPwaCache: sw.includes("despachefull-v3.5.6-")
+  currentPwaCache: sw.includes("despachefull-v3.6.0-")
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `Falhou: ${name}`);
-console.log(JSON.stringify({ result: "PASS", version: "3.5.6", checks }, null, 2));
+console.log(JSON.stringify({ result: "PASS", version: "3.6.0", checks }, null, 2));

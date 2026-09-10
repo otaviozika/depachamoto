@@ -8,9 +8,9 @@ const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.ur
 
 const checks = {
   version_355:
-    pkg.version === "3.5.6" &&
-    server.includes('const VERSION = "3.5.6";') &&
-    html.includes("<title>DespacheFull 3.5.6</title>"),
+    pkg.version === "3.6.0" &&
+    server.includes('const VERSION = "3.6.0";') &&
+    html.includes("<title>DespacheFull 3.6.0</title>"),
 
   merchant_env:
     server.includes("function ifoodPrimaryMerchantId()") &&
@@ -40,13 +40,13 @@ const checks = {
     html.includes("ORDER + EVENTS"),
 
   cache_bumped:
-    sw.includes("despachefull-v3.5.6-")
+    sw.includes("despachefull-v3.6.0-")
 };
 
 const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name);
 if (failed.length) {
-  console.error(JSON.stringify({ result: "FAIL", version: "3.5.6", failed, checks }, null, 2));
+  console.error(JSON.stringify({ result: "FAIL", version: "3.6.0", failed, checks }, null, 2));
   process.exit(1);
 }
 
-console.log(JSON.stringify({ result: "PASS", version: "3.5.6", checks }, null, 2));
+console.log(JSON.stringify({ result: "PASS", version: "3.6.0", checks }, null, 2));
