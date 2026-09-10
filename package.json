@@ -1,14 +1,14 @@
 {
   "name": "despachefull",
-  "version": "3.5.6",
+  "version": "3.5.7",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "node scripts/apply-login-capacity-patch.js && node server.js",
-    "dev": "node scripts/apply-login-capacity-patch.js && node --watch server.js",
+    "start": "node scripts/apply-login-capacity-patch.js && node scripts/apply-ifood-order-resolution-patch.js && node server.js",
+    "dev": "node scripts/apply-login-capacity-patch.js && node scripts/apply-ifood-order-resolution-patch.js && node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
     "selftest:brutal": "node scripts/selftest-brutal.js",
     "loadtest:brutal": "node scripts/loadtest-brutal.js",
