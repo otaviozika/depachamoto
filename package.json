@@ -1,6 +1,6 @@
 {
   "name": "despachefull",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -30,7 +30,8 @@
     "selftest:pdv-presence": "node scripts/selftest-pdv-presence.js",
     "selftest:production-merchant-id": "node scripts/selftest-production-merchant-id.js",
     "selftest:takeout-wallboard": "node scripts/selftest-takeout-wallboard.js",
-    "selftest:route-orders": "node scripts/selftest-route-orders.js"
+    "selftest:route-orders": "node scripts/selftest-route-orders.js",
+    "selftest:waze-navigation": "node scripts/selftest-waze-navigation.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

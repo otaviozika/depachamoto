@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.6.0</title>
+<title>DespacheFull 3.6.1</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -36,6 +36,11 @@
 .delivery-order{font-size:20px;font-weight:900}
 .delivery-meta{font-size:12px;color:var(--muted);margin-top:3px}
 .delivery-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.delivery-actions .btn.waze{background:#38c6dc;color:#083344;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.delivery-actions .btn.waze .waze-mark{width:26px;height:26px;border-radius:8px;background:#fff;display:inline-flex;align-items:center;justify-content:center;overflow:hidden}
+.delivery-actions .btn.waze .waze-mark img{width:22px;height:22px;display:block;object-fit:contain}
+.delivery-address{display:flex;gap:8px;align-items:flex-start;color:#475569;font-size:12px;line-height:1.35}
+.delivery-address-pin{width:22px;height:22px;min-width:22px;border-radius:50%;background:#e0f2fe;color:#0284c7;display:inline-grid;place-items:center;font-size:12px;font-weight:900}
 .delivery-section-label{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-top:12px}
 .delivery-code-input{font-size:28px!important;text-align:center;letter-spacing:7px;font-weight:900}
 .order-validation{grid-column:1/-1;font-size:12px;min-height:16px;margin-top:-3px}
@@ -209,7 +214,7 @@
 #adminApp .admin-mobile-nav button{font-size:11px;font-weight:700;padding:6px 4px;min-width:0}
 @media(max-width:720px){#adminApp .admin-subnav{margin:-2px 0 14px;border-radius:10px}#adminApp .admin-subnav button{padding:8px 11px;font-size:12px}}
 
-/* v3.6.0 — interface administrativa sóbria */
+/* v3.6.1 — interface administrativa sóbria */
 #adminApp{--admin-red:#e11d2e;--admin-red-soft:rgba(225,29,46,.10);--admin-surface:#0a0e13;--admin-surface-2:#0d1218;--admin-border:#252b33;--admin-white:#f3f4f6;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #adminApp .admin-side{width:240px;background:#070a0e;border-right:1px solid #20252c;padding:18px 12px 14px}
 #adminApp .main{margin-left:240px;background:#070a0e}
@@ -339,7 +344,7 @@
 #manualDispatchModal .btn.outline,#courierModal .btn.outline,#courierProfileModal .btn.outline,.admin-account-box .btn.outline,.admin-dark-modal .btn.outline{background:#0b1015;border-color:#303741;color:#cdd2d8}
 #manualDispatchModal .btn.primary,#courierModal .btn.primary,#courierProfileModal .btn.primary,.admin-dark-modal .btn.primary{background:#c91529;border-color:#d91b30;color:#fff}
 
-/* v3.6.0 — layout responsivo para notebooks, tablets e celulares */
+/* v3.6.1 — layout responsivo para notebooks, tablets e celulares */
 #adminApp{--admin-sidebar-width:clamp(184px,13vw,208px)}
 #adminApp .admin-side{width:var(--admin-sidebar-width);padding:14px 10px 12px}
 #adminApp .main{margin-left:var(--admin-sidebar-width);min-width:0}
@@ -717,7 +722,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.6.0</span>
+          <span>Versão 3.6.1</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -2595,6 +2600,40 @@ function courierDeliveryBadge(x){
   return '<span class="badge gray">AGUARDANDO iFOOD</span>';
 }
 
+function buildWazeUrl(destination){
+  if(!destination)return '';
+  const params=new URLSearchParams();
+  const rawLat=destination.latitude;
+  const rawLng=destination.longitude;
+  const hasCoordinates=rawLat!==null&&rawLat!==undefined&&rawLat!==''&&rawLng!==null&&rawLng!==undefined&&rawLng!=='';
+  const lat=Number(rawLat);
+  const lng=Number(rawLng);
+  if(hasCoordinates&&Number.isFinite(lat)&&Number.isFinite(lng)){
+    params.set('ll',`${lat},${lng}`);
+    params.set('navigate','yes');
+  }else{
+    const address=String(destination.address||'').trim();
+    if(!address)return '';
+    params.set('q',address);
+    params.set('navigate','yes');
+  }
+  params.set('vehicle_type','motorcycle');
+  params.set('utm_source','despachefull');
+  return `https://waze.com/ul?${params.toString()}`;
+}
+
+function courierDeliveryAddressHtml(x){
+  const address=String(x?.navigation?.address||'').trim();
+  if(!address)return '';
+  return `<div class="delivery-address"><span class="delivery-address-pin">⌖</span><span>${escapeHtml(address)}</span></div>`;
+}
+
+function courierDeliveryWazeButton(x){
+  const url=buildWazeUrl(x?.navigation);
+  if(!url)return '';
+  return `<a class="btn waze" href="${escapeHtml(url)}" target="_blank" rel="noopener"><span class="waze-mark"><img src="/waze-icon.png" alt="" loading="lazy"></span> Ir para o Waze</a>`;
+}
+
 function courierDeliveryRow(x){
   const display='#'+escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
   const canConfirm=x.can_confirm===true;
@@ -2610,8 +2649,9 @@ function courierDeliveryRow(x){
       </div>
       ${courierDeliveryBadge(x)}
     </div>
+    ${courierDeliveryAddressHtml(x)}
     <div class="small">${escapeHtml(x.message||'')}</div>
-    <div class="delivery-actions">${btn}</div>
+    <div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>
   </div>`;
 }
 

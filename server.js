@@ -18,7 +18,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.0";
+const VERSION = "3.6.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -2180,6 +2180,111 @@ async function fetchIfoodOrderDetails(orderId) {
   return body;
 }
 
+function parseJsonPayload(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(String(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function buildIfoodDeliveryDestination(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+
+  const delivery = order.delivery || {};
+  const address =
+    delivery.deliveryAddress ||
+    delivery.address ||
+    order.deliveryAddress ||
+    order.address ||
+    order.customer?.address ||
+    {};
+  const coordinates =
+    address.coordinates ||
+    address.coordinate ||
+    delivery.coordinates ||
+    delivery.coordinate ||
+    {};
+
+  const latitude = firstNumber(
+    coordinates.latitude,
+    coordinates.lat,
+    address.latitude,
+    address.lat
+  );
+  const longitude = firstNumber(
+    coordinates.longitude,
+    coordinates.lng,
+    coordinates.lon,
+    address.longitude,
+    address.lng,
+    address.lon
+  );
+
+  const formatted = firstText(
+    address.formattedAddress,
+    address.formatted,
+    address.fullAddress,
+    address.description,
+    delivery.formattedAddress,
+    delivery.deliveryAddressText
+  );
+  const streetLine = [
+    firstText(address.streetName, address.street, address.address, address.route),
+    firstText(address.streetNumber, address.number)
+  ].filter(Boolean).join(", ");
+  const areaLine = [
+    firstText(address.neighborhood, address.district),
+    firstText(address.city, address.locality),
+    firstText(address.state, address.stateCode, address.region)
+  ].filter(Boolean).join(" - ");
+  const postalCode = firstText(address.postalCode, address.zipCode);
+  const addressText = firstText(
+    formatted,
+    [streetLine, areaLine, postalCode].filter(Boolean).join(", ")
+  );
+
+  if (latitude !== null && longitude !== null) {
+    return {
+      latitude,
+      longitude,
+      address: addressText || null,
+      source: "coordinates"
+    };
+  }
+
+  if (addressText) {
+    return {
+      latitude: null,
+      longitude: null,
+      address: addressText,
+      source: "address"
+    };
+  }
+
+  return null;
+}
+
 function normalizeDeliveryCode(value) {
   return String(value || "").trim().replace(/\s+/g, "");
 }
@@ -2273,7 +2378,7 @@ async function getCourierIfoodDeliveries(courierId) {
   const rows = (await pool.query(`
     SELECT
       o.order_id,o.display_id,o.status AS order_status,o.order_type,o.delivered_by,
-      o.merchant_id,o.last_event_code,o.last_event_at,
+      o.merchant_id,o.last_event_code,o.last_event_at,o.payload,
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,d.status AS dispatch_status,
       c.status AS confirmation_status,c.attempts AS confirmation_attempts,
@@ -2311,6 +2416,7 @@ async function getCourierIfoodDeliveries(courierId) {
       verified_at: row.verified_at,
       concluded_at: row.concluded_at,
       last_error: row.confirmation_last_error,
+      navigation: buildIfoodDeliveryDestination(row.payload),
       ...ui
     };
 

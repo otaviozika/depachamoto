@@ -1,5 +1,5 @@
-const CACHE = "despachefull-v3.6.0-repository-cleanup";
-const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png"];
+const CACHE = "despachefull-v3.6.1-repository-cleanup";
+const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC)));
