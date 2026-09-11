@@ -342,7 +342,7 @@ try {
     SELECT order_number,COUNT(*)::int AS c
     FROM active_order_locks
     WHERE courier_id=ANY($1::int[])
-    GROUP BY order_number
+    GROUP BY order_number,order_date
     HAVING COUNT(*)>1
   `, [userIds]);
 

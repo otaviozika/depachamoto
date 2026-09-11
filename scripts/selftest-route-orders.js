@@ -29,7 +29,7 @@ const context=vm.createContext({pool,console,Date,process,Set,Map,
 });
 function include(start,end){vm.runInContext(source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start))),context)}
 include('function canonicalIfoodOrderStatus','async function refreshIfoodOrderClassificationForDeparture');
-include('async function inspectIfoodOrdersForDeparture','async function getAvailableIfoodOrders');
+include('function orderDateSP','async function getAvailableIfoodOrders');
 include('function normalizeOrders','const orderArraySql');
 include('function validateDepartureCount','async function addRouteOrder');
 include('async function createDispatchTransaction','async function checkTimeNotifications');
