@@ -2,7 +2,7 @@
 
 Sistema de despacho para operação com administradores e motoboys, desenvolvido em Node.js, Express, PostgreSQL e Socket.IO.
 
-Versão atual: **3.6.0**
+Versão atual: **3.6.1**
 
 ## Rotas e recuperação de pedidos
 
@@ -11,8 +11,9 @@ Versão atual: **3.6.0**
 - O Admin usa “Vincular pedido despachado” para uma entrega própria já `DISPATCHED`. Sem rota ativa, informa motivo e horário real da saída (últimas 23 horas). O sistema registra a origem `ADMIN_RECOVERED` e a auditoria na mesma transação.
 - A recuperação não cria um job nem reenvia `dispatch` ao iFood. Entrega por código, histórico e contagem financeira usam os vínculos e tabelas existentes. Pagamento revisado/pago deve ser reaberto antes de incluir pedidos.
 - `TAKEOUT`, entrega parceira, outra loja, pedidos finalizados e duplicados continuam bloqueados.
+- O card da entrega mostra “Ir para o Waze” quando o pedido iFood traz endereço ou coordenadas. Coordenadas têm prioridade; sem elas, o Waze recebe o endereço do cliente.
 
-As correções anteriores de login e identificação iFood estão incorporadas ao servidor. A inicialização não precisa mais modificar o código por scripts de patch. Atualize/reabra o aplicativo após publicar para receber o formulário 3.6.0; clientes antigos sem `order_count` recebem uma mensagem de validação.
+As correções anteriores de login e identificação iFood estão incorporadas ao servidor. A inicialização não precisa mais modificar o código por scripts de patch. Atualize/reabra o aplicativo após publicar para receber o formulário 3.6.1; clientes antigos sem `order_count` recebem uma mensagem de validação.
 
 ## Estrutura do projeto
 
@@ -42,6 +43,7 @@ Os testes ficam exclusivamente em `scripts/`. Os principais comandos estão decl
 - `npm run selftest:delivery-confirmation`
 - `npm run selftest:takeout-wallboard`
 - `npm run selftest:route-orders` — executa funções e SQL de produção em PostgreSQL isolado (PGlite), sem credenciais reais. Inclui rollback, duplicidade, recuperação, pagamento e retorno. O teste serializa a conexão de teste e não substitui teste de carga com múltiplas instâncias PostgreSQL.
+- `npm run selftest:waze-navigation`
 
 Testes de carga que alteram dados devem ser executados somente em ambiente de homologação.
 
@@ -55,4 +57,3 @@ O Render utiliza `npm install` para instalar as dependências e `npm start` para
 - Use uma senha administrativa exclusiva e forte.
 - Use um `SESSION_SECRET` aleatório com pelo menos 32 caracteres.
 - Revogue imediatamente qualquer credencial que tenha sido publicada acidentalmente.
-

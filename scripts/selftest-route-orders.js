@@ -123,3 +123,5 @@ await test('retorno revalida pedidos depois de adquirir a trava da rota',async()
   assert.equal((await context.markDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'})).operational_stage,'RETURNING');
 });
 await db.close();console.log(JSON.stringify({result:'PASS',tests:count}));
+
+
