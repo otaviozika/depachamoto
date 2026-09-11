@@ -157,7 +157,7 @@ try{
   const dup=await pool.query(`
     SELECT order_number,COUNT(*) FROM active_order_locks
     WHERE courier_id=ANY($1::int[])
-    GROUP BY order_number HAVING COUNT(*)>1
+    GROUP BY order_number,order_date HAVING COUNT(*)>1
   `,[userIds]);
 
   const report={

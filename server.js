@@ -594,6 +594,27 @@ CREATE TABLE IF NOT EXISTS ifood_dispatch_links (
 CREATE INDEX IF NOT EXISTS ifood_dispatch_links_dispatch_idx
 ON ifood_dispatch_links(dispatch_id);
 
+-- Preserve existing locks and history while scoping short numbers to the order day.
+-- A DO block makes the backfill/constraint replacement atomic and repeatable.
+DO $$
+BEGIN
+  ALTER TABLE active_order_locks ADD COLUMN IF NOT EXISTS order_date DATE;
+  UPDATE active_order_locks a SET order_date=(COALESCE(
+    (SELECT o.order_created_at FROM ifood_dispatch_links l
+     JOIN ifood_orders o ON o.order_id=l.ifood_order_id
+     WHERE l.dispatch_id=a.dispatch_id AND l.local_order_number=a.order_number),
+    d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
+  FROM dispatches d WHERE d.id=a.dispatch_id AND a.order_date IS NULL;
+  ALTER TABLE active_order_locks ALTER COLUMN order_date SET NOT NULL;
+  IF EXISTS (SELECT 1 FROM pg_constraint
+             WHERE conrelid='active_order_locks'::regclass
+               AND conname='active_order_locks_pkey' AND array_length(conkey,1)=1) THEN
+    ALTER TABLE active_order_locks DROP CONSTRAINT active_order_locks_pkey;
+    ALTER TABLE active_order_locks ADD PRIMARY KEY(order_number,order_date);
+  END IF;
+END $$;
+
+
 CREATE TABLE IF NOT EXISTS ifood_dispatch_jobs (
   ifood_order_id TEXT PRIMARY KEY
     REFERENCES ifood_dispatch_links(ifood_order_id) ON DELETE CASCADE,
@@ -765,12 +786,15 @@ ON CONFLICT (setting_key) DO NOTHING;
 
 
 await pool.query(`
-INSERT INTO active_order_locks(order_number,dispatch_id,courier_id)
-SELECT o.order_number,d.id,d.courier_id
+INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date)
+SELECT o.order_number,d.id,d.courier_id,
+  (COALESCE(i.order_created_at,d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
 FROM dispatch_orders o
 JOIN dispatches d ON d.id=o.dispatch_id
+LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
+LEFT JOIN ifood_orders i ON i.order_id=l.ifood_order_id
 WHERE d.status='ON_ROAD'
-ON CONFLICT(order_number) DO NOTHING;
+ON CONFLICT(order_number,order_date) DO NOTHING;
 `);
 
 async function seedAdmin() {
@@ -1927,7 +1951,16 @@ async function refreshIfoodOrderClassificationForDeparture(row) {
   }
 }
 
-async function inspectIfoodOrdersForDeparture(orders, { recovery = false } = {}) {
+function orderDateSP(value = new Date()) {
+  if (value == null || value === '') return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
+async function inspectIfoodOrdersForDeparture(orders, { recovery = false, referenceAt = new Date() } = {}) {
   const requested = [...new Set(
     orders.map(plainLocalOrderNumber).filter(Boolean)
   )];
@@ -1988,30 +2021,29 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false } = {})
       }
     }
 
-    const candidateTimestamp = x => {
-      const created = Date.parse(String(x.order_created_at || ""));
-      const eventAt = Date.parse(String(x.last_event_at || ""));
-      return Math.max(
-        Number.isFinite(created) ? created : 0,
-        Number.isFinite(eventAt) ? eventAt : 0
-      );
-    };
-
-    const recentCutoff = Date.now() - (36 * 60 * 60 * 1000);
-    const recentCandidates = scopedCandidates.filter(x => candidateTimestamp(x) >= recentCutoff);
-    const selectionPool = (recentCandidates.length ? recentCandidates : scopedCandidates)
-      .slice()
-      .sort((a, b) => candidateTimestamp(b) - candidateTimestamp(a));
+    // Creation day is stable: late lifecycle events must never revive an old number.
+    const day = orderDateSP(referenceAt);
+    const selectionPool = scopedCandidates.filter(x =>
+      x.order_created_at && orderDateSP(x.order_created_at) === day
+    );
+    if (!selectionPool.length) {
+      blocked.push({
+        order_number: localOrder,
+        code: "IFOOD_ORDER_DAY_NOT_FOUND",
+        message: "Nenhum pedido iFood com esse número foi encontrado para a data da saída. Atualize e confira a data e o número."
+      });
+      continue;
+    }
 
     const current = selectionPool.filter(x =>
       (recovery ? canonicalIfoodOrderStatus(x.status || x.last_event_code) === "DISPATCHED" : !ifoodOrderIsTerminal(x.status || x.last_event_code))
     );
 
-    if (current.length > 1) {
+    if (current.length > 1 || (!current.length && selectionPool.length > 1)) {
       blocked.push({
         order_number: localOrder,
         code: "IFOOD_ORDER_AMBIGUOUS",
-        message: "Há mais de um pedido iFood ativo com esse número nesta loja. Procure o administrador."
+        message: "Há mais de um pedido iFood com esse número nesta loja e data. Procure o administrador."
       });
       continue;
     }
@@ -2026,6 +2058,9 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false } = {})
     await upsertIfoodOrderFromDetails(details, { orderId: row.order_id, merchantId: row.merchant_id });
     row = { ...row, ...(await pool.query('SELECT * FROM ifood_orders WHERE order_id=$1', [row.order_id])).rows[0],
       order_type: details.orderType, delivered_by: details.delivery?.deliveredBy };
+    if (orderDateSP(row.order_created_at) !== day) {
+      throw Object.assign(new Error("A data do pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
+    }
     const status = canonicalIfoodOrderStatus(row.status);
 
     matched.push({
@@ -2113,6 +2148,7 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false } = {})
     }
 
     accepted.push({
+      order_date: orderDateSP(row.order_created_at),
       order_number: localOrder,
       order_id: row.order_id,
       display_id: row.display_id,
@@ -2137,10 +2173,14 @@ async function getAvailableIfoodOrders(search = "", limit = 30) {
     LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
     LEFT JOIN active_order_locks a
       ON LOWER(a.order_number)=LOWER('#' || COALESCE(o.display_id,''))
+      AND a.order_date=(o.order_created_at AT TIME ZONE 'America/Sao_Paulo')::date
     WHERE UPPER(COALESCE(o.order_type,''))='DELIVERY'
       AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
       AND l.ifood_order_id IS NULL
       AND a.order_number IS NULL
+      AND (o.order_created_at AT TIME ZONE 'America/Sao_Paulo')::date =
+          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      AND ($3='' OR LOWER(o.merchant_id)=$3)
       AND (
         UPPER(COALESCE(o.status,''))='CONFIRMED'
         OR UPPER(COALESCE(o.status,''))='READY_TO_PICKUP'
@@ -2155,7 +2195,7 @@ async function getAvailableIfoodOrders(search = "", limit = 30) {
       END,
       COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC
     LIMIT $2
-  `, [q, safeLimit])).rows;
+  `, [q, safeLimit, String(process.env.IFOOD_MERCHANT_ID || "").trim().toLowerCase()])).rows;
 
   return rows.map(row => ({
     orderId: row.order_id,
@@ -2935,18 +2975,23 @@ async function logOperationalConflict({
   }
 }
 
-async function inspectOrders(orders) {
+async function inspectOrders(orders, ifoodLinks = []) {
   if (!orders.length) return { active: [], recent: [] };
 
+  const dates = orders.map(order => {
+    const link = ifoodLinks.find(x => x.order_number === order);
+    return link?.order_date || orderDateSP();
+  });
   const active = (await pool.query(`
     SELECT l.order_number,l.dispatch_id,l.courier_id,
            u.name AS courier_name,d.departed_at
     FROM active_order_locks l
     JOIN users u ON u.id=l.courier_id
     JOIN dispatches d ON d.id=l.dispatch_id
-    WHERE l.order_number = ANY($1::text[])
+    JOIN unnest($1::text[],$2::date[]) AS requested(number,day)
+      ON requested.number=l.order_number AND requested.day=l.order_date
     ORDER BY l.order_number
-  `, [orders])).rows;
+  `, [orders, dates])).rows;
 
   const recent = (await pool.query(`
     SELECT DISTINCT ON (o.order_number)
@@ -2955,10 +3000,13 @@ async function inspectOrders(orders) {
     FROM dispatch_orders o
     JOIN dispatches d ON d.id=o.dispatch_id
     JOIN users u ON u.id=d.courier_id
-    WHERE o.order_number = ANY($1::text[])
-      AND d.departed_at >= NOW()-INTERVAL '12 hours'
+    LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
+    LEFT JOIN ifood_orders i ON i.order_id=l.ifood_order_id
+    JOIN unnest($1::text[],$2::date[]) AS requested(number,day)
+      ON requested.number=o.order_number
+      AND requested.day=(COALESCE(i.order_created_at,d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
     ORDER BY o.order_number,d.departed_at DESC,d.id DESC
-  `, [orders])).rows.filter(r => !active.some(a => a.order_number === r.order_number));
+  `, [orders, dates])).rows.filter(r => !active.some(a => a.order_number === r.order_number));
 
   return { active, recent };
 }
@@ -3074,13 +3122,17 @@ async function createDispatchTransaction({
       const count = Number((await client.query('SELECT COUNT(*)::int AS count FROM dispatch_orders WHERE dispatch_id=$1', [existingRoute.id])).rows[0].count);
       if (count + orders.length > 5) throw Object.assign(new Error("A rota pode conter no máximo 5 pedidos."), { status: 409 });
     }
+    const orderDates = new Map();
     // Lock UUIDs in a stable order and recheck lifecycle after waiting for the route lock.
     for (const link of [...ifoodLinks].sort((a,b)=>a.order_id.localeCompare(b.order_id))) {
       const current = (await client.query('SELECT * FROM ifood_orders WHERE order_id=$1 FOR UPDATE', [link.order_id])).rows[0];
-      if (!current || current.order_type !== 'DELIVERY' || current.delivered_by !== 'MERCHANT' ||
+      if (!current || !orderDateSP(current.order_created_at) ||
+          (link.order_date && link.order_date !== orderDateSP(current.order_created_at)) ||
+          current.order_type !== 'DELIVERY' || current.delivered_by !== 'MERCHANT' ||
           (recovery ? canonicalIfoodOrderStatus(current.status) !== 'DISPATCHED' : !ifoodOrderCanBeSelected(current.status))) {
         throw Object.assign(new Error("O pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
       }
+      orderDates.set(link.order_number, orderDateSP(current.order_created_at));
     }
     const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
     if (append || recovery) {
@@ -3125,8 +3177,8 @@ async function createDispatchTransaction({
         [dispatch.id, order]
       );
       await client.query(
-        "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id) VALUES($1,$2,$3)",
-        [order, dispatch.id, courierId]
+        "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date) VALUES($1,$2,$3,$4::date)",
+        [order, dispatch.id, courierId, orderDates.get(order) || orderDateSP(effectiveDeparture)]
       );
     }
 
@@ -5095,7 +5147,7 @@ async function addRouteOrder(req, res, recovery) {
     const time = Date.parse(departedAt);
     if (!Number.isFinite(time) || time > Date.now() || time < Date.now()-23*60*60*1000) return res.status(400).json({error:'Informe o horário real da saída, nas últimas 23 horas.'});
   }
-  const inspection = await inspectIfoodOrdersForDeparture(orders, { recovery });
+  const inspection = await inspectIfoodOrdersForDeparture(orders, { recovery, referenceAt: departedAt || new Date() });
   if (inspection.blocked.length || inspection.accepted.length !== 1) return res.status(409).json({error:inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'});
   let result;
   try {
@@ -5235,7 +5287,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     }
   }
 
-  const inspection = await inspectOrders(orders);
+  const inspection = await inspectOrders(orders, ifoodInspection.accepted);
 
   if (inspection.active.length) {
     await logOperationalConflict({
@@ -5266,7 +5318,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
 
     return res.status(409).json({
-      error: "Um ou mais pedidos já foram usados nas últimas 12 horas. Confirme se deseja continuar.",
+      error: "Um ou mais pedidos já foram usados nesta data. Confirme se deseja continuar.",
       code: "RECENT_ORDER_CONFIRMATION",
       recent: recentWarningPayload(inspection.recent),
       server_now: new Date().toISOString()
@@ -5346,7 +5398,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     }
 
     if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
-      const raceInspection = await inspectOrders(orders);
+      const raceInspection = await inspectOrders(orders, ifoodInspection.accepted);
       await logOperationalConflict({
         type: "ACTIVE_ORDER_RACE_BLOCKED",
         severity: "critical",
@@ -5819,7 +5871,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     });
   }
 
-  const inspection = await inspectOrders(orders);
+  const inspection = await inspectOrders(orders, ifoodInspection.accepted);
 
   if (inspection.active.length) {
     await logOperationalConflict({
@@ -5849,7 +5901,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     });
 
     return res.status(409).json({
-      error: "Pedido utilizado nas últimas 12 horas. Confirme para continuar.",
+      error: "Pedido utilizado nesta data. Confirme para continuar.",
       code: "RECENT_ORDER_CONFIRMATION",
       recent: recentWarningPayload(inspection.recent)
     });

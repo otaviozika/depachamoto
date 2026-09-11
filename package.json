@@ -31,7 +31,8 @@
     "selftest:production-merchant-id": "node scripts/selftest-production-merchant-id.js",
     "selftest:takeout-wallboard": "node scripts/selftest-takeout-wallboard.js",
     "selftest:route-orders": "node scripts/selftest-route-orders.js",
-    "selftest:waze-navigation": "node scripts/selftest-waze-navigation.js"
+    "selftest:waze-navigation": "node scripts/selftest-waze-navigation.js",
+    "selftest:ifood-order-days": "node scripts/selftest-ifood-order-days.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
