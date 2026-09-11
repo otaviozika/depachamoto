@@ -26,6 +26,10 @@ O número curto é identificado pela data de criação do pedido em `America/Sao
 
 Para implantar esta alteração de esquema, faça backup e reinicie todas as instâncias na mesma versão, em janela sem despachos. A versão anterior grava travas sem `order_date` e não deve permanecer atendendo durante a troca nem ser restaurada diretamente sobre o esquema novo. Este PR não executa migração no banco de produção.
 
+Se o acesso disponível for apenas o SQL Editor do celular, `scripts/backup-ifood-order-days.sql` prepara uma cópia limitada à tabela alterada pela migração. Execute como administrador, com entradas e alterações de rota pausadas, antes da publicação. O script verifica a chave antiga, copia todas as travas em uma transação, registra horário/contagem e recusa sobrescrever uma cópia existente. O esquema separado tem acesso revogado para `PUBLIC`, `anon` e `authenticated`, além de RLS sem políticas. A cópia não acompanha exclusões nem atualizações da tabela original.
+
+Essa cópia **não é um backup completo**, não inclui pagamentos, usuários, pedidos ou configuração geral e não protege contra perda do próprio banco. Um backup completo externo continua recomendado. Para guardá-la também fora do banco, exporte o resultado de `SELECT * FROM despachefull_pre_ifood_days.locks` pelo SQL Editor, conferindo que o limite de linhas cobre `lock_count`. Não publique o arquivo no GitHub. A recuperação deve ser conferida por administrador: copiar travas antigas sobre rotas que já mudaram pode criar bloqueios indevidos. `scripts/selftest-ifood-order-days-backup.js` testa a cópia, as permissões, a migração e a recuperação dos valores em uma tabela isolada; não é um procedimento de rollback da aplicação.
+
 ## Entrega confirmada sem motoboy
 
 No Telão, uma entrega própria na coluna “Pedidos confirmados”, ainda sem vínculo, mostra **Alocar motoboy**. O botão leva o UUID exato ao formulário. O Admin escolhe o motoboy e informa motivo e horário real da saída (últimas 23 horas, na data do pedido e após sua criação). “Confirmado” aqui é entrega concluída (`CONCLUDED`/`DELIVERED`), não o aceite inicial `CONFIRMED`, que continua no fluxo normal de despacho.
