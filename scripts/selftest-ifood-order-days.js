@@ -55,7 +55,8 @@ include('function normalizeOrders', 'const orderArraySql');
 include('async function inspectOrders', 'async function notificationEnabled');
 include('async function createDispatchTransaction', 'async function checkTimeNotifications');
 include('function operationalRouteSlaMinutes', 'function operationalTiming');
-include('async function addRouteOrder', "app.post('/api/courier/route/orders'");
+include('async function getCourierDeliveryCount', 'async function buildPaymentRow');
+include('async function assignCompletedIfoodOrder', "app.post('/api/courier/route/orders'");
 await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(1,'Admin','admin','test','admin',true,'APPROVED')");
 for (let id = 2; id <= 30; id++) await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES($1,$2,$2,'test','courier',true,'APPROVED')", [id, 'courier-'+id]);
 const add = async (id, number, day = today, status = 'CONFIRMED', merchant = 'shop') => query(`INSERT INTO ifood_orders(order_id,display_id,merchant_id,status,order_type,delivered_by,order_created_at,last_event_at)
@@ -167,4 +168,87 @@ await test('inicialização recompõe travas por dia e pode repetir sem duplicá
   await db.exec(sql); const before=(await query('SELECT COUNT(*)::int AS n FROM active_order_locks')).rows[0].n;
   await db.exec(sql); assert.equal((await query('SELECT COUNT(*)::int AS n FROM active_order_locks')).rows[0].n,before);
 });
+
+await test('Admin aloca confirmada sem motoboy sem modificar rota ativa, entrega ou chegada', async () => {
+  await add('completed-9000','9000',today,'CONCLUDED');
+  const before=(await query("SELECT * FROM dispatches WHERE courier_id=8 AND status='ON_ROAD'")).rows[0];
+  const paymentBefore=await context.getCourierDeliveryCount(8,today);
+  const attendance=context.getCourierAttendance;context.getCourierAttendance=async()=>({checked_out_at:new Date()});
+  const req={session:{user:{id:1}},body:{courier_id:8,order_numbers:['9000'],ifood_order_id:'completed-9000',reason:'Entrega sem vínculo no app',departed_at:today+'T11:00:00-03:00'}};
+  const res={status(code){this.code=code;return this},json(body){this.body=body;return this}};
+  try { await context.addRouteOrder(req,res,true); } finally { context.getCourierAttendance=attendance; }
+  assert.equal(res.code,201,JSON.stringify(res.body));assert.equal(res.body.completed_assignment,true);
+  assert.equal(res.body.dispatch.status,'RELEASED');assert.equal(res.body.dispatch.operational_stage,'COMPLETED');
+  assert.equal(res.body.dispatch.returned_at,null);assert.equal(res.body.dispatch.returning_at,null);
+  assert.deepEqual((await query('SELECT * FROM dispatches WHERE id=$1',[before.id])).rows[0],before);
+  assert.equal((await query('SELECT * FROM active_order_locks WHERE dispatch_id=$1',[res.body.dispatch.id])).rows.length,0);
+  assert.equal((await query("SELECT * FROM ifood_dispatch_jobs WHERE ifood_order_id='completed-9000'")).rows.length,0);
+  assert.equal((await query("SELECT status FROM ifood_orders WHERE order_id='completed-9000'")).rows[0].status,'CONCLUDED');
+  assert.equal(await context.getCourierDeliveryCount(8,today),paymentBefore+1);
+  assert.equal((await query("SELECT details FROM audit_logs WHERE action='COMPLETED_ORDER_ASSIGNED' AND entity_id=$1",[res.body.dispatch.id])).rows[0].details.ifood_order_id,'completed-9000');
+});
+await test('UUID explícito distingue confirmadas e impede reatribuição a outro motoboy', async () => {
+  await add('completed-a','9010',today,'CONCLUDED');await add('completed-b','9010',today,'DELIVERED');
+  assert.equal((await inspect('9010',{recovery:true,allowCompleted:true})).blocked[0].code,'IFOOD_ORDER_AMBIGUOUS');
+  const selected=await inspect('9010',{recovery:true,allowCompleted:true,orderId:'completed-b'});
+  assert.equal(selected.accepted[0].order_id,'completed-b');
+  await context.assignCompletedIfoodOrder({actorUserId:1,courierId:15,link:selected.accepted[0],departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'});
+  await assert.rejects(context.assignCompletedIfoodOrder({actorUserId:1,courierId:16,link:selected.accepted[0],departedAt:today+'T11:00:00-03:00',adminReason:'Outra tentativa'}),e=>e.code==='IFOOD_ORDER_ALREADY_LINKED');
+  assert.equal((await query("SELECT d.courier_id FROM ifood_dispatch_links l JOIN dispatches d ON d.id=l.dispatch_id WHERE l.ifood_order_id='completed-b'")).rows[0].courier_id,15);
+});
+await test('motoboy não pode recuperar concluída; parceira, cancelada e outra loja bloqueiam', async () => {
+  assert.equal((await inspect('9010')).accepted.length,0);
+  await add('completed-partner','9020',today,'CONCLUDED');await query("UPDATE ifood_orders SET delivered_by='IFOOD' WHERE order_id='completed-partner'");
+  assert.equal((await inspect('9020',{recovery:true,allowCompleted:true})).blocked[0].code,'IFOOD_PARTNER_DELIVERY');
+  await add('completed-cancelled','9021',today,'CANCELLED');
+  assert.equal((await inspect('9021',{recovery:true,allowCompleted:true})).accepted.length,0);
+  await assert.rejects(context.assignCompletedIfoodOrder({actorUserId:15,courierId:16,link:{order_id:'completed-a',order_number:'#9010'},departedAt:today+'T11:00:00-03:00',adminReason:'Tentativa motoboy'}),e=>e.status===403);
+});
+await test('pagamento revisado/pago impede alocação; reabrir permite e conta uma vez', async () => {
+  await add('completed-paid','9030',today,'CONCLUDED');
+  const params={actorUserId:1,courierId:17,link:{order_id:'completed-paid',order_number:'#9030'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'};
+  await query("INSERT INTO courier_payments(payment_date,courier_id,status) VALUES($1,17,'PAID')",[today]);
+  for(const status of ['PAID','REVIEWED']) {
+    await query('UPDATE courier_payments SET status=$1 WHERE courier_id=17',[status]);
+    await assert.rejects(context.assignCompletedIfoodOrder(params),/pagamento deste dia/);
+    assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='completed-paid'")).rows.length,0);
+  }
+  await query("UPDATE courier_payments SET status='OPEN' WHERE courier_id=17");await context.assignCompletedIfoodOrder(params);
+  assert.equal(await context.getCourierDeliveryCount(17,today),1);
+});
+await test('alocação revalida status/data e não duplica lançamento manual', async () => {
+  await add('completed-race-status','9040',today,'CONCLUDED');
+  const params={actorUserId:1,courierId:18,link:{order_id:'completed-race-status',order_number:'#9040'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'};
+  await query("UPDATE ifood_orders SET status='CANCELLED' WHERE order_id='completed-race-status'");
+  await assert.rejects(context.assignCompletedIfoodOrder(params),/mudou no iFood/);
+  await query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id='completed-race-status'");
+  await assert.rejects(context.assignCompletedIfoodOrder({...params,departedAt:today+'T09:00:00-03:00'}),/horário real/);
+  const manual=await context.createDispatchTransaction({actorUserId:1,courierId:19,orders:['#9040'],source:'ADMIN'});
+  await finish(manual.dispatch.id);
+  await assert.rejects(context.assignCompletedIfoodOrder(params),/lançamento manual/);
+});
+await test('falha de auditoria desfaz alocação concluída inteira', async () => {
+  await add('completed-audit','9050',today,'CONCLUDED');
+  await db.exec(`CREATE FUNCTION reject_completed_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.action='COMPLETED_ORDER_ASSIGNED' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER reject_completed_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_completed_audit();`);
+  try { await assert.rejects(context.assignCompletedIfoodOrder({actorUserId:1,courierId:20,link:{order_id:'completed-audit',order_number:'#9050'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'}),/test audit failure/); }
+  finally { await db.exec('DROP TRIGGER reject_completed_audit ON audit_logs; DROP FUNCTION reject_completed_audit();'); }
+  assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='completed-audit'")).rows.length,0);
+  assert.equal((await query('SELECT * FROM dispatches WHERE courier_id=20')).rows.length,0);
+});
+await test('duas alocações simultâneas de concluída geram um vínculo e uma contagem', async () => {
+  await add('completed-race','9060',today,'CONCLUDED');
+  const params={actorUserId:1,link:{order_id:'completed-race',order_number:'#9060'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'};
+  const results=await Promise.allSettled([21,22].map(courierId=>context.assignCompletedIfoodOrder({...params,courierId})));
+  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
+  assert.equal(await context.getCourierDeliveryCount(21,today)+await context.getCourierDeliveryCount(22,today),1);
+});
+await test('reiniciar servidor não cria job de dispatch para alocação concluída', async () => {
+  const start=source.indexOf('INSERT INTO ifood_dispatch_jobs(\n  ifood_order_id,dispatch_id,status,next_attempt_at,accepted_at');
+  const sql=source.slice(start,source.indexOf('ON CONFLICT(ifood_order_id) DO NOTHING;',start)+'ON CONFLICT(ifood_order_id) DO NOTHING;'.length);
+  await db.exec(sql);
+  assert.equal((await query("SELECT * FROM ifood_dispatch_jobs j JOIN dispatches d ON d.id=j.dispatch_id WHERE d.closed_reason='COMPLETED_ORDER_ASSIGNED'")).rows.length,0);
+});
+
 await db.close(); console.log(JSON.stringify({result:'PASS',tests:count}));

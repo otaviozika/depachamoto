@@ -677,7 +677,7 @@
       <div class="admin-top-page"><b id="pageTitle">Dashboard</b></div>
       <div class="actions admin-top-actions">
         <span class="connection-pill online connectionStatus"><i class="status-dot"></i>Online</span>
-        <button class="btn outline" onclick="openRouteOrderModal(true)">Vincular pedido despachado</button><button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()"><span class="manual-plus">+</span> Saída manual</button>
+        <button class="btn outline" onclick="openRouteOrderModal(true)">Alocar pedido sem motoboy</button><button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()"><span class="manual-plus">+</span> Saída manual</button>
         <div class="bell-wrap">
           <button class="btn outline bell-btn" aria-label="Notificações" onclick="toggleNotificationPanel()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5"/></svg><span id="notificationCount" class="bell-count hidden">0</span></button>
         </div>
@@ -2821,26 +2821,37 @@ async function arriveAtStore(id){
   }catch(err){alert(err.message)}
 }
 
-let routeOrderRecovery=false;
+let routeOrderRecovery=false,routeOrderId=null;
 function closeRouteOrderModal(){$('routeOrderModal').style.display='none'}
 function openRouteOrderModal(recovery){
-  routeOrderRecovery=recovery;
+  routeOrderRecovery=recovery;routeOrderId=null;
+  $('routeOrderNumber').readOnly=false;
   $('routeOrderForm').reset();$('routeOrderMsg').innerHTML='';
-  $('routeOrderTitle').textContent=recovery?'Vincular pedido despachado':'Adicionar pedido à rota atual';
-  $('routeOrderHelp').textContent=recovery?'Somente entrega própria já despachada no iFood. O pedido entra na rota ativa; sem rota, será criada uma saída recuperada com motivo e horário registrados.':'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
+  $('routeOrderTitle').textContent=recovery?'Alocar pedido sem motoboy':'Adicionar pedido à rota atual';
+  $('routeOrderHelp').textContent=recovery?'Entrega própria sem motoboy: pedidos despachados entram na rota; entregas já confirmadas são alocadas no histórico e na contagem de pagamento, mantendo a entrega concluída. Informe o motivo e o horário real da saída.':'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
   for(const id of ['routeCourierLabel','routeReasonLabel','routeTimeLabel'])$(id).classList.toggle('hidden',!recovery);
   for(const id of ['routeCourier','routeReason','routeDepartureTime'])$(id).required=recovery;
   $('routeCourier').innerHTML='<option value="">Selecione...</option>'+(dashboard?.couriers||[]).map(c=>'<option value="'+Number(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
   $('routeOrderModal').style.display='grid';
 }
+async function openUnassignedOrder(orderId){
+  const row=(wallboardData?.orders||[]).find(x=>x.order_id===orderId);
+  if(!row || row.linked_dispatch_id || me?.role!=='admin')return;
+  if(document.fullscreenElement)await document.exitFullscreen();
+  openRouteOrderModal(true);
+  routeOrderId=row.order_id;
+  $('routeOrderNumber').value=row.display_id||'';
+  $('routeOrderNumber').readOnly=true;
+}
 async function submitRouteOrder(e){
   e.preventDefault();const btn=$('routeOrderSubmit');btn.disabled=true;
   try{
     const payload={order_numbers:[$('routeOrderNumber').value.trim()]};
+    if(routeOrderId)payload.ifood_order_id=routeOrderId;
     if(routeOrderRecovery){payload.courier_id=Number($('routeCourier').value);payload.reason=$('routeReason').value.trim();payload.departed_at=new Date($('routeDepartureTime').value).toISOString()}
     await api(routeOrderRecovery?'/api/admin/dispatches/link-external':'/api/courier/route/orders',{method:'POST',body:JSON.stringify(payload)});
     message('routeOrderMsg','Pedido vinculado com sucesso.','ok');
-    if(routeOrderRecovery)await loadAdmin();else await loadCourier();
+    if(routeOrderRecovery){await loadAdmin();await loadWallboard()}else await loadCourier();
     closeRouteOrderModal();
   }catch(err){message('routeOrderMsg',err.message,'err')}finally{btn.disabled=false}
 }
@@ -3277,11 +3288,15 @@ function kdsOrderCard(row,stage){
   const labels={PREPARING:'EM PREPARO',ON_ROAD:'NA RUA',CONFIRMED:'CONFIRMADO'};
   const when=kdsTimestamp(row,stage);
   const prep=stage==='PREPARING'?kdsPreparationMarkup(row):'';
+  const assign=me?.role==='admin' && !row.linked_dispatch_id && !row.courier_name &&
+    String(row.delivered_by||'').toUpperCase()==='MERCHANT' && ['ON_ROAD','CONFIRMED'].includes(stage)
+    ? `<button type="button" class="btn outline" data-order-id="${escapeHtml(row.order_id)}" onclick="openUnassignedOrder(this.dataset.orderId)">Alocar motoboy</button>` : '';
   return `<article class="kds-order-card">
     <div class="kds-order-top"><div class="kds-order-idblock"><div class="kds-order-number">#${escapeHtml(row.display_id||row.order_id||'—')}</div>${prep}</div><div class="kds-order-time">${when?localTime(when):'—'}</div></div>
     <div class="kds-order-main">${escapeHtml(kdsPrimaryText(row,stage))}</div>
     <div class="kds-order-sub">${escapeHtml(kdsSecondaryText(row,stage))}</div>
     <div class="kds-order-foot"><span class="kds-source">iFood</span><span class="kds-stage">${labels[stage]}</span></div>
+    ${assign}
   </article>`;
 }
 function renderKdsList(id,rows,stage,emptyText){
@@ -4062,6 +4077,7 @@ const auditNames={
   MANUAL_DEPARTURE_REGISTERED:'Saída manual registrada pelo administrador',
   EXTERNAL_DISPATCH_LINKED:'Pedido despachado externamente vinculado pelo Admin',
   ROUTE_ORDER_ADDED:'Pedido adicionado à rota ativa',
+  COMPLETED_ORDER_ASSIGNED:'Entrega confirmada alocada pelo Admin',
   NOTIFICATIONS_MARKED_READ:'Notificações marcadas como lidas',
   NOTIFICATION_SETTINGS_UPDATED:'Configurações de notificações alteradas',
   COURIER_PROFILE_UPDATED:'Dados / PIX do motoboy atualizados',
@@ -4074,6 +4090,7 @@ const auditNames={
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
+  if(x.action==='COMPLETED_ORDER_ASSIGNED')return `${d.order_number||''} • Motoboy ${d.courier_id} • ${d.reason||''} • Saída informada: ${localDate(d.departed_at)}`;
   if(['EXTERNAL_DISPATCH_LINKED','ROUTE_ORDER_ADDED'].includes(x.action))return `${(d.order_numbers||[]).join(', ')} • ${d.recovered_departure?'Saída recuperada • ':''}${d.reason||'Mesma rota'}${d.recovered_departure?' • Horário informado: '+localDate(d.departed_at):''}`;
   if(x.action==='DEPARTURE_REGISTERED')return `${(d.order_numbers||[]).length} pedido(s): ${(d.order_numbers||[]).join(', ')}`;
   if(x.action==='ATTENDANCE_QR_CHECKIN')return `Presença de ${d.attendance_date||'hoje'} via QR da loja`;
