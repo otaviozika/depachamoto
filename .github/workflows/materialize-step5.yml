@@ -22,6 +22,8 @@ jobs:
           sed -i 's/re.subn(pattern,repl,text/re.subn(pattern,lambda m: repl,text/' scripts/apply-step5-finance-source.py
           python3 scripts/apply-step5-finance-source.py
           sed -i 's/operationalShiftAt(departedAt)/getCurrentOperationalShift(new Date(departedAt))/g; s/operationalShiftAt(effectiveDeparture)/getCurrentOperationalShift(new Date(effectiveDeparture))/g' server.js
+          # Legacy VM selftest extracts this helper without module imports.
+          sed -i "s/const shift=normalizeShiftCode(shiftCode);/const shift=['LUNCH','DINNER'].includes(String(shiftCode||'').trim().toUpperCase())?String(shiftCode).trim().toUpperCase():null;/" server.js
       - name: Validate syntax and tests
         run: |
           npm install
