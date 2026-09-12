@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../db/migrations/step5_payments_by_shift.sql',import.meta.url),'utf8');
+assert.match(sql,/shift_code text/);
+assert.match(sql,/rain boolean NOT NULL DEFAULT false/);
+assert.match(sql,/rain_bonus_snapshot/);
+assert.match(sql,/payment_date,courier_id,shift_code/);
+assert.match(sql,/lunch_mon_thu/); assert.match(sql,/lunch_fri_sun/);
+assert.match(sql,/dinner_mon_thu/); assert.match(sql,/dinner_fri_sun/); assert.match(sql,/rain_bonus/);
+assert.doesNotMatch(sql,/DROP CONSTRAINT IF EXISTS courier_payments_courier_id_payment_date_key/,'legacy daily unique must remain until server is shift-aware');
+console.log(JSON.stringify({result:'PASS',feature:'payment_shift_persistence_contract'}));
