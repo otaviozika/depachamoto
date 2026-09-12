@@ -20,7 +20,10 @@ const pool={query,connect:async()=>{
   return {query,release};
 }};
 const context=vm.createContext({pool,console,Date,process,Set,Map,
-  io:{emit(){}},auditBestEffort:async()=>{},
+  io:{emit(){}},
+  getCurrentOperationalShift:d=>({operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
+  shiftLabel:s=>s==='LUNCH'?'Almoço':'Janta',
+  auditBestEffort:async()=>{},
   normalizeIfoodLifecycleStatus:v=>String(v||'').toUpperCase(),
   getOperationalSlaSettings:async()=>({route:{1:25,2:30,3:35,4:40,5:45},returnMinutes:15}),
   orderArraySql:a=>`(SELECT json_agg(order_number) FROM dispatch_orders WHERE dispatch_id=${a}.id) AS order_numbers`,
@@ -105,10 +108,11 @@ await test('falha de auditoria desfaz recuperação inteira',async()=>{
   assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='n'")).rows.length,0);
   assert.equal((await query('SELECT * FROM dispatches WHERE courier_id=4')).rows.length,0);
 });
-await test('pagamento fechado bloqueia vínculo até reabertura',async()=>{
-  await query("INSERT INTO courier_payments(payment_date,courier_id,status) VALUES((NOW() AT TIME ZONE 'America/Sao_Paulo')::date,4,'PAID')");
-  await assert.rejects(create(4,['n'],{recovery:true}),/pagamento deste dia/);
+await test('pagamento fechado bloqueia apenas o turno do vínculo',async()=>{
+  await query("INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES((NOW() AT TIME ZONE 'America/Sao_Paulo')::date,4,'LUNCH','PAID')");
+  await assert.rejects(create(4,['n'],{recovery:true}),/pagamento de .*revisado ou pago/);
   assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='n'")).rows.length,0);
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM courier_payments WHERE courier_id=4 AND shift_code='DINNER'")).rows[0].n,0);
 });
 await test('outra loja e falha da consulta iFood bloqueiam',async()=>{
   const saved=process.env.IFOOD_MERCHANT_ID;process.env.IFOOD_MERCHANT_ID='other-shop';
@@ -123,5 +127,3 @@ await test('retorno revalida pedidos depois de adquirir a trava da rota',async()
   assert.equal((await context.markDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'})).operational_stage,'RETURNING');
 });
 await db.close();console.log(JSON.stringify({result:'PASS',tests:count}));
-
-
