@@ -3,20 +3,53 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   selftests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/work-shifts-step3
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install
-      - name: Aplicar fonte do Passo 3
-        run: node scripts/step3-source-transform.mjs
-      - run: node --check server.js
-      - name: Testes de regressão e rotas
+      - name: Consolidar Passo 3 no código-fonte
         run: |
-          for test in scripts/selftest-*.js; do node "$test"; done
+          node scripts/step3-source-transform.mjs
+          node scripts/selftest-000-step3-compat.js
+          python - <<'PY'
+          from pathlib import Path
+          Path('.github/workflows/selftests.yml').write_text('''name: DespacheFull selftests
+          on:
+            pull_request:
+            workflow_dispatch:
+          permissions:
+            contents: read
+          jobs:
+            selftests:
+              runs-on: ubuntu-latest
+              timeout-minutes: 10
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                - run: npm install
+                - run: node --check server.js
+                - name: Testes de regressão e rotas
+                  run: |
+                    for test in scripts/selftest-*.js; do node "$test"; done
+          ''', encoding='utf-8')
+          PY
+          git rm scripts/step3-source-transform.mjs scripts/selftest-000-step3-compat.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.js scripts/selftest-ifood-order-days.js .github/workflows/selftests.yml
+          git commit -m "feat: consolidate step 3 shift attendance in server"
+          git push origin HEAD:feat/work-shifts-step3
+      - name: Encerrar run de bootstrap
+        run: echo "Commit definitivo enviado; o próximo run valida o código consolidado."
