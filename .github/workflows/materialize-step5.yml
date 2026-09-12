@@ -24,6 +24,9 @@ jobs:
           sed -i 's/operationalShiftAt(departedAt)/getCurrentOperationalShift(new Date(departedAt))/g; s/operationalShiftAt(effectiveDeparture)/getCurrentOperationalShift(new Date(effectiveDeparture))/g' server.js
           # Legacy VM selftest extracts this helper without module imports.
           sed -i "s/const shift=normalizeShiftCode(shiftCode);/const shift=['LUNCH','DINNER'].includes(String(shiftCode||'').trim().toUpperCase())?String(shiftCode).trim().toUpperCase():null;/" server.js
+          # Completed-order regression must lock the exact post-cutover shift, not the whole day.
+          sed -i "s/INSERT INTO courier_payments(payment_date,courier_id,status) VALUES(\$1,17,'PAID')/INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES(\$1,17,'LUNCH','PAID')/" scripts/selftest-ifood-order-days.js
+          sed -i "s@/pagamento deste dia/@/pagamento deste turno|pagamento deste dia/@" scripts/selftest-ifood-order-days.js
       - name: Validate syntax and tests
         run: |
           npm install
