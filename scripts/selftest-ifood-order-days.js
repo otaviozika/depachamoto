@@ -37,6 +37,7 @@ const context = vm.createContext({ pool, console, Date: TestDate, process: { env
   getOperationalSlaSettings: async () => ({ route: {1:25,2:30,3:35,4:40,5:45}, returnMinutes:15 }),
   getCourierAttendance: async () => ({ checked_out_at: null }), getSPDate: async () => today,
   getCurrentOperationalShift: () => ({ operational_date: today, shift_code: 'LUNCH', shift_label: 'Almoço' }),
+  resolveDispatchShift: ({ departedAt, recoveryShiftCode }) => { const d=new TestDate(departedAt); const h=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(d)); const code=recoveryShiftCode || (h < 16 ? 'LUNCH' : 'DINNER'); return { operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}), shift_code:code, shift_label:code==='LUNCH'?'Almoço':'Janta' }; },
   setImmediate: () => {},
   orderArraySql: a => `(SELECT json_agg(order_number) FROM dispatch_orders WHERE dispatch_id=${a}.id) AS order_numbers`,
   upsertIfoodOrderFromDetails: async () => {},

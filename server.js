@@ -12,7 +12,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import webpush from "web-push";
-import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, shiftLabel } from "./lib/operational-shift.js";
+import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 
 const { Pool } = pg;
@@ -4042,19 +4042,21 @@ async function buildPaymentRow(courier,payment,date,rule,liveCount=null,shiftCod
 }
 
 async function getCourierPaymentPeriodShifts(courier,startDate,endDate) {
+  const legacyRows=(await pool.query(`WITH deliveries AS (SELECT (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date payment_date,COUNT(o.id)::int delivery_count FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id WHERE d.courier_id=$1 AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND LEAST($3::date,($4::date-1)) GROUP BY 1), worked AS (SELECT payment_date FROM deliveries UNION SELECT payment_date FROM courier_payments WHERE courier_id=$1 AND shift_code IS NULL AND payment_date BETWEEN $2::date AND LEAST($3::date,($4::date-1))) SELECT to_char(w.payment_date,'YYYY-MM-DD') summary_date,NULL::text shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,p.* FROM worked w LEFT JOIN deliveries d ON d.payment_date=w.payment_date LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code IS NULL ORDER BY w.payment_date`,[courier.id,startDate,endDate,WORK_SHIFT_CUTOVER_DATE])).rows;
   const rows=(await pool.query(`WITH deliveries AS (
       SELECT d.operational_date AS payment_date,d.shift_code,COUNT(o.id)::int delivery_count FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
-      WHERE d.courier_id=$1 AND d.operational_date BETWEEN $2::date AND $3::date AND d.shift_code IS NOT NULL GROUP BY 1,2
+      WHERE d.courier_id=$1 AND d.operational_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND d.shift_code IS NOT NULL GROUP BY 1,2
     ), worked AS (
-      SELECT attendance_date AS payment_date,shift_code FROM courier_attendance WHERE courier_id=$1 AND attendance_date BETWEEN $2::date AND $3::date AND shift_code IS NOT NULL
+      SELECT attendance_date AS payment_date,shift_code FROM courier_attendance WHERE courier_id=$1 AND attendance_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
       UNION SELECT payment_date,shift_code FROM deliveries
-      UNION SELECT payment_date,shift_code FROM courier_payments WHERE courier_id=$1 AND payment_date BETWEEN $2::date AND $3::date AND shift_code IS NOT NULL
+      UNION SELECT payment_date,shift_code FROM courier_payments WHERE courier_id=$1 AND payment_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
     ) SELECT to_char(w.payment_date,'YYYY-MM-DD') summary_date,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,p.*
       FROM worked w LEFT JOIN deliveries d ON d.payment_date=w.payment_date AND d.shift_code=w.shift_code
-      LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code=w.shift_code ORDER BY w.payment_date,w.shift_code`,[courier.id,startDate,endDate])).rows;
+      LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code=w.shift_code ORDER BY w.payment_date,w.shift_code`,[courier.id,startDate,endDate,WORK_SHIFT_CUTOVER_DATE])).rows;
   const rules=(await pool.query(`SELECT id,to_char(effective_from,'YYYY-MM-DD') effective_from,per_delivery,base_mon_thu,base_fri_sun,lunch_mon_thu,lunch_fri_sun,dinner_mon_thu,dinner_fri_sun,rain_bonus,created_at
     FROM payment_rate_rules WHERE effective_from <= $1::date ORDER BY effective_from DESC,id DESC`,[endDate])).rows.map(r=>({
       ...r,per_delivery:Number(r.per_delivery),base_mon_thu:Number(r.base_mon_thu),base_fri_sun:Number(r.base_fri_sun),lunch_mon_thu:Number(r.lunch_mon_thu??45),lunch_fri_sun:Number(r.lunch_fri_sun??55),dinner_mon_thu:Number(r.dinner_mon_thu??60),dinner_fri_sun:Number(r.dinner_fri_sun??75),rain_bonus:Number(r.rain_bonus??10)}));
+  rows.unshift(...legacyRows);
   const out=[]; for(const row of rows){const rule=rules.find(r=>r.effective_from<=row.summary_date)||{effective_from:'2000-01-01',...defaultShiftPaymentRule(),base_mon_thu:60,base_fri_sun:75};
     out.push(await buildPaymentRow(courier,row.id?row:null,row.summary_date,rule,Number(row.live_delivery_count||0),row.shift_code,true));}
   return out;
@@ -5260,8 +5262,7 @@ async function assignCompletedIfoodOrder({ actorUserId, courierId, link, departe
         AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=($2::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date
       LIMIT 1`, [link.order_number, departedAt]);
     if (manual.rowCount) throw Object.assign(new Error('Existe um lançamento manual deste número nesta data. Confira o histórico antes de alocar para não contar duas vezes.'), { status:409 });
-    const recoveredShift=getCurrentOperationalShift(new Date(departedAt));
-    if(!recoveredShift) throw Object.assign(new Error('O horário informado não pertence a um turno operacional.'),{status:409,code:'OUTSIDE_OPERATIONAL_SHIFT'});
+    const recoveredShift=resolveDispatchShift({departedAt,recovery:true,recoveryShiftCode:null});
     const payment=(await client.query(`SELECT status FROM courier_payments WHERE courier_id=$1 AND payment_date=$2::date AND shift_code=$3 FOR UPDATE`,[courierId,recoveredShift.operational_date,recoveredShift.shift_code])).rows[0];
     if(payment&&payment.status!=='OPEN')throw Object.assign(new Error(`O pagamento de ${recoveredShift.shift_label} já foi revisado ou pago. Reabra este turno no Financeiro antes de vincular o pedido.`),{status:409});
     const code = 'DSP-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
