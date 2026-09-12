@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v3.6.1-order-days-assignment";
+const CACHE = "despachefull-v3.6.1-delivery-details";
 const STATIC = ["/", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
 
 self.addEventListener("install", event => {
