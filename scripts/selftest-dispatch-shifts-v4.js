@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { resolveDispatchShift } from "../lib/operational-shift.js";
+const sp=local=>`${local}-03:00`;
+const lunch=resolveDispatchShift({departedAt:sp("2026-09-18T12:35:00")});
+assert.equal(lunch.operational_date,"2026-09-18"); assert.equal(lunch.shift_code,"LUNCH");
+assert.equal(resolveDispatchShift({departedAt:sp("2026-09-18T19:10:00")}).shift_code,"DINNER");
+const inherited=resolveDispatchShift({departedAt:sp("2026-09-18T19:10:00"),existingOperationalDate:"2026-09-18",existingShiftCode:"LUNCH"});
+assert.equal(inherited.shift_code,"LUNCH"); assert.equal(inherited.source,"EXISTING_ROUTE");
+assert.equal(resolveDispatchShift({departedAt:sp("2026-09-18T12:35:00"),recovery:true}).shift_code,"LUNCH");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-20T12:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00"),recovery:true}),e=>e?.code==="RECOVERY_SHIFT_REQUIRED");
+const override=resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00"),recovery:true,recoveryShiftCode:"LUNCH"});
+assert.equal(override.shift_code,"LUNCH"); assert.equal(override.source,"ADMIN_OVERRIDE");
+console.log(JSON.stringify({result:"PASS",feature:"dispatch_shift_freeze",cases:8}));
