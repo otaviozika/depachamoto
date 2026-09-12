@@ -32,6 +32,13 @@ jobs:
           new=new.replace('  const out=[]; for(const row of rows){','  rows.unshift(...legacyRows);\n  const out=[]; for(const row of rows){',1)
           s=s[:start]+new+s[end:]
           p.write_text(s)
+
+          t=Path('scripts/selftest-ifood-order-days.js'); x=t.read_text()
+          anchor="  getCurrentOperationalShift: () => ({ operational_date: today, shift_code: 'LUNCH', shift_label: 'Almoço' }),\n"
+          resolver="  resolveDispatchShift: ({ departedAt, recoveryShiftCode }) => { const d=new TestDate(departedAt); const h=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(d)); const code=recoveryShiftCode || (h < 16 ? 'LUNCH' : 'DINNER'); return { operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}), shift_code:code, shift_label:code==='LUNCH'?'Almoço':'Janta' }; },\n"
+          assert anchor in x
+          x=x.replace(anchor,anchor+resolver,1)
+          t.write_text(x)
           PY
       - name: Validate
         run: |
