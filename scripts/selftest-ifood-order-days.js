@@ -36,6 +36,7 @@ const context = vm.createContext({ pool, console, Date: TestDate, process: { env
   normalizeIfoodLifecycleStatus: v => String(v || '').toUpperCase(),
   getOperationalSlaSettings: async () => ({ route: {1:25,2:30,3:35,4:40,5:45}, returnMinutes:15 }),
   getCourierAttendance: async () => ({ checked_out_at: null }), getSPDate: async () => today,
+  getCurrentOperationalShift: () => ({ operational_date: today, shift_code: 'LUNCH', shift_label: 'Almoço' }),
   setImmediate: () => {},
   orderArraySql: a => `(SELECT json_agg(order_number) FROM dispatch_orders WHERE dispatch_id=${a}.id) AS order_numbers`,
   upsertIfoodOrderFromDetails: async () => {},

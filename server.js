@@ -12,6 +12,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import webpush from "web-push";
+import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, shiftLabel } from "./lib/operational-shift.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -378,6 +379,7 @@ CREATE TABLE IF NOT EXISTS courier_attendance (
   id BIGSERIAL PRIMARY KEY,
   courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   attendance_date DATE NOT NULL,
+  shift_code TEXT,
   checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   checkin_method TEXT NOT NULL DEFAULT 'QR',
   checked_in_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -419,11 +421,67 @@ WHERE NOT EXISTS (
   WHERE s.setting_key='attendance_legacy_backfill_v3'
 )
 GROUP BY d.courier_id,(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
-ON CONFLICT(courier_id,attendance_date) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO app_settings(setting_key,setting_value)
 VALUES('attendance_legacy_backfill_v3','done')
 ON CONFLICT(setting_key) DO NOTHING;
+
+-- v3.7: presença por turno. Histórico anterior continua nullable; novos fluxos
+-- usam courier_id + attendance_date + shift_code.
+ALTER TABLE courier_attendance
+ADD COLUMN IF NOT EXISTS shift_code TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='courier_attendance'::regclass
+      AND conname='courier_attendance_shift_code_check'
+  ) THEN
+    ALTER TABLE courier_attendance
+      ADD CONSTRAINT courier_attendance_shift_code_check
+      CHECK (shift_code IS NULL OR shift_code IN ('LUNCH','DINNER'));
+  END IF;
+END $$;
+
+-- Classifica somente registros a partir do cutover quando o horário é inequívoco.
+UPDATE courier_attendance
+SET shift_code = CASE
+  WHEN EXTRACT(ISODOW FROM attendance_date) BETWEEN 1 AND 4
+       AND (checked_in_at AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN TIME '11:30' AND TIME '14:30'
+    THEN 'LUNCH'
+  WHEN EXTRACT(ISODOW FROM attendance_date) BETWEEN 1 AND 4
+       AND (checked_in_at AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN TIME '18:00' AND TIME '23:32'
+    THEN 'DINNER'
+  WHEN EXTRACT(ISODOW FROM attendance_date) IN (5,6)
+       AND (checked_in_at AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN TIME '11:00' AND TIME '15:00'
+    THEN 'LUNCH'
+  WHEN EXTRACT(ISODOW FROM attendance_date) IN (5,6)
+       AND (checked_in_at AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN TIME '18:00' AND TIME '23:30'
+    THEN 'DINNER'
+  WHEN EXTRACT(ISODOW FROM attendance_date)=7
+       AND (checked_in_at AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN TIME '18:00' AND TIME '23:30'
+    THEN 'DINNER'
+  ELSE NULL
+END
+WHERE shift_code IS NULL
+  AND attendance_date >= DATE '2026-09-12';
+
+ALTER TABLE courier_attendance
+DROP CONSTRAINT IF EXISTS courier_attendance_courier_id_attendance_date_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS courier_attendance_date_shift_unique_idx
+ON courier_attendance(courier_id,attendance_date,shift_code)
+WHERE shift_code IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS courier_attendance_shift_lookup_idx
+ON courier_attendance(attendance_date,shift_code,courier_id);
+
+INSERT INTO app_settings(setting_key,setting_value,updated_at)
+VALUES('work_shift_cutover_date','2026-09-12',NOW())
+ON CONFLICT(setting_key) DO UPDATE
+SET setting_value=EXCLUDED.setting_value,updated_at=NOW();
 
 CREATE TABLE IF NOT EXISTS active_order_locks (
   order_number TEXT PRIMARY KEY,
@@ -3580,12 +3638,23 @@ function attendanceQrSecret() {
   return String(process.env.ATTENDANCE_QR_SECRET || sessionSecret);
 }
 
-function createAttendanceQrToken(attendanceDate) {
+const WORK_SHIFT_CUTOVER_DATE = "2026-09-12";
+
+function createAttendanceQrToken(attendanceDate, shiftCode) {
+  const normalizedShift = normalizeShiftCode(shiftCode);
+  if (!normalizedShift) {
+    const err = new Error("Turno inválido para gerar o QR de presença.");
+    err.status = 400;
+    err.code = "ATTENDANCE_SHIFT_INVALID";
+    throw err;
+  }
+
   const now = Date.now();
   const payload = {
-    v: 1,
+    v: 2,
     p: "courier_attendance",
     d: attendanceDate,
+    s: normalizedShift,
     iat: now,
     exp: now + ATTENDANCE_QR_TTL_MS,
     n: crypto.randomUUID()
@@ -3632,7 +3701,8 @@ async function verifyAttendanceQrToken(token) {
     throw err;
   }
 
-  if (payload?.v !== 1 || payload?.p !== "courier_attendance" || !validDate(payload?.d)) {
+  const payloadShift = normalizeShiftCode(payload?.s);
+  if (payload?.v !== 2 || payload?.p !== "courier_attendance" || !validDate(payload?.d) || !payloadShift) {
     const err = new Error("QR de presença inválido.");
     err.status = 400;
     err.code = "ATTENDANCE_QR_INVALID";
@@ -3654,40 +3724,122 @@ async function verifyAttendanceQrToken(token) {
     throw err;
   }
 
+  const currentShift = getCurrentOperationalShift();
+  if (!currentShift || currentShift.operational_date !== payload.d || currentShift.shift_code !== payloadShift) {
+    const err = new Error("Este QR pertence a outro turno. Escaneie o QR do turno atual.");
+    err.status = 409;
+    err.code = "ATTENDANCE_QR_WRONG_SHIFT";
+    throw err;
+  }
+
+  payload.s = payloadShift;
   return payload;
 }
 
-async function getCourierAttendance(courierId, attendanceDate = null) {
-  const date = attendanceDate || await getSPDate();
-  return (await pool.query(`
-    SELECT a.id,a.courier_id,a.attendance_date,a.checked_in_at,a.checkin_method,
-           a.checked_in_by,a.admin_reason,a.checked_out_at,a.checked_out_by,a.checkout_reason
-    FROM courier_attendance a
-    WHERE a.courier_id=$1 AND a.attendance_date=$2::date
-    LIMIT 1
-  `, [courierId, date])).rows[0] || null;
+function resolveAttendanceViewShift(attendanceDate, requestedShift = null, now = new Date()) {
+  const requestedText = String(requestedShift || "").trim();
+  const requested = normalizeShiftCode(requestedText);
+  if (requestedText && !requested) {
+    const err = new Error("Turno inválido.");
+    err.status = 400;
+    err.code = "ATTENDANCE_SHIFT_INVALID";
+    throw err;
+  }
+
+  if (!requested && attendanceDate < WORK_SHIFT_CUTOVER_DATE) {
+    return { operational_date: attendanceDate, shift_code: null, shift_label: "Legado", legacy: true };
+  }
+
+  if (requested) {
+    return {
+      operational_date: attendanceDate,
+      shift_code: requested,
+      shift_label: shiftLabel(requested),
+      legacy: false
+    };
+  }
+
+  const sp = getSPDateTime(now);
+  if (attendanceDate === sp.date) {
+    const active = getCurrentOperationalShift(now);
+    if (active) return { ...active, legacy: false };
+
+    const [hour, minute] = sp.time.split(":").map(Number);
+    const minutes = hour * 60 + minute;
+    const fallbackCode = sp.weekday === 7
+      ? "DINNER"
+      : minutes < 18 * 60 ? "LUNCH" : "DINNER";
+
+    return {
+      operational_date: attendanceDate,
+      shift_code: fallbackCode,
+      shift_label: shiftLabel(fallbackCode),
+      legacy: false
+    };
+  }
+
+  return {
+    operational_date: attendanceDate,
+    shift_code: "DINNER",
+    shift_label: shiftLabel("DINNER"),
+    legacy: false
+  };
 }
 
-async function requireCourierAttendance(courierId) {
-  const date = await getSPDate();
-  const attendance = await getCourierAttendance(courierId, date);
+async function getCourierAttendance(courierId, attendanceDate = null, shiftCode = null) {
+  const date = attendanceDate || await getSPDate();
+  const view = resolveAttendanceViewShift(date, shiftCode);
+
+  if (!view.shift_code) {
+    return (await pool.query(`
+      SELECT a.id,a.courier_id,a.attendance_date,a.shift_code,a.checked_in_at,a.checkin_method,
+             a.checked_in_by,a.admin_reason,a.checked_out_at,a.checked_out_by,a.checkout_reason
+      FROM courier_attendance a
+      WHERE a.courier_id=$1 AND a.attendance_date=$2::date AND a.shift_code IS NULL
+      ORDER BY a.checked_in_at DESC,a.id DESC
+      LIMIT 1
+    `, [courierId, date])).rows[0] || null;
+  }
+
+  return (await pool.query(`
+    SELECT a.id,a.courier_id,a.attendance_date,a.shift_code,a.checked_in_at,a.checkin_method,
+           a.checked_in_by,a.admin_reason,a.checked_out_at,a.checked_out_by,a.checkout_reason
+    FROM courier_attendance a
+    WHERE a.courier_id=$1 AND a.attendance_date=$2::date AND a.shift_code=$3
+    LIMIT 1
+  `, [courierId, date, view.shift_code])).rows[0] || null;
+}
+
+async function requireCourierAttendance(courierId, at = new Date()) {
+  const shift = getCurrentOperationalShift(at);
+  if (!shift) {
+    const err = new Error("A hamburgueria está entre turnos. Novas saídas ficam bloqueadas até o próximo turno.");
+    err.status = 409;
+    err.code = "OUTSIDE_OPERATIONAL_SHIFT";
+    throw err;
+  }
+
+  const attendance = await getCourierAttendance(courierId, shift.operational_date, shift.shift_code);
   if (!attendance) {
-    const err = new Error("Confirme sua presença pelo QR da loja antes de registrar uma saída.");
+    const err = new Error(`Confirme sua presença no turno de ${shift.shift_label} antes de registrar uma saída.`);
     err.status = 403;
     err.code = "ATTENDANCE_REQUIRED";
-    err.attendance_date = date;
+    err.attendance_date = shift.operational_date;
+    err.shift_code = shift.shift_code;
     throw err;
   }
   if (attendance.checked_out_at) {
-    const err = new Error("Seu expediente de hoje foi encerrado pelo Admin. Novas saídas estão bloqueadas.");
+    const err = new Error(`Seu expediente de ${shift.shift_label} foi encerrado pelo Admin. Novas saídas estão bloqueadas neste turno.`);
     err.status = 403;
     err.code = "SHIFT_ENDED";
-    err.attendance_date = date;
+    err.attendance_date = shift.operational_date;
+    err.shift_code = shift.shift_code;
     err.checked_out_at = attendance.checked_out_at;
     throw err;
   }
   return attendance;
 }
+
 function validDate(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 }
@@ -4180,23 +4332,40 @@ app.post("/api/presence", auth, asyncRoute(async (req, res) => {
 }));
 
 app.get("/api/admin/attendance/qr", auth, adminOnly, asyncRoute(async (req, res) => {
-  const date = await getSPDate();
-  const { token, payload } = createAttendanceQrToken(date);
+  const shift = getCurrentOperationalShift();
+  if (!shift) {
+    return res.status(409).json({
+      error: "Nenhum turno de operação está aberto neste momento.",
+      code: "OUTSIDE_OPERATIONAL_SHIFT",
+      server_now: new Date().toISOString()
+    });
+  }
+
+  const { token, payload } = createAttendanceQrToken(shift.operational_date, shift.shift_code);
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const checkinUrl = new URL("/", baseUrl);
   checkinUrl.searchParams.set("attendance_token", token);
 
   res.json({
-    date,
+    date: shift.operational_date,
+    shift_code: shift.shift_code,
+    shift_label: shift.shift_label,
+    starts_at: shift.starts_at,
+    ends_at: shift.ends_at,
     url: checkinUrl.toString(),
     expires_at: new Date(payload.exp).toISOString(),
     refresh_after_ms: 30000,
     server_now: new Date().toISOString()
   });
 }));
-
 app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) => {
   const date = validDate(req.query.date) ? String(req.query.date) : await getSPDate();
+  let attendanceView;
+  try {
+    attendanceView = resolveAttendanceViewShift(date, req.query.shift_code || req.query.shift || null);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message, code: err.code || "ATTENDANCE_SHIFT_INVALID" });
+  }
 
   const rows = (await pool.query(`
     SELECT
@@ -4213,6 +4382,7 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
     FROM users u
     LEFT JOIN courier_attendance a
       ON a.courier_id=u.id AND a.attendance_date=$1::date
+     AND (($2::text IS NULL AND a.shift_code IS NULL) OR a.shift_code=$2::text)
     LEFT JOIN users admin_u ON admin_u.id=a.checked_in_by
     LEFT JOIN users checkout_admin ON checkout_admin.id=a.checked_out_by
     LEFT JOIN user_presence p ON p.user_id=u.id
@@ -4230,7 +4400,7 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
       CASE WHEN a.id IS NOT NULL THEN 0 ELSE 1 END,
       a.checked_in_at NULLS LAST,
       u.name
-  `, [date])).rows.map(r => ({
+  `, [date, attendanceView.shift_code])).rows.map(r => ({
     ...r,
     attended: !!r.attendance_id,
     ended: !!r.checked_out_at,
@@ -4246,6 +4416,9 @@ app.get("/api/admin/attendance", auth, adminOnly, asyncRoute(async (req, res) =>
 
   res.json({
     date,
+    shift_code: attendanceView.shift_code,
+    shift_label: attendanceView.shift_label,
+    legacy: attendanceView.legacy,
     summary: {
       eligible: rows.length,
       attended,
@@ -4270,6 +4443,14 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
     return res.status(400).json({ error: "Informe o motivo da presença manual." });
   }
 
+  const shift = getCurrentOperationalShift();
+  if (!shift) {
+    return res.status(409).json({
+      error: "Nenhum turno está aberto para registrar presença agora.",
+      code: "OUTSIDE_OPERATIONAL_SHIFT"
+    });
+  }
+
   const courier = (await pool.query(`
     SELECT id,name,active,approval_status
     FROM users
@@ -4282,21 +4463,21 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
     return res.status(409).json({ error: "O motoboy precisa estar ativo e aprovado." });
   }
 
-  const date = await getSPDate();
   const inserted = await pool.query(`
     INSERT INTO courier_attendance(
-      courier_id,attendance_date,checked_in_at,checkin_method,checked_in_by,admin_reason
+      courier_id,attendance_date,shift_code,checked_in_at,checkin_method,checked_in_by,admin_reason
     )
-    VALUES($1,$2::date,NOW(),'ADMIN_MANUAL',$3,$4)
-    ON CONFLICT(courier_id,attendance_date) DO NOTHING
+    VALUES($1,$2::date,$3,NOW(),'ADMIN_MANUAL',$4,$5)
+    ON CONFLICT DO NOTHING
     RETURNING *
-  `, [courierId, date, req.session.user.id, reason]);
+  `, [courierId, shift.operational_date, shift.shift_code, req.session.user.id, reason]);
 
-  const attendance = inserted.rows[0] || await getCourierAttendance(courierId, date);
+  const attendance = inserted.rows[0] || await getCourierAttendance(courierId, shift.operational_date, shift.shift_code);
   if (!inserted.rowCount && attendance?.checked_out_at) {
     return res.status(409).json({
-      error: `${courier.name} teve o expediente encerrado hoje. A presença manual não reabre expediente encerrado.`,
+      error: `${courier.name} teve o expediente de ${shift.shift_label} encerrado. A presença manual não reabre turno encerrado.`,
       code: "SHIFT_ENDED",
+      shift_code: shift.shift_code,
       checked_out_at: attendance.checked_out_at,
       server_now: new Date().toISOString()
     });
@@ -4306,22 +4487,28 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
     await auditBestEffort(req.session.user.id, "ATTENDANCE_MANUAL_CHECKIN", "courier_attendance", attendance.id, {
       courier_id: courierId,
       courier_name: courier.name,
-      attendance_date: date,
+      attendance_date: shift.operational_date,
+      shift_code: shift.shift_code,
       reason
     });
-    io.emit("attendance:changed", { courier_id: courierId, attendance_date: date });
+    io.emit("attendance:changed", {
+      courier_id: courierId,
+      attendance_date: shift.operational_date,
+      shift_code: shift.shift_code
+    });
   }
 
   res.status(inserted.rowCount ? 201 : 200).json({
     attendance,
+    shift_code: shift.shift_code,
+    shift_label: shift.shift_label,
     duplicate: !inserted.rowCount,
     message: inserted.rowCount
-      ? `Presença de ${courier.name} confirmada pelo Admin.`
-      : `${courier.name} já possui presença registrada hoje.`,
+      ? `Presença de ${courier.name} confirmada no turno de ${shift.shift_label}.`
+      : `${courier.name} já possui presença registrada no turno de ${shift.shift_label}.`,
     server_now: new Date().toISOString()
   });
 }));
-
 app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRoute(async (req, res) => {
   const courierId = Number(req.params.courierId);
   const reason = String(req.body.reason || "").trim().slice(0, 250);
@@ -4341,17 +4528,26 @@ app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRout
   if (!courier) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   const date = await getSPDate();
-  const attendance = await getCourierAttendance(courierId, date);
+  let attendanceView;
+  try {
+    attendanceView = resolveAttendanceViewShift(date, req.body.shift_code || req.body.shift || null);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message, code: err.code || "ATTENDANCE_SHIFT_INVALID" });
+  }
+
+  const attendance = await getCourierAttendance(courierId, date, attendanceView.shift_code);
   if (!attendance) {
     return res.status(409).json({
-      error: `${courier.name} não possui presença registrada hoje.`,
-      code: "ATTENDANCE_NOT_FOUND"
+      error: `${courier.name} não possui presença registrada no turno de ${attendanceView.shift_label}.`,
+      code: "ATTENDANCE_NOT_FOUND",
+      shift_code: attendanceView.shift_code
     });
   }
   if (attendance.checked_out_at) {
     return res.status(409).json({
-      error: `O expediente de ${courier.name} já foi encerrado hoje.`,
+      error: `O expediente de ${attendanceView.shift_label} de ${courier.name} já foi encerrado.`,
       code: "SHIFT_ALREADY_ENDED",
+      shift_code: attendanceView.shift_code,
       checked_out_at: attendance.checked_out_at
     });
   }
@@ -4366,7 +4562,7 @@ app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRout
 
   if (activeDispatch) {
     return res.status(409).json({
-      error: `${courier.name} ainda está ${activeDispatch.operational_stage === 'RETURNING' ? 'retornando para a loja' : 'em rota'}. Finalize a saída antes de encerrar o expediente.`,
+      error: `${courier.name} ainda está ${activeDispatch.operational_stage === "RETURNING" ? "retornando para a loja" : "em rota"}. Finalize a saída antes de encerrar o expediente.`,
       code: "SHIFT_HAS_ACTIVE_DISPATCH",
       dispatch_id: activeDispatch.id,
       operational_stage: activeDispatch.operational_stage
@@ -4388,21 +4584,28 @@ app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRout
     courier_id: courierId,
     courier_name: courier.name,
     attendance_date: date,
+    shift_code: attendanceView.shift_code,
     checked_in_at: attendance.checked_in_at,
     checked_out_at: updated.checked_out_at,
     reason
   });
 
-  io.emit("attendance:changed", { courier_id: courierId, attendance_date: date, shift_ended: true });
+  io.emit("attendance:changed", {
+    courier_id: courierId,
+    attendance_date: date,
+    shift_code: attendanceView.shift_code,
+    shift_ended: true
+  });
   io.emit("dashboard:changed");
 
   res.json({
     attendance: updated,
-    message: `Expediente de ${courier.name} encerrado pelo Admin.`,
+    shift_code: attendanceView.shift_code,
+    shift_label: attendanceView.shift_label,
+    message: `Expediente de ${attendanceView.shift_label} de ${courier.name} encerrado pelo Admin.`,
     server_now: new Date().toISOString()
   });
 }));
-
 app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
 
@@ -4424,18 +4627,19 @@ app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async 
 
   const inserted = await pool.query(`
     INSERT INTO courier_attendance(
-      courier_id,attendance_date,checked_in_at,checkin_method
+      courier_id,attendance_date,shift_code,checked_in_at,checkin_method
     )
-    VALUES($1,$2::date,NOW(),'QR')
-    ON CONFLICT(courier_id,attendance_date) DO NOTHING
+    VALUES($1,$2::date,$3,NOW(),'QR')
+    ON CONFLICT DO NOTHING
     RETURNING *
-  `, [req.session.user.id, payload.d]);
+  `, [req.session.user.id, payload.d, payload.s]);
 
-  const attendance = inserted.rows[0] || await getCourierAttendance(req.session.user.id, payload.d);
+  const attendance = inserted.rows[0] || await getCourierAttendance(req.session.user.id, payload.d, payload.s);
   if (!inserted.rowCount && attendance?.checked_out_at) {
     return res.status(409).json({
-      error: "Seu expediente de hoje foi encerrado pelo Admin. O QR não pode reativar seu turno.",
+      error: `Seu expediente de ${shiftLabel(payload.s)} foi encerrado pelo Admin. O QR não pode reativar seu turno.`,
       code: "SHIFT_ENDED",
+      shift_code: payload.s,
       checked_out_at: attendance.checked_out_at,
       server_now: new Date().toISOString()
     });
@@ -4444,29 +4648,33 @@ app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async 
   if (inserted.rowCount) {
     await auditBestEffort(req.session.user.id, "ATTENDANCE_QR_CHECKIN", "courier_attendance", attendance.id, {
       attendance_date: payload.d,
+      shift_code: payload.s,
       checkin_method: "QR"
     });
     io.emit("attendance:changed", {
       courier_id: req.session.user.id,
-      attendance_date: payload.d
+      attendance_date: payload.d,
+      shift_code: payload.s
     });
   }
 
   res.status(inserted.rowCount ? 201 : 200).json({
     attendance,
+    shift_code: payload.s,
+    shift_label: shiftLabel(payload.s),
     duplicate: !inserted.rowCount,
     message: inserted.rowCount
-      ? "Presença confirmada. Você está ativo na operação de hoje."
-      : "Sua presença de hoje já estava confirmada.",
+      ? `Presença confirmada no turno de ${shiftLabel(payload.s)}.`
+      : `Sua presença de ${shiftLabel(payload.s)} já estava confirmada.`,
     server_now: new Date().toISOString()
   });
 }));
-
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
   const user = await currentUser(req.session.user.id);
   const attendanceDate = await getSPDate();
-  const attendanceRow = await getCourierAttendance(req.session.user.id, attendanceDate);
+  const attendanceView = resolveAttendanceViewShift(attendanceDate);
+  const attendanceRow = await getCourierAttendance(req.session.user.id, attendanceDate, attendanceView.shift_code);
 
   let active = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
@@ -4515,6 +4723,8 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     recent,
     attendance: {
       date: attendanceDate,
+      shift_code: attendanceView.shift_code,
+      shift_label: attendanceView.shift_label,
       present: !!attendanceRow && !attendanceRow.checked_out_at,
       attended: !!attendanceRow,
       shift_ended: !!attendanceRow?.checked_out_at,
@@ -5232,8 +5442,10 @@ async function addRouteOrder(req, res, recovery) {
   if (inspection.blocked.length || inspection.accepted.length !== 1) return res.status(409).json({error:inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'});
   const completedAssignment = recovery && ['CONCLUDED','DELIVERED'].includes(inspection.accepted[0].status);
   if (!completedAssignment) {
-    const attendance = await getCourierAttendance(courierId, await getSPDate());
-    if (!attendance || attendance.checked_out_at) return res.status(403).json({error:'É necessário estar com presença confirmada e expediente aberto.'});
+    const routeShift = getCurrentOperationalShift();
+    if (!routeShift) return res.status(409).json({error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',code:'OUTSIDE_OPERATIONAL_SHIFT'});
+    const attendance = await getCourierAttendance(courierId, routeShift.operational_date, routeShift.shift_code);
+    if (!attendance || attendance.checked_out_at) return res.status(403).json({error:'É necessário estar com presença confirmada e expediente aberto neste turno.',code:'ATTENDANCE_REQUIRED',shift_code:routeShift.shift_code});
   }
   let result;
   try {
@@ -5264,21 +5476,32 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
   }
 
-  const attendanceDate = await getSPDate();
-  const attendance = await getCourierAttendance(req.session.user.id, attendanceDate);
+  const departureShift = getCurrentOperationalShift();
+  if (!departureShift) {
+    return res.status(409).json({
+      error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.",
+      code: "OUTSIDE_OPERATIONAL_SHIFT",
+      server_now: new Date().toISOString()
+    });
+  }
+
+  const attendanceDate = departureShift.operational_date;
+  const attendance = await getCourierAttendance(req.session.user.id, attendanceDate, departureShift.shift_code);
   if (!attendance) {
     return res.status(403).json({
-      error: "Confirme sua presença pelo QR da loja antes de registrar uma saída.",
+      error: `Confirme sua presença no turno de ${departureShift.shift_label} antes de registrar uma saída.`,
       code: "ATTENDANCE_REQUIRED",
       attendance_date: attendanceDate,
+      shift_code: departureShift.shift_code,
       server_now: new Date().toISOString()
     });
   }
   if (attendance.checked_out_at) {
     return res.status(403).json({
-      error: "Seu expediente foi encerrado pelo Admin. Você não pode registrar novas saídas hoje.",
+      error: `Seu expediente de ${departureShift.shift_label} foi encerrado pelo Admin. Você não pode registrar novas saídas neste turno.`,
       code: "SHIFT_ENDED",
       attendance_date: attendanceDate,
+      shift_code: departureShift.shift_code,
       checked_out_at: attendance.checked_out_at,
       server_now: new Date().toISOString()
     });
@@ -5906,20 +6129,29 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
   }
 
-  const attendanceDate = await getSPDate();
-  const attendance = await getCourierAttendance(courierId, attendanceDate);
+  const departureShift = getCurrentOperationalShift();
+  if (!departureShift) {
+    return res.status(409).json({
+      error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída manual.",
+      code: "OUTSIDE_OPERATIONAL_SHIFT"
+    });
+  }
+  const attendanceDate = departureShift.operational_date;
+  const attendance = await getCourierAttendance(courierId, attendanceDate, departureShift.shift_code);
   if (!attendance) {
     return res.status(409).json({
-      error: "Este motoboy ainda não confirmou presença hoje. Confirme pelo QR ou registre a presença manualmente antes da saída.",
+      error: `Este motoboy ainda não confirmou presença no turno de ${departureShift.shift_label}.`,
       code: "ATTENDANCE_REQUIRED",
-      attendance_date: attendanceDate
+      attendance_date: attendanceDate,
+      shift_code: departureShift.shift_code
     });
   }
   if (attendance.checked_out_at) {
     return res.status(403).json({
-      error: "O expediente deste motoboy já foi encerrado pelo Admin. Nova saída bloqueada.",
+      error: `O expediente de ${departureShift.shift_label} deste motoboy já foi encerrado pelo Admin. Nova saída bloqueada neste turno.`,
       code: "SHIFT_ENDED",
       attendance_date: attendanceDate,
+      shift_code: departureShift.shift_code,
       checked_out_at: attendance.checked_out_at
     });
   }
