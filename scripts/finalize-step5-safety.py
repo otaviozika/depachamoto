@@ -1,3 +1,4 @@
+# Final Step5 safety materializer
 from pathlib import Path
 p=Path('server.js'); s=p.read_text()
 old="SELECT id,dispatch_code,departed_at,operational_stage,returning_at\n      FROM dispatches"
