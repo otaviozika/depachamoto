@@ -7343,6 +7343,8 @@ app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req,res)=>
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
+  const dashboardDate = await getSPDate();
+  const dashboardShift = resolveAttendanceViewShift(dashboardDate, null).shift_code;
   const metrics = (await pool.query(`
     SELECT
       (
@@ -7350,6 +7352,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         FROM courier_attendance a
         JOIN users u ON u.id=a.courier_id
         WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+          AND a.shift_code=$1
           AND a.checked_out_at IS NULL
           AND u.role='courier' AND u.active=true AND u.approval_status='APPROVED'
       )::int AS active_couriers,
@@ -7360,6 +7363,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         JOIN courier_attendance a
           ON a.courier_id=d.courier_id
          AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+         AND a.shift_code=$1
         WHERE d.status='ON_ROAD'
           AND a.checked_out_at IS NULL
       )::int AS on_road,
@@ -7393,7 +7397,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
               (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
           AND UPPER(COALESCE(o.status,o.last_event_code,'')) IN ('CONCLUDED','DELIVERED')
       )::int AS delivered_today
-  `)).rows[0];
+  `, [dashboardShift])).rows[0];
 
   const activeRaw = (await pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
@@ -7464,6 +7468,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
     LEFT JOIN courier_attendance a
       ON a.courier_id=u.id
      AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+     AND a.shift_code=$1
     WHERE u.role='courier'
       AND u.approval_status<>'DELETED'
     ORDER BY
@@ -7485,7 +7490,7 @@ app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => 
         ELSE 3
       END,
       u.name
-  `)).rows;
+  `, [dashboardShift])).rows;
 
   const timeMetrics = (await pool.query(`
     SELECT
