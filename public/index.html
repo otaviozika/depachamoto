@@ -41,6 +41,9 @@
 .delivery-actions .btn.waze .waze-mark img{width:22px;height:22px;display:block;object-fit:contain}
 .delivery-address{display:flex;gap:8px;align-items:flex-start;color:#475569;font-size:12px;line-height:1.35}
 .delivery-address-pin{width:22px;height:22px;min-width:22px;border-radius:50%;background:#e0f2fe;color:#0284c7;display:inline-grid;place-items:center;font-size:12px;font-weight:900}
+.delivery-details{display:grid;gap:6px;padding:10px 12px;border-left:3px solid #f97316;border-radius:6px;background:#fff7ed;color:#334155;font-size:13px;line-height:1.45;min-width:0}
+.delivery-detail{white-space:pre-wrap;overflow-wrap:anywhere}
+.delivery-detail strong{color:#9a3412}
 .delivery-section-label{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-top:12px}
 .delivery-code-input{font-size:28px!important;text-align:center;letter-spacing:7px;font-weight:900}
 .order-validation{grid-column:1/-1;font-size:12px;min-height:16px;margin-top:-3px}
@@ -2628,6 +2631,17 @@ function courierDeliveryAddressHtml(x){
   return `<div class="delivery-address"><span class="delivery-address-pin">⌖</span><span>${escapeHtml(address)}</span></div>`;
 }
 
+function courierDeliveryDetailsHtml(x){
+  const details=x?.delivery_details;
+  if(!details)return '';
+  const rows=[['complement','Complemento'],['reference','Referência'],['observations','Observações de entrega']]
+    .map(([key,label])=>{
+      const value=typeof details[key]==='string'?details[key].trim():'';
+      return value?`<div class="delivery-detail"><strong>${label}:</strong> ${escapeHtml(value)}</div>`:'';
+    }).filter(Boolean);
+  return rows.length?`<div class="delivery-details">${rows.join('')}</div>`:'';
+}
+
 function courierDeliveryWazeButton(x){
   const url=buildWazeUrl(x?.navigation);
   if(!url)return '';
@@ -2650,6 +2664,7 @@ function courierDeliveryRow(x){
       ${courierDeliveryBadge(x)}
     </div>
     ${courierDeliveryAddressHtml(x)}
+    ${courierDeliveryDetailsHtml(x)}
     <div class="small">${escapeHtml(x.message||'')}</div>
     <div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>
   </div>`;

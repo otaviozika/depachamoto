@@ -2250,18 +2250,38 @@ function firstNumber(...values) {
   return null;
 }
 
-function buildIfoodDeliveryDestination(payload) {
-  const order = parseJsonPayload(payload);
-  if (!order) return null;
-
+function ifoodDeliveryAddress(order) {
   const delivery = order.delivery || {};
-  const address =
+  return (
     delivery.deliveryAddress ||
     delivery.address ||
     order.deliveryAddress ||
     order.address ||
     order.customer?.address ||
-    {};
+    {}
+  );
+}
+
+function buildIfoodDeliveryDetails(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+  const address = ifoodDeliveryAddress(order);
+  // Only delivery instructions: item observations belong to the kitchen.
+  const text = value => typeof value === "string" ? value.trim() : "";
+  const details = {
+    complement: text(address.complement) || null,
+    reference: text(address.reference) || null,
+    observations: text(order.delivery?.observations) || null
+  };
+  return Object.values(details).some(Boolean) ? details : null;
+}
+
+function buildIfoodDeliveryDestination(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+
+  const delivery = order.delivery || {};
+  const address = ifoodDeliveryAddress(order);
   const coordinates =
     address.coordinates ||
     address.coordinate ||
@@ -2460,6 +2480,7 @@ async function getCourierIfoodDeliveries(courierId) {
       concluded_at: row.concluded_at,
       last_error: row.confirmation_last_error,
       navigation: buildIfoodDeliveryDestination(row.payload),
+      delivery_details: buildIfoodDeliveryDetails(row.payload),
       ...ui
     };
 
