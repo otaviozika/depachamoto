@@ -22,19 +22,23 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('server.js'); s=p.read_text()
-          old='''app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {\n  const metrics = (await pool.query(`'''
-          new='''app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {\n  const dashboardDate = await getSPDate();\n  const dashboardShift = resolveAttendanceViewShift(dashboardDate, null).shift_code;\n  const metrics = (await pool.query(`'''
-          assert old in s; s=s.replace(old,new,1)
-          s=s.replace("WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.checked_out_at IS NULL", "WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.shift_code=$1\n          AND a.checked_out_at IS NULL",1)
-          s=s.replace("AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n        WHERE d.status='ON_ROAD'", "AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n         AND a.shift_code=$1\n        WHERE d.status='ON_ROAD'",1)
-          marker="''')).rows[0];\n\n  const activeRaw"
-          assert marker in s; s=s.replace(marker,"''', [dashboardShift])).rows[0];\n\n  const activeRaw",1)
-          oldjoin="""LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n    WHERE u.role='courier'"""
-          newjoin="""LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n     AND a.shift_code=$1\n    WHERE u.role='courier'"""
-          assert oldjoin in s; s=s.replace(oldjoin,newjoin,1)
-          marker2="''')).rows;\n\n  const timeMetrics"
-          assert marker2 in s; s=s.replace(marker2,"''', [dashboardShift])).rows;\n\n  const timeMetrics",1)
-          p.write_text(s)
+          start=s.index('app.get("/api/admin/dashboard"')
+          end=s.index('app.get("/api/admin/attendance/qr"',start)
+          pre,block,post=s[:start],s[start:end],s[end:]
+          anchor='app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {\n'
+          assert anchor in block
+          block=block.replace(anchor,anchor+"  const dashboardDate = await getSPDate();\n  const dashboardShift = resolveAttendanceViewShift(dashboardDate, null).shift_code;\n",1)
+          a="WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.checked_out_at IS NULL"
+          assert a in block; block=block.replace(a,"WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.shift_code=$1\n          AND a.checked_out_at IS NULL",1)
+          b="AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n        WHERE d.status='ON_ROAD'"
+          assert b in block; block=block.replace(b,"AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n         AND a.shift_code=$1\n        WHERE d.status='ON_ROAD'",1)
+          metrics_end="  `)).rows[0];\n\n  const activeRaw"
+          assert metrics_end in block; block=block.replace(metrics_end,"  `, [dashboardShift])).rows[0];\n\n  const activeRaw",1)
+          join="LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n    WHERE u.role='courier'"
+          assert join in block; block=block.replace(join,"LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n     AND a.shift_code=$1\n    WHERE u.role='courier'",1)
+          couriers_end="  `)).rows;\n\n  const timeMetrics"
+          assert couriers_end in block; block=block.replace(couriers_end,"  `, [dashboardShift])).rows;\n\n  const timeMetrics",1)
+          p.write_text(pre+block+post)
           PY
       - name: Validate
         run: |
