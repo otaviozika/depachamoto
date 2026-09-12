@@ -21,6 +21,7 @@ jobs:
         run: |
           sed -i 's/re.subn(pattern,repl,text/re.subn(pattern,lambda m: repl,text/' scripts/apply-step5-finance-source.py
           python3 scripts/apply-step5-finance-source.py
+          sed -i 's/operationalShiftAt(departedAt)/getCurrentOperationalShift(new Date(departedAt))/g; s/operationalShiftAt(effectiveDeparture)/getCurrentOperationalShift(new Date(effectiveDeparture))/g' server.js
       - name: Validate syntax and tests
         run: |
           npm install
