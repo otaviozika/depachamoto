@@ -14,6 +14,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
+      - name: Aplicar fonte do Passo 3
+        run: node scripts/step3-source-transform.mjs
       - run: node --check server.js
       - name: Testes de regressão e rotas
         run: |
