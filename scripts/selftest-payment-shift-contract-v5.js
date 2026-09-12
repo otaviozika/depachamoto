@@ -4,8 +4,10 @@ const sql=fs.readFileSync(new URL('../db/migrations/step5_payments_by_shift.sql'
 assert.match(sql,/shift_code text/);
 assert.match(sql,/rain boolean NOT NULL DEFAULT false/);
 assert.match(sql,/rain_bonus_snapshot/);
-assert.match(sql,/payment_date,courier_id,shift_code/);
+assert.match(sql,/CREATE UNIQUE INDEX IF NOT EXISTS courier_payments_date_shift_unique_idx[\s\S]*payment_date,courier_id,shift_code[\s\S]*WHERE shift_code IS NOT NULL/);
+assert.match(sql,/CREATE UNIQUE INDEX IF NOT EXISTS courier_payments_legacy_date_unique_idx[\s\S]*payment_date,courier_id[\s\S]*WHERE shift_code IS NULL/);
+assert.match(sql,/DROP CONSTRAINT IF EXISTS courier_payments_payment_date_courier_id_key/,'must remove the real legacy daily constraint only when shift-aware source is deployed');
+assert.doesNotMatch(sql,/DROP CONSTRAINT IF EXISTS courier_payments_courier_id_payment_date_key/,'must not test or drop a non-existent legacy constraint name');
 assert.match(sql,/lunch_mon_thu/); assert.match(sql,/lunch_fri_sun/);
 assert.match(sql,/dinner_mon_thu/); assert.match(sql,/dinner_fri_sun/); assert.match(sql,/rain_bonus/);
-assert.doesNotMatch(sql,/DROP CONSTRAINT IF EXISTS courier_payments_courier_id_payment_date_key/,'legacy daily unique must remain until server is shift-aware');
-console.log(JSON.stringify({result:'PASS',feature:'payment_shift_persistence_contract'}));
+console.log(JSON.stringify({result:'PASS',feature:'payment_shift_persistence_contract',checks:9}));
