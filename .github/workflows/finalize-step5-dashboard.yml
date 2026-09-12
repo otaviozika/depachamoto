@@ -1,0 +1,51 @@
+name: Finalize Step 5 dashboard shift isolation
+on:
+  push:
+    branches: [feat/work-shifts-step5]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/work-shifts-step5
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Scope dashboard to current operational shift
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('server.js'); s=p.read_text()
+          old='''app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {\n  const metrics = (await pool.query(`'''
+          new='''app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {\n  const dashboardDate = await getSPDate();\n  const dashboardShift = resolveAttendanceViewShift(dashboardDate, null).shift_code;\n  const metrics = (await pool.query(`'''
+          assert old in s; s=s.replace(old,new,1)
+          s=s.replace("WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.checked_out_at IS NULL", "WHERE a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n          AND a.shift_code=$1\n          AND a.checked_out_at IS NULL",1)
+          s=s.replace("AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n        WHERE d.status='ON_ROAD'", "AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n         AND a.shift_code=$1\n        WHERE d.status='ON_ROAD'",1)
+          marker="''')).rows[0];\n\n  const activeRaw"
+          assert marker in s; s=s.replace(marker,"''', [dashboardShift])).rows[0];\n\n  const activeRaw",1)
+          oldjoin="""LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n    WHERE u.role='courier'"""
+          newjoin="""LEFT JOIN courier_attendance a\n      ON a.courier_id=u.id\n     AND a.attendance_date=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date\n     AND a.shift_code=$1\n    WHERE u.role='courier'"""
+          assert oldjoin in s; s=s.replace(oldjoin,newjoin,1)
+          marker2="''')).rows;\n\n  const timeMetrics"
+          assert marker2 in s; s=s.replace(marker2,"''', [dashboardShift])).rows;\n\n  const timeMetrics",1)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          npm install
+          node --check server.js
+          for test in scripts/selftest-*.js; do node "$test"; done
+      - name: Commit definitive fix
+        run: |
+          rm .github/workflows/finalize-step5-dashboard.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: isolate dashboard attendance by operational shift"
+          git push origin HEAD:feat/work-shifts-step5
