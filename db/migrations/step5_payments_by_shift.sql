@@ -27,6 +27,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS courier_payments_date_shift_unique_idx
 ON public.courier_payments(payment_date,courier_id,shift_code)
 WHERE shift_code IS NOT NULL;
 
--- IMPORTANTE: a constraint diária legada só deve ser removida no mesmo deploy
--- em que o server.js passar a gravar/consultar shift_code em todos os fluxos financeiros.
--- Isso evita que uma versão antiga do servidor crie dados ambíguos durante rollout.
+-- Mantém o legado (shift_code NULL) com no máximo um fechamento por motoboy/dia.
+CREATE UNIQUE INDEX IF NOT EXISTS courier_payments_legacy_date_unique_idx
+ON public.courier_payments(payment_date,courier_id)
+WHERE shift_code IS NULL;
+
+-- A partir deste deploy o servidor usa courier + data + turno em todos os fluxos financeiros.
+-- Remove somente a antiga UNIQUE diária criada pelo schema original.
+ALTER TABLE public.courier_payments
+DROP CONSTRAINT IF EXISTS courier_payments_payment_date_courier_id_key;
