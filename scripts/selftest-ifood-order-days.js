@@ -208,10 +208,10 @@ await test('motoboy não pode recuperar concluída; parceira, cancelada e outra 
 await test('pagamento revisado/pago impede alocação; reabrir permite e conta uma vez', async () => {
   await add('completed-paid','9030',today,'CONCLUDED');
   const params={actorUserId:1,courierId:17,link:{order_id:'completed-paid',order_number:'#9030'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'};
-  await query("INSERT INTO courier_payments(payment_date,courier_id,status) VALUES($1,17,'PAID')",[today]);
+  await query("INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES($1,17,'LUNCH','PAID')",[today]);
   for(const status of ['PAID','REVIEWED']) {
     await query('UPDATE courier_payments SET status=$1 WHERE courier_id=17',[status]);
-    await assert.rejects(context.assignCompletedIfoodOrder(params),/pagamento deste dia/);
+    await assert.rejects(context.assignCompletedIfoodOrder(params),/pagamento de .*revisado|pago|pagamento deste dia/);
     assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='completed-paid'")).rows.length,0);
   }
   await query("UPDATE courier_payments SET status='OPEN' WHERE courier_id=17");await context.assignCompletedIfoodOrder(params);
