@@ -26,6 +26,7 @@ jobs:
           sed -i "s/code:'PIX_NOT_VERIFIED'/code: \"PIX_NOT_VERIFIED\"/" server.js
           sed -i "s/INSERT INTO courier_payments(payment_date,courier_id,status) VALUES(\$1,17,'PAID')/INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES(\$1,17,'LUNCH','PAID')/" scripts/selftest-ifood-order-days.js
           sed -i "s@/pagamento deste dia/@/pagamento de .*revisado|pago|pagamento deste dia/@" scripts/selftest-ifood-order-days.js
+          sed -i "s@io:{emit(){}},auditBestEffort@io:{emit(){}},getCurrentOperationalShift:d=>({operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),shiftLabel:s=>s==='LUNCH'?'Almoço':'Janta',auditBestEffort@" scripts/selftest-route-orders.js
       - name: Validate syntax and tests
         run: |
           npm install
