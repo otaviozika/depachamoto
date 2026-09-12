@@ -23,6 +23,7 @@ jobs:
           python3 scripts/apply-step5-finance-source.py
           sed -i 's/operationalShiftAt(departedAt)/getCurrentOperationalShift(new Date(departedAt))/g; s/operationalShiftAt(effectiveDeparture)/getCurrentOperationalShift(new Date(effectiveDeparture))/g' server.js
           sed -i "s/const shift=normalizeShiftCode(shiftCode);/const shift=['LUNCH','DINNER'].includes(String(shiftCode||'').trim().toUpperCase())?String(shiftCode).trim().toUpperCase():null;/" server.js
+          sed -i "s/code:'PIX_NOT_VERIFIED'/code: \"PIX_NOT_VERIFIED\"/" server.js
           sed -i "s/INSERT INTO courier_payments(payment_date,courier_id,status) VALUES(\$1,17,'PAID')/INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES(\$1,17,'LUNCH','PAID')/" scripts/selftest-ifood-order-days.js
           sed -i "s@/pagamento deste dia/@/pagamento de .*revisado|pago|pagamento deste dia/@" scripts/selftest-ifood-order-days.js
       - name: Validate syntax and tests
