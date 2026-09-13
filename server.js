@@ -14,6 +14,7 @@ import crypto from "crypto";
 import webpush from "web-push";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
+import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -964,9 +965,10 @@ async function currentUser(userId) {
   return q.rows[0] || null;
 }
 async function audit(userId, action, entity, entityId, details = {}) {
+  const normalized = normalizeAuditEntityId(entityId, details);
   await pool.query(
     "INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)",
-    [userId || null, action, entity, entityId || null, JSON.stringify(details)]
+    [userId || null, action, entity, normalized.entity_id, JSON.stringify(normalized.details)]
   );
 }
 
@@ -3212,7 +3214,7 @@ async function createDispatchTransaction({
     await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
 
     const activeDispatch = await client.query(`
-      SELECT id,dispatch_code,departed_at,operational_stage,returning_at
+      SELECT id,dispatch_code,departed_at,operational_date,shift_code,operational_stage,returning_at
       FROM dispatches
       WHERE courier_id=$1 AND status='ON_ROAD'
       ORDER BY departed_at DESC,id DESC
@@ -3255,8 +3257,12 @@ async function createDispatchTransaction({
     }
     const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
     if (append || recovery) {
-      const routeShift=existingRoute?.shift_code?{operational_date:existingRoute.operational_date||orderDateSP(effectiveDeparture),shift_code:existingRoute.shift_code,shift_label:shiftLabel(existingRoute.shift_code)}:getCurrentOperationalShift(new Date(effectiveDeparture));
-      if(!routeShift)throw Object.assign(new Error('O horário da rota não pertence a um turno operacional.'),{status:409,code:'OUTSIDE_OPERATIONAL_SHIFT'});
+      const routeShift=resolveDispatchShift({
+        departedAt: effectiveDeparture,
+        existingOperationalDate: existingRoute?.operational_date || null,
+        existingShiftCode: existingRoute?.shift_code || null,
+        recovery
+      });
       const payment=(await client.query(`SELECT status FROM courier_payments WHERE courier_id=$1 AND payment_date=$2::date AND shift_code=$3 FOR UPDATE`,[courierId,routeShift.operational_date,routeShift.shift_code])).rows[0];
       if(payment&&payment.status!=='OPEN')throw Object.assign(new Error(`O pagamento de ${routeShift.shift_label} já foi revisado ou pago. Reabra este turno no Financeiro antes de vincular o pedido.`),{status:409});
     }
@@ -7318,6 +7324,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
   const paymentMethod=String(req.body.payment_method||'').trim().slice(0,40)||null,notes=String(req.body.notes||'').trim().slice(0,600)||null,status=String(req.body.status||'OPEN').trim().toUpperCase();
   if(!['OPEN','REVIEWED','PAID'].includes(status))return res.status(400).json({error:'Status de pagamento inválido.'});if(![tip,discount,adjustment].every(Number.isFinite)||tip<0||discount<0)return res.status(400).json({error:'Gorjeta, desconto ou ajuste inválido.'});
   if(existing?.status==='PAID'&&status!=='PAID'&&req.body.confirm_reopen_paid!==true)return res.status(409).json({error:'Este pagamento já está marcado como PAGO. Confirme explicitamente para reabrir.',code:'PAYMENT_REOPEN_CONFIRMATION'});
+  if(existing?.status==='REVIEWED'&&status==='OPEN'&&req.body.confirm_reopen_reviewed!==true)return res.status(409).json({error:'Este pagamento já foi CONFERIDO. Confirme explicitamente para reabrir.',code:'PAYMENT_REVIEWED_REOPEN_CONFIRMATION'});
   const liveCount=await getCourierDeliveryCount(courierId,date,shift),worked=await courierWorkedShift(courierId,date,shift,liveCount),rule=await getPaymentRateRule(date);
   const preserve=!!existing&&['REVIEWED','PAID'].includes(existing.status)&&['REVIEWED','PAID'].includes(status),finalTip=preserve?Number(existing.tip_amount||0):tip,finalDiscount=preserve?Number(existing.discount_amount||0):discount,finalAdjustment=preserve?Number(existing.adjustment_amount||0):adjustment,finalRain=preserve?!!existing.rain:rain;
   const calc=preserve?{delivery_count:Number(existing.delivery_count_snapshot||0),per_delivery:Number(existing.per_delivery_snapshot||0),base_amount:Number(existing.base_snapshot||0),rain_bonus:Number(existing.rain_bonus_snapshot||0),total_amount:Number(existing.total_snapshot||0)}:
