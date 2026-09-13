@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const server=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
+const ui=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+assert.match(server,/operational_date,shift_code,operational_stage,returning_at/);
+assert.match(server,/existingOperationalDate: existingRoute/);
+assert.match(server,/existingShiftCode: existingRoute/);
+assert.match(server,/PAYMENT_REVIEWED_REOPEN_CONFIRMATION/);
+assert.match(server,/confirm_reopen_reviewed/);
+assert.match(ui,/confirm_reopen_reviewed:confirmReviewed/);
+assert.match(ui,/PAYMENT_REVIEWED_REOPEN_CONFIRMATION/);
+console.log(JSON.stringify({result:'PASS',feature:'step5_safety_hardening',checks:7}));

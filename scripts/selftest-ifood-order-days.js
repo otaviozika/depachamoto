@@ -11,6 +11,7 @@ const schema = source.split('await pool.query(`')[1].split('`);')[0];
 const migration = schema.slice(schema.indexOf('-- Preserve existing locks'), schema.indexOf('CREATE TABLE IF NOT EXISTS ifood_dispatch_jobs'));
 const db = new PGlite();
 await db.exec(schema.replace(migration, ''));
+await db.exec("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS operational_date DATE; ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS shift_code TEXT;");
 let tail = Promise.resolve();
 const query = async (sql, args = []) => {
   if (sql.includes('pg_advisory_xact_lock')) return { rows: [], rowCount: 1 };

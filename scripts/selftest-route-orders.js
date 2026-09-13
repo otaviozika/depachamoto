@@ -10,6 +10,7 @@ const source = fs.readFileSync(new URL('../server.js', import.meta.url),'utf8');
 const db = new PGlite();
 const schema = source.split('await pool.query(`')[1].split('`);')[0];
 await db.exec(schema);
+await db.exec("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS operational_date DATE; ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS shift_code TEXT;");
 let tail=Promise.resolve();
 const query=async(sql,args=[])=>{
   if(sql.includes('pg_advisory_xact_lock'))return {rows:[],rowCount:1};
@@ -22,6 +23,7 @@ const pool={query,connect:async()=>{
 const context=vm.createContext({pool,console,Date,process,Set,Map,
   io:{emit(){}},
   getCurrentOperationalShift:d=>({operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
+  resolveDispatchShift:({departedAt,existingOperationalDate,existingShiftCode})=>existingShiftCode?({operational_date:existingOperationalDate,shift_code:existingShiftCode,shift_label:existingShiftCode==='LUNCH'?'Almoço':'Janta'}):({operational_date:new Date(departedAt).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
   shiftLabel:s=>s==='LUNCH'?'Almoço':'Janta',
   auditBestEffort:async()=>{},
   normalizeIfoodLifecycleStatus:v=>String(v||'').toUpperCase(),
