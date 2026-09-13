@@ -39,16 +39,19 @@ assert '"node": ">=20"' in s
 s = s.replace('"node": ">=20"', '"node": "22.x"', 1)
 p.write_text(s)
 
-# The isolated iFood regression test builds the legacy startup schema directly.
-# Step 5 now reads the frozen dispatch shift, so the test database must include
-# the production shift columns before exercising createDispatchTransaction.
-p = Path('scripts/selftest-ifood-order-days.js')
-s = p.read_text()
-needle = "await db.exec(schema.replace(migration, ''));\n"
-replacement = needle + "await db.exec(\"ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS operational_date DATE; ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS shift_code TEXT;\");\n"
-assert needle in s
-assert 'ADD COLUMN IF NOT EXISTS operational_date DATE' not in s
-s = s.replace(needle, replacement, 1)
-p.write_text(s)
+# Isolated PGlite tests build the legacy startup schema directly. Step 5 now
+# reads the frozen dispatch shift, so those test databases need the production
+# shift columns before exercising createDispatchTransaction.
+for test_path, needle in [
+    ('scripts/selftest-ifood-order-days.js', "await db.exec(schema.replace(migration, ''));\n"),
+    ('scripts/selftest-route-orders.js', "await db.exec(schema);\n"),
+]:
+    p = Path(test_path)
+    s = p.read_text()
+    addition = "await db.exec(\"ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS operational_date DATE; ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS shift_code TEXT;\");\n"
+    assert needle in s
+    assert addition not in s
+    s = s.replace(needle, needle + addition, 1)
+    p.write_text(s)
 
 print('hotfix-step5-final.py: source hardening applied')
