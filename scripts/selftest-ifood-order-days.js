@@ -37,6 +37,7 @@ const context = vm.createContext({ pool, console, Date: TestDate, process: { env
   getOperationalSlaSettings: async () => ({ route: {1:25,2:30,3:35,4:40,5:45}, returnMinutes:15 }),
   getCourierAttendance: async () => ({ checked_out_at: null }), getSPDate: async () => today,
   getCurrentOperationalShift: () => ({ operational_date: today, shift_code: 'LUNCH', shift_label: 'Almoço' }),
+  resolveDispatchShift: ({ departedAt, recoveryShiftCode }) => { const d=new TestDate(departedAt); const h=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(d)); const code=recoveryShiftCode || (h < 16 ? 'LUNCH' : 'DINNER'); return { operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}), shift_code:code, shift_label:code==='LUNCH'?'Almoço':'Janta' }; },
   setImmediate: () => {},
   orderArraySql: a => `(SELECT json_agg(order_number) FROM dispatch_orders WHERE dispatch_id=${a}.id) AS order_numbers`,
   upsertIfoodOrderFromDetails: async () => {},
@@ -208,10 +209,10 @@ await test('motoboy não pode recuperar concluída; parceira, cancelada e outra 
 await test('pagamento revisado/pago impede alocação; reabrir permite e conta uma vez', async () => {
   await add('completed-paid','9030',today,'CONCLUDED');
   const params={actorUserId:1,courierId:17,link:{order_id:'completed-paid',order_number:'#9030'},departedAt:today+'T11:00:00-03:00',adminReason:'Atribuir entrega'};
-  await query("INSERT INTO courier_payments(payment_date,courier_id,status) VALUES($1,17,'PAID')",[today]);
+  await query("INSERT INTO courier_payments(payment_date,courier_id,shift_code,status) VALUES($1,17,'LUNCH','PAID')",[today]);
   for(const status of ['PAID','REVIEWED']) {
     await query('UPDATE courier_payments SET status=$1 WHERE courier_id=17',[status]);
-    await assert.rejects(context.assignCompletedIfoodOrder(params),/pagamento deste dia/);
+    await assert.rejects(context.assignCompletedIfoodOrder(params),/pagamento de .*revisado|pago|pagamento deste dia/);
     assert.equal((await query("SELECT * FROM ifood_dispatch_links WHERE ifood_order_id='completed-paid'")).rows.length,0);
   }
   await query("UPDATE courier_payments SET status='OPEN' WHERE courier_id=17");await context.assignCompletedIfoodOrder(params);

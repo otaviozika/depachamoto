@@ -1,0 +1,35 @@
+name: Finalize Step5 safety hardening
+on:
+  push:
+    branches:
+      - feat/work-shifts-step5
+permissions:
+  contents: write
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/work-shifts-step5
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply patch
+        run: python3 scripts/finalize-step5-safety.py
+      - name: Validate
+        run: |
+          npm install
+          node --check server.js
+          for test in scripts/selftest-*.js; do node "$test"; done
+      - name: Commit
+        run: |
+          rm scripts/finalize-step5-safety.py
+          rm .github/workflows/finalize-step5-safety.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden Step5 shift and payment safety"
+          git push origin HEAD:feat/work-shifts-step5
