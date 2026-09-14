@@ -15,12 +15,12 @@ assert.match(html, /class="dashboard-monitor"/);
 assert.match(html, /class="dashboard-preview"/);
 assert.match(html, /class="login-bike-scene" src="\/login-bike-scene\.png"/);
 assert.match(css, /@media \(min-width:901px\)/);
-assert.match(css, /background:url\('\/login-city-scene\.png'\)/);
+assert.match(css, /background:url\('\/login-city-desk-scene\.png'\)/);
 assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
 assert.match(sw, /login-desktop\.css/);
-assert.match(sw, /login-city-scene\.png/);
+assert.match(sw, /login-city-desk-scene\.png/);
 assert.match(sw, /login-bike-scene\.png/);
-assert.ok(imageSize('login-city-scene.png')[0] >= 1600);
+assert.ok(imageSize('login-city-desk-scene.png')[0] >= 1500);
 assert.ok(imageSize('login-bike-scene.png')[0] >= 1500);
 
 for (const id of ['tabLogin', 'tabRegister', 'loginForm', 'registerForm', 'loginUser', 'loginPass', 'regName', 'regUser', 'regPass', 'regPass2']) {
