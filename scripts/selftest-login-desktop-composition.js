@@ -22,12 +22,18 @@ assert.match(css, /@media \(min-width:901px\)/);
 assert.match(css, /background:url\('\/login-city-desk-scene-v2\.png'\)/);
 assert.match(css, /width:min\(100vw,215svh\)/);
 assert.match(css, /#loginScreen \.dashboard-monitor\{[^}]*transform:none/);
+assert.match(css, /background:url\('\/login-omen-27-real\.webp'\)/);
+assert.match(css, /#loginScreen \.dashboard-preview\{[^}]*position:absolute/);
 assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
 assert.match(sw, /login-desktop\.css/);
 assert.match(sw, /login-city-desk-scene-v2\.png/);
 assert.match(sw, /login-bike-scene\.png/);
+assert.match(sw, /login-omen-27-real\.webp/);
 assert.ok(imageSize('login-city-desk-scene-v2.png')[0] >= 1500);
 assert.ok(imageSize('login-bike-scene.png')[0] >= 1500);
+const monitor = fs.readFileSync(new URL('../public/login-omen-27-real.webp', import.meta.url));
+assert.equal(monitor.subarray(0, 4).toString(), 'RIFF');
+assert.equal(monitor.subarray(8, 12).toString(), 'WEBP');
 
 for (const id of ['tabLogin', 'tabRegister', 'loginForm', 'registerForm', 'loginUser', 'loginPass', 'regName', 'regUser', 'regPass', 'regPass2']) {
   assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `${id} deve permanecer único`);

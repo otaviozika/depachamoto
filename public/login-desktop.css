@@ -372,3 +372,39 @@
   #loginScreen .dashboard-preview-metric small{display:none}
   #loginScreen .dashboard-preview-grid{height:57%}
 }
+
+/* The physical frame is a photograph of the HP OMEN 27 monitor, with the
+   DespacheFull dashboard rendered as HTML inside its actual screen opening.
+   Source: https://www.hp.com/us-en/shop/pdp/omen-by-hp-27-inch-fhd-165hz-gaming-monitor-omen-27 */
+@media (min-width:901px){
+  #loginScreen .dashboard-monitor{
+    top:0;
+    right:-6%;
+    width:min(75%,121svh);
+    height:auto;
+    max-height:none;
+    aspect-ratio:4 / 3;
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:url('/login-omen-27-real.webp') center/100% 100% no-repeat;
+    box-shadow:none;
+    transform:none;
+  }
+  #loginScreen .dashboard-monitor::before,
+  #loginScreen .dashboard-monitor::after{content:none}
+  #loginScreen .dashboard-preview{
+    position:absolute;
+    top:11.25%;
+    left:11.7%;
+    width:78.4%;
+    height:55.1%;
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+  }
+}
+
+@media (min-width:901px) and (max-width:1900px){
+  #loginScreen .dashboard-monitor{top:7.5%}
+}
