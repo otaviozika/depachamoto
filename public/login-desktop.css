@@ -38,7 +38,7 @@
     opacity:1;
     filter:none;
     transform:none;
-    background:url('/login-city-desk-scene.png') center center/cover no-repeat;
+    background:url('/login-city-desk-scene-v2.png') center center/cover no-repeat;
   }
   #loginScreen .login-showcase-top{
     position:absolute;
@@ -272,32 +272,32 @@
   #loginScreen .login-auth-panel{min-height:570px}
 }
 
-/* Keep the approved 16:9 composition visible on ultrawide displays. */
+/* Fill more of an ultrawide viewport while retaining a framed composition. */
 @media (min-width:901px){
   body:has(#loginScreen:not(.hidden)){background:#080b10}
   #loginScreen.login{
-    width:min(100vw,177.777778svh);
-    height:min(100svh,56.25vw);
+    width:min(100vw,215svh);
+    height:100svh;
     min-height:0;
-    margin:calc((100svh - min(100svh,56.25vw))/2) auto 0;
+    margin:0 auto;
     grid-template-columns:minmax(0,77.5%) minmax(0,22.5%);
-    aspect-ratio:16/9;
+    aspect-ratio:auto;
     container-type:inline-size;
     box-shadow:0 0 90px rgba(0,0,0,.36);
   }
   #loginScreen .login-showcase{height:100%;min-height:0}
-  #loginScreen .login-photo{background-size:cover;background-position:center center}
   #loginScreen .login-showcase-top{top:4%;left:3%;right:3%}
   #loginScreen .login-showcase-copy{top:16%;left:3%}
-  #loginScreen .login-bike-scene{width:75%;max-height:84%;bottom:3%}
-  #loginScreen .dashboard-monitor{top:9%;right:.7%;width:62%;height:55%;max-height:none}
-  #loginScreen .dashboard-monitor::after{height:26%}
-  #loginScreen .dashboard-monitor::before{content:"";position:absolute;top:125%;left:33%;width:34%;height:2.4%;border-radius:50%;background:linear-gradient(180deg,#34424e,#111a22);box-shadow:0 8px 18px rgba(0,0,0,.7)}
-  #loginScreen .dashboard-preview-top{min-height:0;height:10%;}
+  #loginScreen .login-bike-scene{width:min(75%,103.5svh);max-height:84%;bottom:3%}
+  #loginScreen .dashboard-monitor{top:9%;right:.7%;width:min(62%,94svh);height:58%;max-height:none;padding:clamp(6px,.5cqw,14px);border:2px solid #536472;border-radius:clamp(9px,.8cqw,19px);background:linear-gradient(145deg,#1c2733,#070b10 76%);transform:none}
+  #loginScreen .dashboard-monitor::after{height:19%}
+  #loginScreen .dashboard-monitor::before{content:"";position:absolute;top:118%;left:33%;width:34%;height:2.4%;border-radius:50%;background:linear-gradient(180deg,#34424e,#111a22);box-shadow:0 8px 18px rgba(0,0,0,.7)}
+  #loginScreen .dashboard-preview{border-color:#39515f;box-shadow:inset 0 0 22px rgba(0,0,0,.18)}
+  #loginScreen .dashboard-preview-top{min-height:0;height:7%}
   #loginScreen .dashboard-preview-live{gap:0;color:#cdd7e0;font-size:clamp(7px,.49cqw,12px);letter-spacing:0}
   #loginScreen .dashboard-preview-live::before{display:none}
   #loginScreen .dashboard-preview-live b{padding:.5em .7em;border-radius:3px;background:#ee2544;color:#fff;font-size:.93em}
-  #loginScreen .dashboard-preview-body{height:90%;grid-template-columns:15.5% minmax(0,1fr)}
+  #loginScreen .dashboard-preview-body{height:93%;grid-template-columns:15.5% minmax(0,1fr)}
   #loginScreen .dashboard-preview-side{position:relative;padding:7% 5%;}
   #loginScreen .dashboard-preview-side b{margin:0;color:#fff;font-size:clamp(9px,.64cqw,17px)}
   #loginScreen .dashboard-preview-side b span{color:#fa2847}
@@ -305,7 +305,7 @@
   #loginScreen .dashboard-preview-nav{gap:3%}
   #loginScreen .dashboard-preview-nav span{min-height:0;padding:7% 4%;font-size:clamp(6px,.43cqw,12px)}
   #loginScreen .dashboard-preview-admin{position:absolute;bottom:4%;left:5%;right:5%;padding:6%;border-radius:4px;background:#1d3444;color:#d7e2eb;font-size:clamp(6px,.43cqw,12px);white-space:nowrap}
-  #loginScreen .dashboard-preview-main{padding:2.2% 2%}
+  #loginScreen .dashboard-preview-main{padding:2.2% 2%;background:linear-gradient(145deg,#102632,#0b1c26)}
   #loginScreen .dashboard-preview-title{height:13%;margin:0;align-items:flex-start}
   #loginScreen .dashboard-preview-title b{display:block;font-size:clamp(12px,.83cqw,23px)}
   #loginScreen .dashboard-preview-title small{display:block;margin-top:.4em;font-size:clamp(6px,.42cqw,11px)}
@@ -313,18 +313,18 @@
   #loginScreen .dashboard-preview-title>span small{font-size:.74em;font-weight:400}
   #loginScreen .dashboard-preview-metrics{grid-template-columns:repeat(6,minmax(0,1fr));gap:.7%}
   #loginScreen .dashboard-preview-metric{min-width:0;padding:8% 6%;border-radius:4px}
-  #loginScreen .dashboard-preview-metric span{font-size:clamp(5px,.37cqw,10px);white-space:nowrap}
+  #loginScreen .dashboard-preview-metric span{color:#bbccd7;font-size:clamp(7px,.44cqw,13px);white-space:nowrap}
   #loginScreen .dashboard-preview-metric b{margin-top:6%;font-size:clamp(15px,1.2cqw,32px)}
-  #loginScreen .dashboard-preview-metric small{display:block;margin-top:4%;color:#99aab7;font-size:clamp(4px,.28cqw,8px);line-height:1.2}
+  #loginScreen .dashboard-preview-metric small{display:block;margin-top:4%;color:#aebfca;font-size:clamp(6px,.35cqw,10px);line-height:1.2}
   #loginScreen .dashboard-preview-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));height:9%;margin-top:1%;border:1px solid #2e4554;border-radius:4px;background:#112735}
-  #loginScreen .dashboard-preview-stats span{min-width:0;padding:6% 5%;border-right:1px solid #2b4352;color:#9bafbc;font-size:clamp(5px,.34cqw,10px);white-space:nowrap}
+  #loginScreen .dashboard-preview-stats span{min-width:0;padding:6% 5%;border-right:1px solid #2b4352;color:#b2c4cf;font-size:clamp(7px,.4cqw,12px);white-space:nowrap}
   #loginScreen .dashboard-preview-stats span:last-child{border:0}
   #loginScreen .dashboard-preview-stats b{display:block;margin-top:4%;color:#edf4f8;font-size:clamp(8px,.56cqw,16px)}
-  #loginScreen .dashboard-preview-grid{grid-template-columns:1.58fr .9fr;gap:.8%;height:53%;margin-top:1%}
-  #loginScreen .dashboard-preview-panel{min-width:0;padding:2% 1.8%;border-radius:4px}
-  #loginScreen .dashboard-preview-panel strong{display:flex;justify-content:space-between;align-items:center;margin-bottom:2%;font-size:clamp(7px,.53cqw,15px)}
+  #loginScreen .dashboard-preview-grid{grid-template-columns:1.58fr .9fr;gap:.8%;height:60%;margin-top:1%}
+  #loginScreen .dashboard-preview-panel{min-width:0;padding:2% 1.8%;border-color:#385360;border-radius:4px;background:#102431}
+  #loginScreen .dashboard-preview-panel strong{display:flex;justify-content:space-between;align-items:center;margin-bottom:2%;font-size:clamp(9px,.6cqw,17px)}
   #loginScreen .dashboard-preview-panel strong em{padding:.3em .5em;border:1px solid #385165;border-radius:4px;color:#ff5871;font-size:.7em;font-style:normal}
-  #loginScreen .dashboard-preview-row{height:15%;grid-template-columns:1.25fr .95fr .7fr .8fr .55fr .55fr;gap:1%;border-top:1px solid #294150;color:#b7c7d1;font-size:clamp(5px,.35cqw,10px)}
+  #loginScreen .dashboard-preview-row{height:15%;grid-template-columns:1.25fr .95fr .7fr .8fr .55fr .55fr;gap:1%;border-top:1px solid #38515f;color:#d0dde5;font-size:clamp(8px,.45cqw,13px)}
   #loginScreen .dashboard-preview-row span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
   #loginScreen .dashboard-preview-row span:nth-child(3):not(.dashboard-preview-exits span){color:#fb6a80}
   #loginScreen .dashboard-preview-row em{padding:.2em .3em;border-radius:3px;background:#d9f7eb;color:#15553e;font-size:.82em;font-weight:800}
@@ -352,6 +352,16 @@
   #loginScreen .tabs button.on{background:transparent;box-shadow:none}
   #loginScreen .auth-box:has(#loginForm:not(.hidden)) #tabLogin,#loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabRegister{display:none}
   #loginScreen .desktop-auth-note{order:6;justify-content:center;margin-top:7%;text-align:center;font-size:clamp(9px,.56cqw,15px)}
+}
+
+@media (min-width:1901px){
+  #loginScreen .dashboard-monitor::after{height:24%}
+  #loginScreen .dashboard-monitor::before{top:123%}
+}
+
+@media (min-width:901px) and (max-width:1900px){
+  #loginScreen .login-photo{background-position:right center}
+  #loginScreen .login-bike-scene{width:min(72%,103.5svh)}
 }
 
 @media (min-width:901px) and (max-width:1200px){
