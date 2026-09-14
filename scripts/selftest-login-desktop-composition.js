@@ -12,6 +12,7 @@ const imageSize = (name) => {
 
 assert.match(html, /<link rel="stylesheet" href="\/login-desktop\.css">/);
 assert.match(html, /class="dashboard-monitor"/);
+assert.match(html, /class="monitor-desk-shadow" aria-hidden="true"/);
 assert.match(html, /class="dashboard-preview"/);
 assert.equal((html.match(/class="dashboard-preview-metric"/g) || []).length, 6, 'O monitor deve mostrar os seis indicadores da referência');
 assert.match(html, /Quem está na rua agora/);
@@ -21,9 +22,11 @@ assert.match(html, /class="login-bike-scene" src="\/login-bike-scene\.png"/);
 assert.match(css, /@media \(min-width:901px\)/);
 assert.match(css, /background:url\('\/login-city-desk-scene-v2\.png'\)/);
 assert.match(css, /width:min\(100vw,215svh\)/);
-assert.match(css, /#loginScreen \.dashboard-monitor\{[^}]*transform:none/);
+assert.match(css, /#loginScreen \.dashboard-monitor\{[^}]*rotateY\(-5deg\) rotateZ\(2\.5deg\)/);
 assert.match(css, /background:url\('\/login-omen-27-real\.webp'\)/);
 assert.match(css, /#loginScreen \.dashboard-preview\{[^}]*position:absolute/);
+assert.match(css, /clip-path:polygon\(4% 0,96% 0,100% 100%,0 100%\)/);
+assert.match(css, /#loginScreen \.dashboard-monitor::before\{[^}]*background:linear-gradient\(#2c2c2c/);
 assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
 assert.match(sw, /login-desktop\.css/);
 assert.match(sw, /login-city-desk-scene-v2\.png/);

@@ -1,5 +1,5 @@
 /* Desktop-only composition based on the approved login reference. */
-.login-bike-scene,.login-showcase-benefits,.login-showcase-footer,.login-showcase-lockup>span,.dashboard-monitor,.desktop-auth-divider{display:none}
+.login-bike-scene,.login-showcase-benefits,.login-showcase-footer,.login-showcase-lockup>span,.dashboard-monitor,.monitor-desk-shadow,.desktop-auth-divider{display:none}
 
 @media (min-width:901px){
   #loginScreen.login{
@@ -374,13 +374,35 @@
 }
 
 /* The physical frame is a photograph of the HP OMEN 27 monitor, with the
-   DespacheFull dashboard rendered as HTML inside its actual screen opening.
+   DespacheFull dashboard rendered as HTML inside its trapezoidal screen opening.
    Source: https://www.hp.com/us-en/shop/pdp/omen-by-hp-27-inch-fhd-165hz-gaming-monitor-omen-27 */
 @media (min-width:901px){
+  #loginScreen .monitor-desk-shadow{
+    position:absolute;
+    top:3%;
+    right:-4%;
+    z-index:2;
+    display:block;
+    width:min(72%,118svh);
+    aspect-ratio:4 / 3;
+    pointer-events:none;
+  }
+  #loginScreen .monitor-desk-shadow::before{
+    content:"";
+    position:absolute;
+    top:85.5%;
+    left:32%;
+    width:38%;
+    height:4%;
+    border-radius:50%;
+    background:radial-gradient(ellipse,rgba(0,0,0,.86),rgba(0,0,0,.5) 49%,transparent 75%);
+    filter:blur(11px);
+    transform:rotate(2.5deg) skewX(-14deg);
+  }
   #loginScreen .dashboard-monitor{
-    top:0;
-    right:-6%;
-    width:min(75%,121svh);
+    top:3%;
+    right:-4%;
+    width:min(72%,118svh);
     height:auto;
     max-height:none;
     aspect-ratio:4 / 3;
@@ -389,22 +411,50 @@
     border-radius:0;
     background:url('/login-omen-27-real.webp') center/100% 100% no-repeat;
     box-shadow:none;
-    transform:none;
+    filter:drop-shadow(15px 20px 22px rgba(0,0,0,.52)) drop-shadow(-7px 5px 12px rgba(0,0,0,.22));
+    transform:perspective(2400px) rotateY(-5deg) rotateZ(2.5deg);
+    transform-origin:center 87%;
   }
-  #loginScreen .dashboard-monitor::before,
-  #loginScreen .dashboard-monitor::after{content:none}
+  #loginScreen .dashboard-monitor::before{
+    content:"";
+    position:absolute;
+    top:67.35%;
+    left:47.2%;
+    z-index:4;
+    width:5.6%;
+    height:2.15%;
+    background:linear-gradient(#2c2c2c,#2d2d2d 55%,#2e2e2e);
+    box-shadow:0 0 3px 2px #2d2d2d;
+    pointer-events:none;
+  }
+  #loginScreen .dashboard-monitor::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:1;
+    background:radial-gradient(ellipse 35% 9% at 45% 85%,rgba(255,151,89,.44),transparent 75%),radial-gradient(ellipse 8% 28% at 50% 70%,rgba(255,165,104,.16),transparent 80%),linear-gradient(125deg,rgba(255,188,131,.12),transparent 35%);
+    mix-blend-mode:screen;
+    opacity:.72;
+    -webkit-mask:url('/login-omen-27-real.webp') center/100% 100% no-repeat;
+    mask:url('/login-omen-27-real.webp') center/100% 100% no-repeat;
+    pointer-events:none;
+  }
   #loginScreen .dashboard-preview{
     position:absolute;
-    top:11.25%;
-    left:11.7%;
-    width:78.4%;
-    height:55.1%;
+    top:11.2%;
+    left:9.7%;
+    z-index:2;
+    width:80.6%;
+    height:55.2%;
+    padding:0 4%;
     border:0;
     border-radius:0;
     box-shadow:none;
+    clip-path:polygon(4% 0,96% 0,100% 100%,0 100%);
   }
 }
 
 @media (min-width:901px) and (max-width:1900px){
-  #loginScreen .dashboard-monitor{top:7.5%}
+  #loginScreen .dashboard-monitor,
+  #loginScreen .monitor-desk-shadow{top:10%}
 }
