@@ -1,4 +1,4 @@
-const CACHE = "despachefull-v3.6.1-login-desk-composition";
+const CACHE = "despachefull-v3.6.1-login-reference-layout";
 const STATIC = ["/", "/login-desktop.css", "/login-city-desk-scene.png", "/login-bike-scene.png", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
 
 self.addEventListener("install", event => {

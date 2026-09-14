@@ -13,9 +13,15 @@ const imageSize = (name) => {
 assert.match(html, /<link rel="stylesheet" href="\/login-desktop\.css">/);
 assert.match(html, /class="dashboard-monitor"/);
 assert.match(html, /class="dashboard-preview"/);
+assert.equal((html.match(/class="dashboard-preview-metric"/g) || []).length, 6, 'O monitor deve mostrar os seis indicadores da referência');
+assert.match(html, /Quem está na rua agora/);
+assert.match(html, /Últimas saídas/);
+assert.match(html, /class="desktop-auth-divider">OU/);
 assert.match(html, /class="login-bike-scene" src="\/login-bike-scene\.png"/);
 assert.match(css, /@media \(min-width:901px\)/);
 assert.match(css, /background:url\('\/login-city-desk-scene\.png'\)/);
+assert.match(css, /aspect-ratio:16\/9/);
+assert.match(css, /width:min\(100vw,177\.777778svh\)/);
 assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
 assert.match(sw, /login-desktop\.css/);
 assert.match(sw, /login-city-desk-scene\.png/);
