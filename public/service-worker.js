@@ -1,5 +1,5 @@
-const CACHE = "despachefull-v3.6.1-login-desk-v2";
-const STATIC = ["/", "/login-desktop.css", "/login-city-desk-scene-v2.png", "/login-bike-scene.png", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
+const CACHE = "despachefull-v3.6.1-login-real-monitor";
+const STATIC = ["/", "/login-desktop.css", "/login-city-desk-scene-v2.png", "/login-bike-scene.png", "/login-omen-27-real.webp", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC)));
