@@ -252,6 +252,21 @@
   #loginScreen .login-bike-scene{width:80%;max-height:88%;bottom:-3%}
 }
 
+@media (min-width:1901px){
+  #loginScreen .dashboard-monitor::after{height:26%}
+  #loginScreen .dashboard-monitor::before{
+    content:"";
+    position:absolute;
+    top:125%;
+    left:33%;
+    width:34%;
+    height:2.4%;
+    border-radius:50%;
+    background:linear-gradient(180deg,#34424e,#111a22);
+    box-shadow:0 8px 18px rgba(0,0,0,.7);
+  }
+}
+
 @media (min-width:901px) and (max-height:700px){
   #loginScreen.login,#loginScreen .login-showcase{min-height:700px}
   #loginScreen .login-auth-panel{min-height:570px}
