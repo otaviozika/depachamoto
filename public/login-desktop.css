@@ -38,7 +38,7 @@
     opacity:1;
     filter:none;
     transform:none;
-    background:url('/login-city-scene.png') center center/cover no-repeat;
+    background:url('/login-city-desk-scene.png') center center/cover no-repeat;
   }
   #loginScreen .login-showcase-top{
     position:absolute;
