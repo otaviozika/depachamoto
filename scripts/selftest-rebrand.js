@@ -11,7 +11,7 @@ const checks={
   version:server.includes('const VERSION = "3.6.1";')&&pkg.version==="3.6.1",
   packageName:pkg.name==="despachefull",
   title:html.includes('<title>DespacheFull 3.6.1</title>'),
-  loginBrand:html.includes('/brand-logo.png')&&html.includes('/brand-wordmark-light.png')&&html.includes('/brand-wordmark.png'),
+  loginBrand:html.includes('class="login-brand" src="/brand-wordmark-light.png"')&&html.includes('/brand-wordmark.png'),
   manifest:manifest.includes('"name": "DespacheFull"')&&manifest.includes('"short_name": "DespacheFull"'),
   serviceWorker:sw.includes('despachefull-v3.6.1-')&&sw.includes('/app-icon-192.png'),
   publicOldBrandRemoved:!html.includes('DespachaMoto')&&!manifest.includes('DespachaMoto')&&!sw.includes('DespachaMoto'),
