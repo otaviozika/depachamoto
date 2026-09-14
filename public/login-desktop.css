@@ -1,0 +1,251 @@
+/* Desktop-only composition based on the approved login reference. */
+.login-bike-scene,.login-showcase-benefits,.login-showcase-footer,.login-showcase-lockup>span,.dashboard-monitor{display:none}
+
+@media (min-width:901px){
+  #loginScreen.login{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) clamp(390px,24vw,620px);
+    place-items:stretch;
+    min-height:100svh;
+    padding:0;
+    overflow:hidden;
+    background:#080b10;
+    color:#f5f7fa;
+  }
+  #loginScreen .login-showcase{
+    position:relative;
+    display:block;
+    min-height:100svh;
+    min-width:0;
+    padding:0;
+    overflow:hidden;
+    isolation:isolate;
+    border:0;
+    background:#0a0d12;
+  }
+  #loginScreen .login-showcase::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:1;
+    pointer-events:none;
+    background:linear-gradient(90deg,rgba(5,7,10,.48),rgba(5,7,10,.02) 52%,rgba(5,7,10,.62)),linear-gradient(0deg,rgba(5,7,10,.5),transparent 38%);
+  }
+  #loginScreen .login-photo{
+    position:absolute;
+    inset:0;
+    z-index:0;
+    opacity:1;
+    filter:none;
+    transform:none;
+    background:url('/login-city-scene.png') center center/cover no-repeat;
+  }
+  #loginScreen .login-showcase-top{
+    position:absolute;
+    top:clamp(32px,5vh,76px);
+    left:clamp(32px,3.6vw,74px);
+    right:clamp(24px,3vw,62px);
+    z-index:6;
+    align-items:flex-start;
+  }
+  #loginScreen .login-showcase-lockup>span{
+    display:block;
+    margin-top:8px;
+    color:#b5bdc7;
+    font-size:clamp(8px,.58vw,11px);
+    letter-spacing:.14em;
+    white-space:nowrap;
+  }
+  #loginScreen .login-showcase-brand{width:clamp(230px,17vw,410px);max-width:none;height:auto}
+  #loginScreen .login-showcase-status{
+    display:block;
+    margin-top:12px;
+    padding:0 0 0 50px;
+    border:0;
+    border-radius:0;
+    background:none;
+    box-shadow:none;
+    backdrop-filter:none;
+    color:#d4dce6;
+    font-size:clamp(9px,.63vw,13px);
+    font-weight:600;
+    letter-spacing:.18em;
+    white-space:nowrap;
+  }
+  #loginScreen .login-showcase-status::before{
+    position:absolute;
+    top:20px;
+    right:calc(100% - 37px);
+    width:34px;
+    height:2px;
+    border-radius:0;
+    background:#f32043;
+    box-shadow:none;
+  }
+  #loginScreen .login-showcase-copy{
+    position:absolute;
+    top:17%;
+    left:clamp(32px,3.6vw,74px);
+    z-index:5;
+    width:32%;
+    max-width:500px;
+    margin:0;
+  }
+  #loginScreen .login-showcase-copy h1{
+    margin:0;
+    color:#fff;
+    font-size:clamp(27px,2.1vw,48px);
+    font-weight:580;
+    letter-spacing:-.04em;
+    line-height:1.08;
+    white-space:nowrap;
+    text-shadow:0 2px 22px rgba(0,0,0,.45);
+  }
+  #loginScreen .login-showcase-copy h1 em{color:#fc2847;font-style:normal;font-weight:790}
+  #loginScreen .login-showcase-benefits{
+    display:grid;
+    gap:clamp(16px,2.5vh,34px);
+    margin:clamp(24px,4.3vh,56px) 0 0;
+    padding:0;
+    list-style:none;
+  }
+  #loginScreen .login-showcase-benefits li{display:flex;align-items:center;gap:15px;color:#e6eaf0;text-transform:uppercase;letter-spacing:.13em}
+  #loginScreen .login-showcase-benefits li span{width:30px;color:#fb2545;font-size:clamp(24px,1.65vw,36px);font-weight:700;line-height:1;text-align:center}
+  #loginScreen .login-showcase-benefits li b{font-size:clamp(9px,.72vw,15px);font-weight:570;line-height:1.3}
+  #loginScreen .login-bike-scene{
+    position:absolute;
+    left:-2%;
+    bottom:-5%;
+    z-index:4;
+    display:block;
+    width:64%;
+    height:auto;
+    max-height:76%;
+    object-fit:contain;
+    object-position:left bottom;
+    -webkit-mask-image:radial-gradient(ellipse 59% 61% at 42% 54%,#000 46%,transparent 97%);
+    mask-image:radial-gradient(ellipse 59% 61% at 42% 54%,#000 46%,transparent 97%);
+    filter:drop-shadow(0 28px 30px rgba(0,0,0,.45));
+  }
+  #loginScreen .dashboard-monitor{
+    position:absolute;
+    top:12.2%;
+    right:1.1%;
+    z-index:3;
+    display:block;
+    width:62%;
+    height:62%;
+    max-height:760px;
+    padding:clamp(7px,.65vw,14px);
+    border:1px solid #53616f;
+    border-radius:clamp(10px,.85vw,20px);
+    background:linear-gradient(145deg,#17212b,#070b10);
+    box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 0 2px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.22);
+    transform:perspective(1900px) rotateY(-2deg);
+    transform-origin:right center;
+  }
+  #loginScreen .dashboard-monitor::after{
+    content:"";
+    position:absolute;
+    top:100%;
+    left:43%;
+    width:14%;
+    height:13%;
+    border-radius:0 0 6px 6px;
+    background:linear-gradient(90deg,#111921,#2c3a45 50%,#0b1118);
+    box-shadow:0 24px 28px rgba(0,0,0,.5);
+  }
+  #loginScreen .dashboard-preview{
+    width:100%;
+    height:100%;
+    margin:0;
+    overflow:hidden;
+    transform:none;
+    border:1px solid #253846;
+    border-radius:5px;
+    background:#0a151d;
+    box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  #loginScreen .dashboard-preview-top{height:8%;min-height:30px;padding:0 2%;background:#0b1821;border-bottom-color:#263b49}
+  #loginScreen .dashboard-preview-dots i{width:7px;height:7px;background:#516171}
+  #loginScreen .dashboard-preview-live{color:#afbfca;font-size:clamp(8px,.55vw,12px)}
+  #loginScreen .dashboard-preview-live::before{background:#32b476}
+  #loginScreen .dashboard-preview-body{grid-template-columns:18% minmax(0,1fr);height:92%;min-height:0}
+  #loginScreen .dashboard-preview-side{padding:6% 7%;background:#0b1720;border-right-color:#273746}
+  #loginScreen .dashboard-preview-side b{margin:0 0 15%;color:#f0f3f6;font-size:clamp(10px,.82vw,18px);font-style:italic;white-space:nowrap}
+  #loginScreen .dashboard-preview-nav{gap:4%}
+  #loginScreen .dashboard-preview-nav span{height:auto;min-height:30px;padding:7px 9px;color:#9cabb7;font-size:clamp(8px,.58vw,12px)}
+  #loginScreen .dashboard-preview-nav span:first-child{background:#1e3444;color:#f1f5f8}
+  #loginScreen .dashboard-preview-main{padding:2.7%;background:linear-gradient(145deg,#10222d,#0a1821)}
+  #loginScreen .dashboard-preview-title{margin:0 0 2%;align-items:flex-end}
+  #loginScreen .dashboard-preview-title b{font-size:clamp(12px,1vw,22px)}
+  #loginScreen .dashboard-preview-title small{color:#9babba;font-size:clamp(8px,.53vw,12px)}
+  #loginScreen .dashboard-preview-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:1.2%}
+  #loginScreen .dashboard-preview-metric{padding:10% 9%;border-color:#2e4554;background:#122735}
+  #loginScreen .dashboard-preview-metric span{color:#a5b8c4;font-size:clamp(7px,.48vw,11px);white-space:normal}
+  #loginScreen .dashboard-preview-metric b{margin-top:8%;font-size:clamp(17px,1.5vw,33px);line-height:1}
+  #loginScreen .dashboard-preview-grid{grid-template-columns:1.4fr .8fr;gap:1.2%;height:55%;margin-top:1.8%}
+  #loginScreen .dashboard-preview-panel{height:100%;padding:3%;border-color:#2e4554;background:#10212d}
+  #loginScreen .dashboard-preview-panel strong{margin-bottom:4%;color:#e4edf2;font-size:clamp(9px,.6vw,14px)}
+  #loginScreen .dashboard-preview-row{height:17%;grid-template-columns:1fr 1fr .55fr;color:#b4c3ce;font-size:clamp(7px,.47vw,11px)}
+  #loginScreen .dashboard-preview-row em{color:#70d6b2}
+  #loginScreen .dashboard-preview-road{color:#a2b4c0;font-size:clamp(8px,.55vw,13px)}
+  #loginScreen .login-showcase-footer{position:absolute;right:3%;bottom:2.7%;z-index:6;display:block;color:#bac4cf;font-size:clamp(8px,.53vw,12px);letter-spacing:.45em;white-space:nowrap}
+
+  #loginScreen .login-auth-panel{
+    position:relative;
+    z-index:8;
+    align-self:center;
+    width:auto;
+    height:min(70vh,980px);
+    min-height:560px;
+    margin:0 clamp(18px,2vw,54px) 0 0;
+    padding:clamp(24px,2.1vw,48px);
+    border:1px solid #55606c;
+    border-radius:17px;
+    background:linear-gradient(145deg,rgba(16,23,31,.97),rgba(8,13,20,.99));
+    box-shadow:0 28px 90px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  #loginScreen .auth-box{width:100%;max-width:460px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+  #loginScreen .brand-logo-login,#loginScreen .auth-desktop-brand,#loginScreen .auth-box>.creator-signature{display:none}
+  #loginScreen .auth-box>h2{margin:0;color:#fff;font-size:clamp(26px,1.65vw,40px);line-height:1.08;letter-spacing:-.04em}
+  #loginScreen .auth-box>p.muted{margin:10px 0 0;color:#b7c1cd;font-size:clamp(12px,.8vw,17px)}
+  #loginScreen .tabs{order:unset;margin:26px 0 17px;padding:3px;border:1px solid #34414c;border-radius:9px;background:#0b121a}
+  #loginScreen .tabs button{min-height:39px;color:#aeb9c5;font-size:clamp(11px,.68vw,15px);font-weight:650}
+  #loginScreen .tabs button.on{background:#273340;color:#fff;box-shadow:none}
+  #loginScreen #registrationNotice{color:#adbac7;font-size:11px}
+  #loginScreen .form{gap:clamp(12px,1.6vh,20px)}
+  #loginScreen .form label{color:#c4ced8;font-size:clamp(11px,.7vw,15px);font-weight:650}
+  #loginScreen .form input,#loginScreen .form select{min-height:clamp(44px,5.1vh,60px);margin-top:7px;padding:0 15px;border:1px solid #3a4753;border-radius:9px;background:#0b151e;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  #loginScreen .form input::placeholder{color:#7f8c99}
+  #loginScreen .form input:focus,#loginScreen .form select:focus{border-color:#f22945;box-shadow:0 0 0 3px rgba(242,41,69,.15)}
+  #loginScreen .login-help-row{display:flex;justify-content:flex-end;margin:-4px 0 0;color:#ed5367;font-size:clamp(10px,.61vw,13px)}
+  #loginScreen .btn.primary{width:100%;min-height:clamp(47px,5.3vh,61px);margin-top:4px;border:1px solid #fb2946;border-radius:9px;background:#ef193b;color:#fff;box-shadow:0 12px 30px rgba(239,25,59,.22);font-size:clamp(12px,.75vw,16px);font-weight:800}
+  #loginScreen .btn.primary:hover{background:#fa2947}
+  #loginScreen .desktop-auth-note{display:flex;margin-top:22px;color:#8995a1;font-size:clamp(10px,.6vw,13px)}
+  #loginScreen .desktop-auth-note::before{background:#f12946}
+  #loginScreen .msg{font-size:12px}
+}
+
+@media (min-width:901px) and (max-width:1450px){
+  #loginScreen.login{grid-template-columns:minmax(0,1fr) minmax(390px,28%)}
+  #loginScreen .dashboard-monitor{top:16%;height:57%;width:65%}
+  #loginScreen .login-showcase-copy{top:19%;width:33%}
+  #loginScreen .login-showcase-copy h1{font-size:clamp(26px,2.2vw,34px)}
+  #loginScreen .login-showcase-benefits{gap:18px}
+  #loginScreen .login-bike-scene{width:72%;max-height:74%}
+  #loginScreen .login-showcase-status{display:none}
+  #loginScreen .dashboard-preview-side b{font-size:10px}
+  #loginScreen .dashboard-preview-nav span{font-size:8px}
+  #loginScreen .dashboard-preview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #loginScreen .dashboard-preview-grid{height:40%}
+}
+
+@media (min-width:1451px) and (max-width:1900px){
+  #loginScreen .login-bike-scene{width:80%;max-height:88%;bottom:-3%}
+}
+
+@media (min-width:901px) and (max-height:700px){
+  #loginScreen.login,#loginScreen .login-showcase{min-height:700px}
+  #loginScreen .login-auth-panel{min-height:570px}
+}
