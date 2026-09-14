@@ -206,6 +206,13 @@
     background:linear-gradient(145deg,rgba(16,23,31,.97),rgba(8,13,20,.99));
     box-shadow:0 28px 90px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
   }
+  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)){
+    height:min(86vh,980px);
+    min-height:min(710px,calc(100svh - 20px));
+    max-height:calc(100svh - 20px);
+    overflow-y:auto;
+    align-items:safe center;
+  }
   #loginScreen .auth-box{width:100%;max-width:460px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
   #loginScreen .brand-logo-login,#loginScreen .auth-desktop-brand,#loginScreen .auth-box>.creator-signature{display:none}
   #loginScreen .auth-box>h2{margin:0;color:#fff;font-size:clamp(26px,1.65vw,40px);line-height:1.08;letter-spacing:-.04em}
