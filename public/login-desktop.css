@@ -289,9 +289,10 @@
   #loginScreen .login-photo{background-size:cover;background-position:center center}
   #loginScreen .login-showcase-top{top:4%;left:3%;right:3%}
   #loginScreen .login-showcase-copy{top:16%;left:3%}
-  #loginScreen .login-bike-scene{width:71%;max-height:79%;bottom:-4%}
-  #loginScreen .dashboard-monitor{top:11.5%;right:.7%;width:62%;height:62.5%;max-height:none}
-  #loginScreen .dashboard-monitor::after{height:14%}
+  #loginScreen .login-bike-scene{width:75%;max-height:84%;bottom:3%}
+  #loginScreen .dashboard-monitor{top:9%;right:.7%;width:62%;height:55%;max-height:none}
+  #loginScreen .dashboard-monitor::after{height:26%}
+  #loginScreen .dashboard-monitor::before{content:"";position:absolute;top:125%;left:33%;width:34%;height:2.4%;border-radius:50%;background:linear-gradient(180deg,#34424e,#111a22);box-shadow:0 8px 18px rgba(0,0,0,.7)}
   #loginScreen .dashboard-preview-top{min-height:0;height:10%;}
   #loginScreen .dashboard-preview-live{gap:0;color:#cdd7e0;font-size:clamp(7px,.49cqw,12px);letter-spacing:0}
   #loginScreen .dashboard-preview-live::before{display:none}
