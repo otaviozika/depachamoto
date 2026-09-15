@@ -608,7 +608,7 @@
 
 
 /* desktop login premium — 2026-09-14 */
-.login-showcase,.auth-desktop-brand,.login-title-desktop,.desktop-auth-note,.login-help-row{display:none}
+.login-showcase,.auth-desktop-brand,.login-title-desktop,.desktop-auth-note,.login-help-row,.desktop-auth-heading,.desktop-auth-intro{display:none}
 .login-title-mobile{display:inline}
 
 @media (min-width:901px){
@@ -750,7 +750,15 @@
   </section>
 
   <section class="login-auth-panel">
+    <div class="desktop-auth-heading" aria-label="DespacheFull">
+      <svg viewBox="0 0 875 402" aria-hidden="true" focusable="false">
+        <defs><filter id="desktopBrandLight" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1 -1 0 0 0 1 -1 0 0 0 1 0 0 0 1 0"/></filter></defs>
+        <image href="/brand-logo.png" width="875" height="584" filter="url(#desktopBrandLight)"/>
+      </svg>
+      <img src="/brand-wordmark-light.png" alt="">
+    </div>
     <div class="auth-box">
+      <div class="desktop-auth-intro"><h2 id="desktopAuthTitle">Acesse sua conta</h2><p id="desktopAuthSubtitle">Entre para continuar no DespacheFull</p></div>
       <img class="brand-logo-login" src="/brand-logo.png" alt="DespacheFull — Inteligente, Seguro, Eficiente">
       <div class="creator-signature">Create by. Hernandes</div>
       <div class="auth-desktop-brand"><img src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
@@ -1664,7 +1672,16 @@ async function api(url,opt={}){
 }
 function syncServerTime(serverNow){const t=Date.parse(serverNow);if(Number.isFinite(t))serverOffsetMs=t-Date.now()}
 function serverNowMs(){return Date.now()+serverOffsetMs}
-function setAuth(mode){$('loginForm').classList.toggle('hidden',mode!=='login');$('registerForm').classList.toggle('hidden',mode!=='register');$('tabLogin').classList.toggle('on',mode==='login');$('tabRegister').classList.toggle('on',mode==='register');$('authMsg').innerHTML=''}
+function setAuth(mode){
+  const isRegister=mode==='register';
+  $('loginForm').classList.toggle('hidden',isRegister);
+  $('registerForm').classList.toggle('hidden',!isRegister);
+  $('tabLogin').classList.toggle('on',!isRegister);
+  $('tabRegister').classList.toggle('on',isRegister);
+  $('desktopAuthTitle').textContent=isRegister?'Crie sua conta':'Acesse sua conta';
+  $('desktopAuthSubtitle').textContent=isRegister?'Solicite seu acesso ao DespacheFull':'Entre para continuar no DespacheFull';
+  $('authMsg').innerHTML='';
+}
 function message(id,text,type){$(id).innerHTML=text?`<div class="msg ${type}">${escapeHtml(text)}</div>`:''}
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function localDate(x){return new Date(x).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}

@@ -1,421 +1,103 @@
-/* DespacheFull — login desktop crisp v4
-   Desktop only. Mobile keeps the existing application layout. */
-
+/* Desktop access screen. Authentication owns visibility through .hidden.
+   Never override .hidden with display !important in this stylesheet. */
 @media (min-width:901px){
-  #loginScreen{
-    --login-card-x:50%;
-    --login-card-y:48%;
-    --login-card-w:500px;
-    --login-bike-left:clamp(-64px,-2.4vw,-28px);
-    --login-bike-width:clamp(420px,31vw,720px);
-    --login-red:#e3162f;
-    --login-red-hover:#f01d39;
-    --login-line:#3b424a;
-    --login-muted:#8d949d;
-  }
+  #loginScreen.login{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr;place-items:center;width:100%;min-height:100svh;padding:32px 24px;overflow:clip;background:#101215;color:#f5f6f7}
+  #loginScreen .login-showcase{position:absolute;inset:0;z-index:-1;display:block;width:100%;height:100%;min-height:0;padding:0;border:0;overflow:hidden;background:#101215;pointer-events:none}
+  #loginScreen .login-photo{position:absolute;inset:0;z-index:0;opacity:1;filter:none;transform:none;background:#101215 url('/login-garage-desktop.webp') center bottom / cover no-repeat}
+  #loginScreen .login-showcase::before{display:none}
+  #loginScreen .login-showcase::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,rgba(0,0,0,.04),transparent 28% 72%,rgba(0,0,0,.07));pointer-events:none}
+  #loginScreen .login-showcase-top,#loginScreen .login-showcase-copy,#loginScreen .login-showcase-footer,#loginScreen .login-bike-scene,#loginScreen .dashboard-monitor,#loginScreen .monitor-desk-shadow,#loginScreen .login-photo-credit{display:none}
 
-  #loginScreen.login{
-    position:relative!important;
-    display:block!important;
-    width:100vw!important;
-    height:100svh!important;
-    min-height:100svh!important;
-    margin:0!important;
-    padding:0!important;
-    overflow:hidden!important;
-    isolation:isolate;
-    background:#090c10!important;
-    color:#f5f6f7;
-  }
+  /* Normal flow centers the complete composition and permits scrolling on
+     short desktops instead of clipping fields above the viewport. */
+  #loginScreen .login-auth-panel{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;width:clamp(390px,30vw,490px);max-width:100%;min-width:0;min-height:0;margin:0 auto;padding:0;background:transparent}
+  #loginScreen .desktop-auth-heading{display:flex;flex-direction:column;align-items:center;gap:4px}
+  #loginScreen .desktop-auth-heading svg{display:block;width:200px;height:92px;overflow:hidden}
+  #loginScreen .desktop-auth-heading>img{display:block;width:300px;max-width:100%;height:auto}
+  #loginScreen .auth-box{display:flex;flex-direction:column;width:100%;max-width:none;margin:0;padding:30px 32px 22px;border:1px solid #6b4147;border-radius:18px;background:linear-gradient(135deg,rgba(18,20,23,.96),rgba(9,12,15,.97));color:#f5f6f7;box-shadow:0 22px 50px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.035)}
+  #loginScreen .brand-logo-login,#loginScreen .auth-desktop-brand,#loginScreen .auth-box>h2,#loginScreen .auth-box>p.muted,#loginScreen .desktop-auth-note{display:none}
+  #loginScreen .desktop-auth-intro{display:block;order:1;text-align:center;margin:0 0 24px}
+  #loginScreen .desktop-auth-intro h2{margin:0;color:#fff;font-size:28px;line-height:1.2;font-weight:750;letter-spacing:-.025em}
+  #loginScreen .desktop-auth-intro p{margin:9px 0 0;color:#a7abb1;font-size:14px;line-height:1.5}
+  #loginScreen #registrationNotice{display:none;order:2;margin:0 0 14px;color:#acb2bb;line-height:1.5;text-align:center;font-size:12px}
+  #loginScreen #registrationNotice:empty{display:none}
+  #loginScreen #authMsg{order:3}
+  #loginScreen #authMsg:empty{display:none}
+  #loginScreen .msg{margin:0 0 16px;padding:12px;border-radius:8px;font-size:13px;line-height:1.5}
+  #loginScreen .msg.err{background:#281015;color:#ffc2cb;border:1px solid #63303a}
+  #loginScreen .msg.ok{background:#102119;color:#b8edcd;border:1px solid #315740}
 
-  /* ===== CRISP GARAGE / WALL SCENE ===== */
-  #loginScreen .login-showcase{
-    position:absolute!important;
-    inset:0!important;
-    display:block!important;
-    width:100%!important;
-    height:100%!important;
-    min-height:0!important;
-    margin:0!important;
-    padding:0!important;
-    overflow:hidden!important;
-    z-index:0!important;
-    background:#101317!important;
-    border:0!important;
-  }
+  #loginScreen .form{display:grid;order:4;gap:15px}
+  #loginScreen .form label{position:relative;display:block;margin:0;font-size:0}
+  #loginScreen .form input{display:block;width:100%;height:54px;min-height:54px;margin:0;padding:0 16px 0 49px;border:1px solid #54585e;border-radius:10px;outline:none;background:linear-gradient(135deg,#14181c,#0e1114);color:#f5f6f7;font-size:15px;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+  #loginScreen .form input::placeholder{color:#a9afb7;opacity:1}
+  #loginScreen .form input:hover{border-color:#858990}
+  #loginScreen .form input:focus{border-color:#f2364d;box-shadow:0 0 0 3px rgba(242,54,77,.18)}
+  #loginScreen .form label::before{content:"";position:absolute;left:19px;top:13px;width:11px;height:11px;border:1.6px solid #e0e3e7;border-radius:50%;pointer-events:none}
+  #loginScreen .form label::after{content:"";position:absolute;left:15px;top:28px;width:19px;height:12px;border:1.6px solid #e0e3e7;border-radius:10px 10px 2px 2px;pointer-events:none}
+  #loginScreen .form label:has(input[type="password"])::before{left:19px;top:13px;width:11px;height:14px;border-radius:8px 8px 0 0}
+  #loginScreen .form label:has(input[type="password"])::after{left:15px;top:23px;width:19px;height:18px;border-radius:3px;background:#111519}
+  #loginScreen .login-help-row{display:block;margin:-3px 0 0;text-align:right;color:#a1a7af;font-size:11px;line-height:1.45}
+  #loginScreen .btn.primary{position:relative;width:100%;min-height:54px;margin:0;padding:12px 42px;border:1px solid #f51a36;border-radius:10px;background:linear-gradient(105deg,#e70625,#f21830);color:#fff;box-shadow:0 8px 20px rgba(210,10,35,.12);font-size:17px;font-weight:700;cursor:pointer}
+  #loginScreen #loginForm .btn.primary::after{content:"→";position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:24px;font-weight:400}
+  #loginScreen .btn.primary:hover{background:#fc2440}
+  #loginScreen button:focus-visible{outline:3px solid #fff;outline-offset:4px}
+  #loginScreen button:disabled{opacity:.45;cursor:not-allowed}
+  #loginScreen .form p.small.muted{margin:0;color:#a4abb4;line-height:1.5;font-size:12px}
+  #loginScreen .desktop-auth-divider{order:5;display:flex;align-items:center;gap:16px;margin:22px 0;color:#9b9fa6;font-size:12px;line-height:1;text-transform:lowercase}
+  #loginScreen .desktop-auth-divider::before,#loginScreen .desktop-auth-divider::after{content:"";flex:1;height:1px;background:#30353b}
+  #loginScreen .tabs{order:6;display:block;width:100%;margin:0;padding:0;border:0;background:transparent}
+  #loginScreen .tabs button{width:100%;min-height:52px;padding:12px;border:1px solid #7a7e84;border-radius:10px;background:transparent;color:#f5f6f7;font-size:14px;font-weight:500;box-shadow:none}
+  #loginScreen #tabLogin{display:none}
+  #loginScreen #tabRegister{display:flex;align-items:center;justify-content:center;gap:12px;font-size:0}
+  #loginScreen #tabRegister::before{content:"+";font-size:26px;line-height:1;font-weight:300}
+  #loginScreen #tabRegister::after{content:"Criar nova conta";font-size:14px}
+  #loginScreen .tabs button:hover{background:rgba(255,255,255,.05);border-color:#b7bbc1}
+  #loginScreen .auth-box>.creator-signature{display:block;order:7;margin:20px 0 0;text-align:center;color:#969ba2;font-size:11px;font-weight:400;letter-spacing:0;line-height:1.4}
 
-  #loginScreen .login-photo{
-    position:absolute!important;
-    inset:0!important;
-    display:block!important;
-    width:100%!important;
-    height:100%!important;
-    opacity:1!important;
-    filter:none!important;
-    transform:none!important;
-    background:
-      radial-gradient(ellipse 28% 26% at 18% 0%,rgba(244,207,161,.16) 0%,rgba(244,207,161,.04) 32%,transparent 68%),
-      radial-gradient(ellipse 28% 26% at 82% 0%,rgba(244,207,161,.15) 0%,rgba(244,207,161,.035) 32%,transparent 68%),
-      linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
-      linear-gradient(180deg,rgba(255,255,255,.016) 1px,transparent 1px),
-      linear-gradient(180deg,#171a1e 0%,#111418 58%,#0d1013 77%,#090b0e 100%)!important;
-    background-size:auto,auto,25% 100%,100% 25%,auto!important;
-    background-position:center!important;
-  }
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #registrationNotice{display:block}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #registrationNotice:empty{display:none}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .desktop-auth-divider,#loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabRegister{display:none}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .tabs{margin-top:18px}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin{display:flex;align-items:center;justify-content:center;gap:10px;font-size:0}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::before{content:"←";font-size:20px}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::after{content:"Voltar para entrar";font-size:14px}
+  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading svg{width:150px;height:69px}
+  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading>img{width:240px}
 
-  #loginScreen .login-showcase::before{
-    content:"";
-    position:absolute;
-    left:0;
-    right:0;
-    bottom:0;
-    height:25%;
-    z-index:1;
-    pointer-events:none;
-    background:
-      linear-gradient(180deg,rgba(9,11,14,.08),rgba(8,10,12,.94)),
-      radial-gradient(ellipse 42% 38% at 50% 0%,rgba(255,255,255,.07),transparent 72%);
-    border-top:1px solid rgba(255,255,255,.07);
-  }
-
-  #loginScreen .login-showcase::after{
-    content:"";
-    position:absolute;
-    inset:0;
-    z-index:5;
-    pointer-events:none;
-    background:
-      linear-gradient(90deg,rgba(4,6,8,.24) 0%,transparent 18%,transparent 82%,rgba(4,6,8,.22) 100%),
-      radial-gradient(ellipse 46% 67% at 50% 44%,transparent 0 56%,rgba(0,0,0,.18) 100%);
-  }
-
-  /* Remove all previous desktop marketing composition. */
-  #loginScreen .login-showcase-top,
-  #loginScreen .login-showcase-copy,
-  #loginScreen .login-showcase-benefits,
-  #loginScreen .login-showcase-footer,
-  #loginScreen .dashboard-monitor,
-  #loginScreen .monitor-desk-shadow,
-  #loginScreen .login-photo-credit{
-    display:none!important;
-  }
-
-  /* Separate bike asset: independent from the wall and from the card. */
-  #loginScreen .login-bike-scene{
-    position:absolute!important;
-    left:var(--login-bike-left)!important;
-    bottom:-1.5%!important;
-    z-index:4!important;
-    display:block!important;
-    width:var(--login-bike-width)!important;
-    max-width:none!important;
-    height:auto!important;
-    max-height:83svh!important;
-    object-fit:contain!important;
-    object-position:left bottom!important;
-    transform:none!important;
-    filter:drop-shadow(0 30px 26px rgba(0,0,0,.52)) saturate(.93) contrast(1.03)!important;
-    -webkit-mask-image:linear-gradient(90deg,#000 0 84%,rgba(0,0,0,.88) 91%,transparent 100%)!important;
-    mask-image:linear-gradient(90deg,#000 0 84%,rgba(0,0,0,.88) 91%,transparent 100%)!important;
-    pointer-events:none;
-  }
-
-  /* Small realistic shadow under the motorcycle. */
-  #loginScreen .login-showcase{--bike-shadow-left:clamp(70px,11vw,230px)}
-  #loginScreen .login-showcase .login-bike-scene + .monitor-desk-shadow{display:none!important}
-
-  /* ===== REAL HTML LOGIN CARD ===== */
-  #loginScreen .login-auth-panel{
-    position:absolute!important;
-    left:var(--login-card-x)!important;
-    top:var(--login-card-y)!important;
-    transform:translate(-50%,-50%)!important;
-    z-index:20!important;
-    display:flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-    width:min(var(--login-card-w),calc(100vw - 48px))!important;
-    height:auto!important;
-    min-height:0!important;
-    max-height:calc(100svh - 28px)!important;
-    margin:0!important;
-    padding:0!important;
-    border:0!important;
-    border-radius:0!important;
-    background:transparent!important;
-    box-shadow:none!important;
-    overflow:visible!important;
-  }
-
-  #loginScreen .auth-box{
-    position:relative!important;
-    display:flex!important;
-    flex-direction:column!important;
-    width:100%!important;
-    max-width:none!important;
-    margin:0!important;
-    padding:clamp(26px,3.2vh,38px) clamp(30px,2.3vw,42px) clamp(24px,2.8vh,34px)!important;
-    border:1px solid rgba(126,136,147,.43)!important;
-    border-radius:17px!important;
-    background:linear-gradient(145deg,rgba(14,18,22,.95),rgba(7,10,13,.975))!important;
-    color:#f7f8f9!important;
-    box-shadow:0 30px 80px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.035)!important;
-    backdrop-filter:blur(14px)!important;
-    -webkit-backdrop-filter:blur(14px)!important;
-  }
-
-  /* App mark: use the real vector icon, never a raster logo embedded in a photo. */
-  #loginScreen .brand-logo-login{
-    order:1!important;
-    display:block!important;
-    content:url('/icon.svg')!important;
-    width:88px!important;
-    height:88px!important;
-    max-width:none!important;
-    margin:0 auto 8px!important;
-    object-fit:contain!important;
-    filter:drop-shadow(0 7px 15px rgba(0,0,0,.22))!important;
-  }
-
-  #loginScreen .auth-desktop-brand{
-    order:2!important;
-    display:block!important;
-    margin:0 auto 24px!important;
-    text-align:center!important;
-  }
-  #loginScreen .auth-desktop-brand img{
-    display:block!important;
-    width:230px!important;
-    max-width:70vw!important;
-    height:auto!important;
-    margin:0 auto!important;
-    object-fit:contain!important;
-  }
-  #loginScreen .auth-desktop-brand .creator-signature{display:none!important}
-
-  #loginScreen .auth-box>h2{
-    order:3!important;
-    margin:0!important;
-    color:#fff!important;
-    text-align:center!important;
-    font-size:0!important;
-    line-height:1.1!important;
-  }
-  #loginScreen .auth-box>h2::after{
-    content:"Acesse sua conta";
-    display:block;
-    font-size:clamp(25px,1.55vw,32px);
-    font-weight:760;
-    letter-spacing:-.035em;
-  }
-  #loginScreen .login-title-mobile,
-  #loginScreen .login-title-desktop{display:none!important}
-
-  #loginScreen .auth-box>p.muted{
-    order:4!important;
-    margin:8px 0 24px!important;
-    color:var(--login-muted)!important;
-    text-align:center!important;
-    font-size:0!important;
-    line-height:1.45!important;
-  }
-  #loginScreen .auth-box>p.muted::after{
-    content:"Entre para continuar no DespacheFull";
-    font-size:13px;
-  }
-
-  #loginScreen #registrationNotice{order:5!important;margin:0 0 10px!important;color:#a4acb5!important;text-align:center!important;font-size:11px!important}
-  #loginScreen #registrationNotice:empty{display:none!important}
-  #loginScreen #authMsg{order:6!important}
-  #loginScreen #authMsg:empty{display:none!important}
-  #loginScreen .msg{margin:0 0 13px!important;padding:10px 12px!important;border-radius:9px!important;font-size:11px!important}
-  #loginScreen .msg.err{background:#281015!important;color:#f4a3ad!important;border:1px solid #55202a!important}
-  #loginScreen .msg.ok{background:#102119!important;color:#9be0b7!important;border:1px solid #21472f!important}
-
-  #loginScreen #loginForm,
-  #loginScreen #registerForm{order:7!important}
-  #loginScreen .form{display:grid!important;gap:13px!important}
-  #loginScreen .form label{position:relative!important;display:block!important;margin:0!important;color:transparent!important;font-size:0!important}
-  #loginScreen .form input,
-  #loginScreen .form select{
-    width:100%!important;
-    min-height:54px!important;
-    height:54px!important;
-    margin:0!important;
-    padding:0 17px 0 51px!important;
-    border:1px solid var(--login-line)!important;
-    border-radius:10px!important;
-    outline:none!important;
-    background:linear-gradient(180deg,#111519,#0c1013)!important;
-    color:#f2f3f4!important;
-    font-size:14px!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.018)!important;
-    transition:border-color .16s ease,box-shadow .16s ease,background .16s ease!important;
-  }
-  #loginScreen .form input::placeholder{color:#747d87!important;opacity:1!important}
-  #loginScreen .form input:hover{border-color:#535d67!important}
-  #loginScreen .form input:focus,
-  #loginScreen .form select:focus{border-color:#d81b32!important;background:#11161a!important;box-shadow:0 0 0 3px rgba(216,27,50,.11)!important}
-
-  /* Crisp CSS icons. */
-  #loginScreen #loginForm label:first-child::before,
-  #loginScreen #registerForm label:nth-child(2)::before{
-    content:"";position:absolute;left:20px;top:15px;width:13px;height:13px;border:2px solid #cbd0d5;border-radius:50%;z-index:2;box-sizing:border-box;
-  }
-  #loginScreen #loginForm label:first-child::after,
-  #loginScreen #registerForm label:nth-child(2)::after{
-    content:"";position:absolute;left:17px;top:29px;width:20px;height:12px;border:2px solid #cbd0d5;border-bottom:0;border-radius:11px 11px 0 0;z-index:2;box-sizing:border-box;
-  }
-  #loginScreen #loginForm label:nth-child(2)::before,
-  #loginScreen #registerForm label:nth-child(3)::before,
-  #loginScreen #registerForm label:nth-child(4)::before{
-    content:"";position:absolute;left:18px;top:24px;width:18px;height:17px;border:2px solid #cbd0d5;border-radius:3px;z-index:2;box-sizing:border-box;
-  }
-  #loginScreen #loginForm label:nth-child(2)::after,
-  #loginScreen #registerForm label:nth-child(3)::after,
-  #loginScreen #registerForm label:nth-child(4)::after{
-    content:"";position:absolute;left:22px;top:15px;width:10px;height:11px;border:2px solid #cbd0d5;border-bottom:0;border-radius:7px 7px 0 0;z-index:2;box-sizing:border-box;
-  }
-
-  #loginScreen .login-help-row{display:none!important}
-
-  #loginScreen .btn.primary{
-    position:relative!important;
-    width:100%!important;
-    min-height:54px!important;
-    height:54px!important;
-    margin:2px 0 0!important;
-    padding:0 52px!important;
-    border:1px solid #ec2a40!important;
-    border-radius:10px!important;
-    background:linear-gradient(135deg,#c8122a,#ed1c38)!important;
-    color:#fff!important;
-    box-shadow:0 12px 28px rgba(210,19,45,.18)!important;
-    font-size:14px!important;
-    font-weight:800!important;
-    letter-spacing:.02em!important;
-    cursor:pointer!important;
-    transition:transform .15s ease,background .15s ease,box-shadow .15s ease!important;
-  }
-  #loginScreen #loginForm .btn.primary::after{content:"→";position:absolute;right:21px;top:50%;transform:translateY(-53%);font-size:21px;font-weight:400}
-  #loginScreen .btn.primary:hover{background:linear-gradient(135deg,#d81731,#f12642)!important;box-shadow:0 14px 34px rgba(210,19,45,.25)!important;transform:translateY(-1px)!important}
-  #loginScreen .btn.primary:active{transform:none!important}
-
-  #loginScreen .desktop-auth-divider{
-    order:8!important;
-    display:flex!important;
-    align-items:center!important;
-    gap:13px!important;
-    margin:18px 0 14px!important;
-    color:#6f7780!important;
-    font-size:0!important;
-  }
-  #loginScreen .desktop-auth-divider::before,
-  #loginScreen .desktop-auth-divider::after{content:"";flex:1;height:1px;background:#30363c}
-  #loginScreen .desktop-auth-divider::before{margin-right:2px}
-  #loginScreen .desktop-auth-divider::after{margin-left:2px}
-  #loginScreen .desktop-auth-divider{--divider-label:"ou"}
-  #loginScreen .desktop-auth-divider::selection{background:transparent}
-  #loginScreen .desktop-auth-divider{line-height:1}
-  #loginScreen .desktop-auth-divider::before{box-shadow:140px 0 0 -139px #737a82}
-
-  /* Keep the real auth switching buttons, but render them like the approved secondary CTA. */
-  #loginScreen .tabs{
-    order:9!important;
-    position:static!important;
-    display:block!important;
-    width:100%!important;
-    height:auto!important;
-    margin:0!important;
-    padding:0!important;
-    overflow:visible!important;
-    border:0!important;
-    border-radius:0!important;
-    opacity:1!important;
-    background:transparent!important;
-    box-shadow:none!important;
-    pointer-events:auto!important;
-  }
-  #loginScreen .tabs button{
-    width:100%!important;
-    min-height:50px!important;
-    padding:0 15px!important;
-    border:1px solid #626a73!important;
-    border-radius:10px!important;
-    background:rgba(7,10,13,.28)!important;
-    color:#f1f2f3!important;
-    box-shadow:none!important;
-    font-size:13px!important;
-    font-weight:650!important;
-  }
-  #loginScreen #tabLogin{display:none!important}
-  #loginScreen #tabRegister{display:flex!important;align-items:center!important;justify-content:center!important;gap:10px!important;font-size:0!important}
-  #loginScreen #tabRegister::before{content:"+";font-size:24px;font-weight:300;line-height:1}
-  #loginScreen #tabRegister::after{content:"Criar nova conta";font-size:13px;font-weight:650}
-  #loginScreen #tabRegister:hover{border-color:#858d96!important;background:rgba(255,255,255,.04)!important}
-
-  #loginScreen .desktop-auth-note{display:none!important}
-  #loginScreen .auth-box>.creator-signature{
-    order:10!important;
-    display:block!important;
-    margin:18px 0 0!important;
-    color:#666e77!important;
-    text-align:center!important;
-    font-size:10px!important;
-    font-weight:500!important;
-    letter-spacing:.02em!important;
-  }
-
-  /* Register state: same card, same auth implementation. */
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)){
-    top:50%!important;
-    max-height:calc(100svh - 20px)!important;
-    overflow-y:auto!important;
-    scrollbar-width:thin;
-  }
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .auth-box{padding-top:24px!important;padding-bottom:24px!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .brand-logo-login{width:66px!important;height:66px!important;margin-bottom:4px!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .auth-desktop-brand{margin-bottom:16px!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .auth-desktop-brand img{width:190px!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-divider{display:none!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) #tabRegister{display:none!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) #tabLogin{display:flex!important;align-items:center!important;justify-content:center!important}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) #tabLogin::before{content:"←";margin-right:8px;font-size:17px}
-
-  /* ===== LAPTOP / SHORT DESKTOP ===== */
   @media (max-height:820px){
-    #loginScreen{--login-card-y:50%;--login-card-w:430px;--login-bike-width:clamp(380px,29vw,520px)}
-    #loginScreen .auth-box{padding:20px 28px 18px!important;border-radius:14px!important}
-    #loginScreen .brand-logo-login{width:58px!important;height:58px!important;margin-bottom:3px!important}
-    #loginScreen .auth-desktop-brand{margin-bottom:12px!important}
-    #loginScreen .auth-desktop-brand img{width:174px!important}
-    #loginScreen .auth-box>h2::after{font-size:22px!important}
-    #loginScreen .auth-box>p.muted{margin:6px 0 14px!important}
-    #loginScreen .auth-box>p.muted::after{font-size:11px!important}
-    #loginScreen .form{gap:10px!important}
-    #loginScreen .form input,#loginScreen .form select{min-height:44px!important;height:44px!important}
-    #loginScreen #loginForm label:first-child::before,#loginScreen #registerForm label:nth-child(2)::before{top:10px!important}
-    #loginScreen #loginForm label:first-child::after,#loginScreen #registerForm label:nth-child(2)::after{top:23px!important}
-    #loginScreen #loginForm label:nth-child(2)::before,#loginScreen #registerForm label:nth-child(3)::before,#loginScreen #registerForm label:nth-child(4)::before{top:19px!important}
-    #loginScreen #loginForm label:nth-child(2)::after,#loginScreen #registerForm label:nth-child(3)::after,#loginScreen #registerForm label:nth-child(4)::after{top:10px!important}
-    #loginScreen .btn.primary{min-height:45px!important;height:45px!important}
-    #loginScreen .desktop-auth-divider{margin:11px 0 9px!important}
-    #loginScreen .tabs button{min-height:43px!important}
-    #loginScreen .auth-box>.creator-signature{margin-top:10px!important;font-size:9px!important}
+    #loginScreen.login{padding-block:24px}
+    #loginScreen .login-auth-panel{width:410px;gap:18px}
+    #loginScreen .desktop-auth-heading svg{width:160px;height:74px}
+    #loginScreen .desktop-auth-heading>img{width:250px}
+    #loginScreen .auth-box{padding:24px 28px 19px}
+    #loginScreen .desktop-auth-intro{margin-bottom:18px}
+    #loginScreen .desktop-auth-intro h2{font-size:25px}
+    #loginScreen .desktop-auth-intro p{font-size:12px;margin-top:7px}
+    #loginScreen .form{gap:12px}
+    #loginScreen .form input{min-height:50px;height:50px}
+    #loginScreen .btn.primary{min-height:50px;font-size:16px}
+    #loginScreen .desktop-auth-divider{margin:18px 0}
+    #loginScreen .tabs button{min-height:48px}
+    #loginScreen .auth-box>.creator-signature{margin-top:16px}
+    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)){gap:14px}
+    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading svg{display:none}
+    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading>img{width:220px}
   }
-
-  /* ===== ULTRAWIDE ===== */
+  /* Cover at ultrawide widths would crop away the full-height motorcycle. */
   @media (min-aspect-ratio:21/9){
-    #loginScreen{--login-card-y:47%;--login-card-w:510px;--login-bike-left:clamp(-80px,-2vw,-38px);--login-bike-width:clamp(560px,27vw,900px)}
+    #loginScreen .login-photo{background-size:auto 108%;background-color:#111417}
+    #loginScreen .login-showcase::after{background:linear-gradient(90deg,#111417 0%,transparent 22% 78%,#111417 100%)}
   }
-
-  /* ===== LARGE / 4K ===== */
   @media (min-width:2560px) and (min-height:1200px){
-    #loginScreen{--login-card-w:530px;--login-card-y:47%}
-    #loginScreen .auth-box{padding:40px 45px 36px!important}
-    #loginScreen .brand-logo-login{width:98px!important;height:98px!important}
-    #loginScreen .auth-desktop-brand img{width:250px!important}
-    #loginScreen .form input,#loginScreen .form select{min-height:59px!important;height:59px!important;font-size:15px!important}
-    #loginScreen .btn.primary{min-height:59px!important;height:59px!important;font-size:15px!important}
+    #loginScreen .login-auth-panel{width:560px;gap:32px}
+    #loginScreen .desktop-auth-heading svg{width:260px;height:120px}
+    #loginScreen .desktop-auth-heading>img{width:370px}
+    #loginScreen .auth-box{padding:40px 44px 30px}
+    #loginScreen .desktop-auth-intro h2{font-size:34px}
+    #loginScreen .desktop-auth-intro p{font-size:16px}
+    #loginScreen .form{gap:20px}
+    #loginScreen .form input{height:60px;font-size:17px}
+    #loginScreen .btn.primary,#loginScreen .tabs button{min-height:60px}
   }
 }
