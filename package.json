@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-mobile-login-hero.js",
+    "prestart": "node scripts/apply-mobile-login-hero.js && node scripts/enhance-mobile-login-hero.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
@@ -44,6 +44,7 @@
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
     "pg": "^8.16.3",
+    "sharp": "^0.34.3",
     "socket.io": "^4.8.1",
     "web-push": "^3.6.7"
   },
