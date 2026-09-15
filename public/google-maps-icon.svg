@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Google Maps">
+  <defs>
+    <clipPath id="pin"><path d="M32 3C19.85 3 10 12.85 10 25c0 16.4 22 36 22 36s22-19.6 22-36C54 12.85 44.15 3 32 3Z"/></clipPath>
+  </defs>
+  <g clip-path="url(#pin)">
+    <rect width="64" height="64" fill="#34A853"/>
+    <path d="M0 0h64L31 32Z" fill="#4285F4"/>
+    <path d="M0 64h64L31 32Z" fill="#FBBC04"/>
+    <path d="M64 0v64L31 32Z" fill="#EA4335"/>
+  </g>
+  <circle cx="32" cy="25" r="10" fill="#fff"/>
+  <circle cx="32" cy="25" r="4.5" fill="#1f2937"/>
+</svg>
