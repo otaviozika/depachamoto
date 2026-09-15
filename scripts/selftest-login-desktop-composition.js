@@ -10,38 +10,56 @@ const imageSize = (name) => {
   return [image.readUInt32BE(16), image.readUInt32BE(20)];
 };
 
+// Estrutura funcional existente deve continuar intacta.
 assert.match(html, /<link rel="stylesheet" href="\/login-desktop\.css">/);
-assert.match(html, /class="dashboard-monitor"/);
-assert.match(html, /class="monitor-desk-shadow" aria-hidden="true"/);
-assert.match(html, /class="dashboard-preview"/);
-assert.equal((html.match(/class="dashboard-preview-metric"/g) || []).length, 6, 'O monitor deve mostrar os seis indicadores da referência');
-assert.match(html, /Quem está na rua agora/);
-assert.match(html, /Últimas saídas/);
 assert.match(html, /class="desktop-auth-divider">OU/);
 assert.match(html, /class="login-bike-scene" src="\/login-bike-scene\.png"/);
-assert.match(css, /@media \(min-width:901px\)/);
-assert.match(css, /background:url\('\/login-city-desk-scene-v2\.png'\)/);
-assert.match(css, /width:min\(100vw,215svh\)/);
-assert.match(css, /#loginScreen \.dashboard-monitor\{[^}]*rotateY\(-5deg\) rotateZ\(2\.5deg\)/);
-assert.match(css, /background:url\('\/login-omen-27-real\.webp'\)/);
-assert.match(css, /#loginScreen \.dashboard-preview\{[^}]*position:absolute/);
-assert.match(css, /clip-path:polygon\(4% 0,96% 0,100% 100%,0 100%\)/);
-assert.match(css, /#loginScreen \.dashboard-monitor::before\{[^}]*background:linear-gradient\(#2c2c2c/);
-assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
-assert.match(sw, /login-desktop\.css/);
-assert.match(sw, /login-city-desk-scene-v2\.png/);
-assert.match(sw, /login-bike-scene\.png/);
-assert.match(sw, /login-omen-27-real\.webp/);
-assert.ok(imageSize('login-city-desk-scene-v2.png')[0] >= 1500);
-assert.ok(imageSize('login-bike-scene.png')[0] >= 1500);
-const monitor = fs.readFileSync(new URL('../public/login-omen-27-real.webp', import.meta.url));
-assert.equal(monitor.subarray(0, 4).toString(), 'RIFF');
-assert.equal(monitor.subarray(8, 12).toString(), 'WEBP');
 
+// O redesign deve existir somente no desktop.
+assert.match(css, /@media \(min-width:901px\)/);
+assert.match(css, /--login-card-x:50%/);
+assert.match(css, /--login-card-y:48%/);
+assert.match(css, /--login-bike-left:/);
+assert.match(css, /--login-bike-width:/);
+
+// Fundo/parede não pode voltar a ser uma imagem inteira esticada.
+assert.match(css, /#loginScreen \.login-photo\{[\s\S]*?radial-gradient/);
+assert.doesNotMatch(css, /login-approved-reference|background-size:\s*100%\s+100%/);
+assert.doesNotMatch(css, /background:url\('\/login-city-desk-scene-v2\.png'\)/);
+
+// Card deve ser HTML/CSS centralizado e independente do cenário.
+assert.match(css, /#loginScreen \.login-auth-panel\{[\s\S]*?left:var\(--login-card-x\)!important;[\s\S]*?top:var\(--login-card-y\)!important;[\s\S]*?translate\(-50%,-50%\)/);
+assert.match(css, /#loginScreen \.auth-box\{[\s\S]*?backdrop-filter:blur\(14px\)/);
+assert.match(css, /content:url\('\/icon\.svg'\)/);
+assert.match(css, /content:"Acesse sua conta"/);
+assert.match(css, /content:"Entre para continuar no DespacheFull"/);
+
+// Moto fica como camada própria e a composição antiga fica desativada.
+assert.match(css, /#loginScreen \.login-bike-scene\{[\s\S]*?left:var\(--login-bike-left\)!important;[\s\S]*?width:var\(--login-bike-width\)!important/);
+assert.match(css, /#loginScreen \.dashboard-monitor,[\s\S]*?display:none!important/);
+
+// Responsividade desktop explícita: laptop, ultrawide e 4K.
+assert.match(css, /@media \(max-height:820px\)/);
+assert.match(css, /@media \(min-aspect-ratio:21\/9\)/);
+assert.match(css, /@media \(min-width:2560px\) and \(min-height:1200px\)/);
+
+// PWA continua carregando o CSS e o ativo separado da moto.
+assert.match(sw, /login-desktop\.css/);
+assert.match(sw, /login-bike-scene\.png/);
+assert.ok(imageSize('login-bike-scene.png')[0] >= 1500);
+
+// IDs e wiring de autenticação não podem mudar com o redesign.
 for (const id of ['tabLogin', 'tabRegister', 'loginForm', 'registerForm', 'loginUser', 'loginPass', 'regName', 'regUser', 'regPass', 'regPass2']) {
   assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `${id} deve permanecer único`);
 }
 assert.match(html, /function setAuth\(mode\)/);
 assert.match(html, /\$\('loginForm'\)\.onsubmit=login;/);
 assert.match(html, /\$\('registerForm'\)\.onsubmit=register;/);
-console.log(JSON.stringify({ result: 'PASS', desktopLayers: true, authIdsPreserved: true, mobileBreakpointPreserved: true }));
+
+console.log(JSON.stringify({
+  result: 'PASS',
+  crispDesktopCard: true,
+  bikeLayerSeparated: true,
+  authIdsPreserved: true,
+  mobileBreakpointPreserved: true
+}));
