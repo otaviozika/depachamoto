@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-mobile-login-hero.js && node scripts/enhance-mobile-login-hero.js && node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js",
+    "prestart": "node scripts/apply-mobile-login-hero.js && node scripts/enhance-mobile-login-hero.js && node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
