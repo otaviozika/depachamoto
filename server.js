@@ -2948,7 +2948,8 @@ async function getCourierAnotaAiDeliveries(courierId) {
   for (const row of rows) {
     const remoteStatus = String(row.order_status || "UNKNOWN").toUpperCase();
     const cancelled = ["CANCELLED","DENIED","CANCELLATION_REQUESTED"].includes(remoteStatus);
-    const confirmed = Boolean(row.confirmed_at);
+    const remoteFinished = remoteStatus === "FINISHED";
+    const confirmed = Boolean(row.confirmed_at) || remoteFinished;
     const item = {
       platform: "anotaai",
       order_id: row.order_id,
@@ -2963,7 +2964,7 @@ async function getCourierAnotaAiDeliveries(courierId) {
       label: confirmed ? "Entrega confirmada" : (cancelled ? "Cancelado" : "Em rota"),
       can_confirm: !confirmed && !cancelled,
       message: confirmed
-        ? "Entrega confirmada no DespacheFull."
+        ? (row.confirmed_at ? "Entrega confirmada no DespacheFull." : "Entrega já finalizada no Anota AI.")
         : (cancelled
           ? "Pedido cancelado no Anota AI."
           : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código.")
@@ -4105,34 +4106,72 @@ async function getDispatchProgressMap(dispatchIds, client = pool) {
     SELECT d.id AS dispatch_id,
       COUNT(DISTINCT o.id)::int AS total_orders,
       COUNT(DISTINCT o.id) FILTER (
-        WHERE l.ifood_order_id IS NOT NULL
+        WHERE (
+          o.platform='ifood'
+          AND il.ifood_order_id IS NOT NULL
           AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
           AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
+        ) OR (
+          o.platform='anotaai'
+          AND al.anotaai_order_id IS NOT NULL
+        )
       )::int AS trackable_orders,
       COUNT(DISTINCT o.id) FILTER (
-        WHERE l.ifood_order_id IS NOT NULL
+        WHERE (
+          o.platform='ifood'
+          AND il.ifood_order_id IS NOT NULL
           AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
           AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
           AND UPPER(COALESCE(io.status,''))<>'CANCELLED'
           AND (
             UPPER(COALESCE(io.status,'')) IN ('CONCLUDED','DELIVERED')
-            OR UPPER(COALESCE(dc.status,'')) IN ('VERIFIED','CONCLUDED')
+            OR UPPER(COALESCE(idc.status,'')) IN ('VERIFIED','CONCLUDED')
           )
+        ) OR (
+          o.platform='anotaai'
+          AND al.anotaai_order_id IS NOT NULL
+          AND UPPER(COALESCE(ao.status,'')) NOT IN ('CANCELLED','DENIED','CANCELLATION_REQUESTED')
+          AND (
+            adc.confirmed_at IS NOT NULL
+            OR UPPER(COALESCE(ao.status,''))='FINISHED'
+          )
+        )
       )::int AS delivered_orders,
       COUNT(DISTINCT o.id) FILTER (
-        WHERE l.ifood_order_id IS NOT NULL
+        WHERE (
+          o.platform='ifood'
+          AND il.ifood_order_id IS NOT NULL
           AND UPPER(COALESCE(io.order_type,''))='DELIVERY'
           AND UPPER(COALESCE(io.delivered_by,''))='MERCHANT'
           AND (
             UPPER(COALESCE(io.status,'')) IN ('CONCLUDED','DELIVERED','CANCELLED')
-            OR UPPER(COALESCE(dc.status,'')) IN ('VERIFIED','CONCLUDED')
+            OR UPPER(COALESCE(idc.status,'')) IN ('VERIFIED','CONCLUDED')
           )
+        ) OR (
+          o.platform='anotaai'
+          AND al.anotaai_order_id IS NOT NULL
+          AND (
+            adc.confirmed_at IS NOT NULL
+            OR UPPER(COALESCE(ao.status,'')) IN ('FINISHED','CANCELLED','DENIED','CANCELLATION_REQUESTED')
+          )
+        )
       )::int AS resolved_orders
     FROM dispatches d
     LEFT JOIN dispatch_orders o ON o.dispatch_id=d.id
-    LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
-    LEFT JOIN ifood_orders io ON io.order_id=l.ifood_order_id
-    LEFT JOIN ifood_delivery_confirmations dc ON dc.ifood_order_id=l.ifood_order_id
+    LEFT JOIN ifood_dispatch_links il
+      ON o.platform='ifood'
+     AND il.dispatch_id=d.id
+     AND LOWER(il.local_order_number)=LOWER(o.order_number)
+    LEFT JOIN ifood_orders io ON io.order_id=il.ifood_order_id
+    LEFT JOIN ifood_delivery_confirmations idc ON idc.ifood_order_id=il.ifood_order_id
+    LEFT JOIN anotaai_dispatch_links al
+      ON o.platform='anotaai'
+     AND al.dispatch_id=d.id
+     AND LOWER(al.local_order_number)=LOWER(o.order_number)
+    LEFT JOIN anotaai_orders ao ON ao.order_id=al.anotaai_order_id
+    LEFT JOIN anotaai_delivery_confirmations adc
+      ON adc.anotaai_order_id=al.anotaai_order_id
+     AND adc.dispatch_id=d.id
     WHERE d.id = ANY($1::bigint[])
     GROUP BY d.id
   `, [ids])).rows;
@@ -5542,6 +5581,16 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
     courier_id: req.session.user.id,
     dispatch_id: row.dispatch_id,
     change: "ANOTAAI_DELIVERY_CONFIRMED"
+  });
+  io.emit("delivery:changed", {
+    courier_id: req.session.user.id,
+    order_id: row.order_id,
+    platform: "anotaai"
+  });
+
+  await maybeAutoMarkDispatchReturning(row.dispatch_id, {
+    actorUserId: req.session.user.id,
+    source: "AUTO_ANOTAAI_CONFIRMED"
   });
 
   res.json({
