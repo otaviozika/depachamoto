@@ -295,6 +295,17 @@ CREATE TABLE IF NOT EXISTS dispatch_orders (
   UNIQUE(dispatch_id, order_number)
 );
 
+ALTER TABLE dispatch_orders
+ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual';
+
+DO $ BEGIN
+  ALTER TABLE dispatch_orders ADD CONSTRAINT dispatch_orders_platform_check
+    CHECK (platform IN ('ifood','anotaai','manual'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $;
+
+CREATE INDEX IF NOT EXISTS dispatch_orders_platform_idx
+ON dispatch_orders(platform,order_number,dispatch_id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id),
@@ -640,6 +651,16 @@ ON anotaai_orders(page_id,updated_at DESC);
 CREATE INDEX IF NOT EXISTS anotaai_orders_status_idx
 ON anotaai_orders(status,updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS anotaai_dispatch_links (
+  anotaai_order_id TEXT PRIMARY KEY REFERENCES anotaai_orders(order_id) ON DELETE RESTRICT,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  local_order_number TEXT NOT NULL,
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS anotaai_dispatch_links_dispatch_idx
+ON anotaai_dispatch_links(dispatch_id);
+
 -- v3.6.2: confirmação local de entrega para pedidos Anota AI.
 -- Diferente do iFood, não existe código do cliente nesta etapa.
 CREATE TABLE IF NOT EXISTS anotaai_delivery_confirmations (
@@ -744,26 +765,47 @@ CREATE TABLE IF NOT EXISTS ifood_dispatch_links (
 CREATE INDEX IF NOT EXISTS ifood_dispatch_links_dispatch_idx
 ON ifood_dispatch_links(dispatch_id);
 
--- Preserve existing locks and history while scoping short numbers to the order day.
--- A DO block makes the backfill/constraint replacement atomic and repeatable.
-DO $$
+-- Preserve existing locks and history while scoping short numbers to order day + platform.
+-- iFood and Anota AI may legitimately expose the same visible number.
+DO $
 BEGIN
   ALTER TABLE active_order_locks ADD COLUMN IF NOT EXISTS order_date DATE;
+  ALTER TABLE active_order_locks ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual';
+
   UPDATE active_order_locks a SET order_date=(COALESCE(
     (SELECT o.order_created_at FROM ifood_dispatch_links l
      JOIN ifood_orders o ON o.order_id=l.ifood_order_id
      WHERE l.dispatch_id=a.dispatch_id AND l.local_order_number=a.order_number),
     d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
   FROM dispatches d WHERE d.id=a.dispatch_id AND a.order_date IS NULL;
+
+  UPDATE active_order_locks a
+  SET platform='ifood'
+  FROM ifood_dispatch_links l
+  WHERE l.dispatch_id=a.dispatch_id
+    AND LOWER(l.local_order_number)=LOWER(a.order_number)
+    AND a.platform='manual';
+
+  UPDATE dispatch_orders o
+  SET platform='ifood'
+  FROM ifood_dispatch_links l
+  WHERE l.dispatch_id=o.dispatch_id
+    AND LOWER(l.local_order_number)=LOWER(o.order_number)
+    AND o.platform='manual';
+
   ALTER TABLE active_order_locks ALTER COLUMN order_date SET NOT NULL;
+
   IF EXISTS (SELECT 1 FROM pg_constraint
              WHERE conrelid='active_order_locks'::regclass
-               AND conname='active_order_locks_pkey' AND array_length(conkey,1)=1) THEN
+               AND conname='active_order_locks_pkey'
+               AND array_length(conkey,1) IN (1,2)) THEN
     ALTER TABLE active_order_locks DROP CONSTRAINT active_order_locks_pkey;
-    ALTER TABLE active_order_locks ADD PRIMARY KEY(order_number,order_date);
+    ALTER TABLE active_order_locks ADD PRIMARY KEY(order_number,order_date,platform);
   END IF;
-END $$;
+END $;
 
+CREATE INDEX IF NOT EXISTS active_order_locks_platform_idx
+ON active_order_locks(platform,order_number,order_date);
 
 CREATE TABLE IF NOT EXISTS ifood_dispatch_jobs (
   ifood_order_id TEXT PRIMARY KEY
@@ -3430,38 +3472,194 @@ async function logOperationalConflict({
   }
 }
 
-async function inspectOrders(orders, ifoodLinks = []) {
+function normalizeOrderPlatform(value) {
+  const platform = String(value || "").trim().toLowerCase();
+  return ["ifood","anotaai"].includes(platform) ? platform : null;
+}
+
+function requestedPlatformMap(body, orders) {
+  const map = new Map();
+  const rows = Array.isArray(body?.platform_selections) ? body.platform_selections : [];
+  for (const row of rows) {
+    const number = plainLocalOrderNumber(row?.order_number);
+    const platform = normalizeOrderPlatform(row?.platform);
+    if (number && platform) map.set(number, platform);
+  }
+  for (const order of orders) {
+    const key = plainLocalOrderNumber(order);
+    const direct = normalizeOrderPlatform(body?.order_platforms?.[key] || body?.order_platforms?.[order]);
+    if (direct) map.set(key, direct);
+  }
+  return map;
+}
+
+async function inspectAnotaAiOrdersForDeparture(orders) {
+  const requested = [...new Set(orders.map(plainLocalOrderNumber).filter(Boolean))];
+  if (!requested.length) return { accepted: [], blocked: [], matched: [] };
+
+  const rows = (await pool.query(`
+    SELECT
+      a.order_id,a.page_id,a.display_id,a.status,a.status_code,a.sales_channel,a.order_type,
+      a.customer_name,a.remote_created_at,a.remote_updated_at,a.updated_at,
+      l.dispatch_id AS linked_dispatch_id,
+      d.status AS linked_dispatch_status,
+      u.name AS linked_courier_name
+    FROM anotaai_orders a
+    LEFT JOIN anotaai_dispatch_links l ON l.anotaai_order_id=a.order_id
+    LEFT JOIN dispatches d ON d.id=l.dispatch_id
+    LEFT JOIN users u ON u.id=d.courier_id
+    WHERE LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) = ANY($1::text[])
+    ORDER BY COALESCE(a.remote_updated_at,a.remote_created_at,a.updated_at) DESC
+  `, [requested])).rows;
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = plainLocalOrderNumber(row.display_id);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+
+  const accepted = [];
+  const blocked = [];
+  const matched = [];
+
+  for (const localOrder of orders) {
+    const key = plainLocalOrderNumber(localOrder);
+    const candidates = grouped.get(key) || [];
+    if (!candidates.length) continue;
+
+    if (candidates.length > 1) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        code: "ANOTAAI_ORDER_AMBIGUOUS",
+        message: "Há mais de um pedido Anota AI com esse número. Procure o administrador."
+      });
+      matched.push(...candidates.map(row => ({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        display_id: row.display_id,
+        status: String(row.status || "UNKNOWN").toUpperCase()
+      })));
+      continue;
+    }
+
+    const row = candidates[0];
+    const status = String(row.status || "UNKNOWN").trim().toUpperCase();
+    matched.push({
+      platform: "anotaai",
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      status
+    });
+
+    if (row.linked_dispatch_id) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_ALREADY_LINKED",
+        message: row.linked_courier_name
+          ? `Esse pedido Anota AI já foi vinculado a uma saída de ${row.linked_courier_name}.`
+          : "Esse pedido Anota AI já foi vinculado a uma saída."
+      });
+      continue;
+    }
+
+    if (["CANCELLED","DENIED","CANCELLATION_REQUESTED","FINISHED"].includes(status)) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_CLOSED",
+        message: `Esse pedido Anota AI não está disponível para despacho (${status}).`
+      });
+      continue;
+    }
+
+    if (!["PRODUCTION","READY"].includes(status)) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_NOT_READY",
+        message: "Esse pedido Anota AI ainda não está disponível para o motoboy."
+      });
+      continue;
+    }
+
+    accepted.push({
+      platform: "anotaai",
+      order_date: orderDateSP(row.remote_created_at || row.remote_updated_at || new Date()),
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      status
+    });
+  }
+
+  return { accepted, blocked, matched };
+}
+
+async function inspectOrders(orders, ifoodLinks = [], anotaAiLinks = []) {
   if (!orders.length) return { active: [], recent: [] };
 
-  const dates = orders.map(order => {
-    const link = ifoodLinks.find(x => x.order_number === order);
-    return link?.order_date || orderDateSP();
+  const platforms = orders.map(order => {
+    if (ifoodLinks.some(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))) return "ifood";
+    if (anotaAiLinks.some(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))) return "anotaai";
+    return "manual";
   });
+  const dates = orders.map((order, index) => {
+    const source = platforms[index] === "ifood"
+      ? ifoodLinks.find(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))
+      : platforms[index] === "anotaai"
+        ? anotaAiLinks.find(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))
+        : null;
+    return source?.order_date || orderDateSP();
+  });
+
   const active = (await pool.query(`
-    SELECT l.order_number,l.dispatch_id,l.courier_id,
+    SELECT l.order_number,l.platform,l.dispatch_id,l.courier_id,
            u.name AS courier_name,d.departed_at
     FROM active_order_locks l
     JOIN users u ON u.id=l.courier_id
     JOIN dispatches d ON d.id=l.dispatch_id
-    JOIN unnest($1::text[],$2::date[]) AS requested(number,day)
-      ON requested.number=l.order_number AND requested.day=l.order_date
+    JOIN unnest($1::text[],$2::date[],$3::text[]) AS requested(number,day,platform)
+      ON requested.number=l.order_number
+     AND requested.day=l.order_date
+     AND requested.platform=l.platform
     ORDER BY l.order_number
-  `, [orders, dates])).rows;
+  `, [orders, dates, platforms])).rows;
 
   const recent = (await pool.query(`
-    SELECT DISTINCT ON (o.order_number)
-      o.order_number,d.id AS dispatch_id,d.courier_id,
+    SELECT DISTINCT ON (o.order_number,o.platform)
+      o.order_number,o.platform,d.id AS dispatch_id,d.courier_id,
       u.name AS courier_name,d.departed_at,d.status
     FROM dispatch_orders o
     JOIN dispatches d ON d.id=o.dispatch_id
     JOIN users u ON u.id=d.courier_id
-    LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
-    LEFT JOIN ifood_orders i ON i.order_id=l.ifood_order_id
-    JOIN unnest($1::text[],$2::date[]) AS requested(number,day)
+    LEFT JOIN ifood_dispatch_links il
+      ON il.dispatch_id=d.id AND il.local_order_number=o.order_number AND o.platform='ifood'
+    LEFT JOIN ifood_orders i ON i.order_id=il.ifood_order_id
+    LEFT JOIN anotaai_dispatch_links al
+      ON al.dispatch_id=d.id AND al.local_order_number=o.order_number AND o.platform='anotaai'
+    LEFT JOIN anotaai_orders a ON a.order_id=al.anotaai_order_id
+    JOIN unnest($1::text[],$2::date[],$3::text[]) AS requested(number,day,platform)
       ON requested.number=o.order_number
-      AND requested.day=(COALESCE(i.order_created_at,d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
-    ORDER BY o.order_number,d.departed_at DESC,d.id DESC
-  `, [orders, dates])).rows.filter(r => !active.some(a => a.order_number === r.order_number));
+     AND requested.platform=o.platform
+     AND requested.day=(
+       COALESCE(
+         CASE WHEN o.platform='ifood' THEN i.order_created_at END,
+         CASE WHEN o.platform='anotaai' THEN COALESCE(a.remote_created_at,a.remote_updated_at) END,
+         d.departed_at
+       ) AT TIME ZONE 'America/Sao_Paulo'
+     )::date
+    ORDER BY o.order_number,o.platform,d.departed_at DESC,d.id DESC
+  `, [orders, dates, platforms])).rows.filter(r =>
+    !active.some(a => a.order_number === r.order_number && a.platform === r.platform)
+  );
 
   return { active, recent };
 }
