@@ -797,8 +797,8 @@
       <button data-admin-group="operations" aria-label="Operação" title="Operação">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="5.2" cy="17.2" r="2.7"/><circle cx="18.8" cy="17.2" r="2.7"/><path d="M7.8 17.2h4.7l2.2-5.1h-5l-2 5.1Zm2-5.1-2.1-3H5.4m9.3 3 2.2-3h2.5"/></svg></span><span>Operação</span>
       </button>
-      <button data-admin-group="ifood" aria-label="iFood" title="iFood">
-        <span class="admin-nav-icon admin-nav-ifood" aria-hidden="true">iFood</span><span>iFood</span>
+      <button data-admin-group="ifood" aria-label="Integrações" title="Integrações">
+        <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8.5 12.5 6 15a3.5 3.5 0 0 0 5 5l2.5-2.5M15.5 11.5 18 9a3.5 3.5 0 0 0-5-5l-2.5 2.5M9 15l6-6"/></svg></span><span>Integrações</span>
       </button>
       <button data-admin-group="management" aria-label="Gestão" title="Gestão">
         <span class="admin-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z"/><path d="M3 20.5h18"/></svg></span><span>Gestão</span>
@@ -1031,6 +1031,53 @@
           </tr>
         </thead>
         <tbody id="ifoodOrdersTable"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+
+<section id="anotaai" class="page">
+  <h1 class="title">Integração Anota AI</h1>
+  <p class="muted">Conecte a loja, sincronize os pedidos e acompanhe o estado da integração.</p>
+
+  <div id="anotaAiStatusCards" class="cards" style="margin-top:18px">
+    <div class="card"><div class="label">Credenciais</div><div class="metric" style="font-size:22px">—</div></div>
+    <div class="card"><div class="label">Lojas</div><div class="metric">0</div></div>
+    <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">0</div></div>
+    <div class="card"><div class="label">Sincronização</div><div class="metric" style="font-size:22px">—</div></div>
+  </div>
+
+  <div class="section" style="margin-top:18px">
+    <div class="section-head">
+      <div><b>Conectar loja</b><div class="small muted">A chave é usada somente nesta chamada e não fica salva no DespacheFull.</div></div>
+      <button id="anotaAiTestBtn" class="btn outline" type="button" onclick="testAnotaAiConnection()">Testar credenciais</button>
+    </div>
+    <form id="anotaAiLinkForm" class="form" style="padding:20px;max-width:720px" onsubmit="linkAnotaAiPage(event)">
+      <label>Chave de integração da loja
+        <input id="anotaAiPageToken" type="password" autocomplete="off" maxlength="4096" placeholder="Cole a chave exibida no admin Anota AI" required>
+      </label>
+      <label>ID da página (opcional)
+        <input id="anotaAiPageId" autocomplete="off" maxlength="200" placeholder="Preencha apenas se o portal informar separadamente">
+      </label>
+      <button id="anotaAiLinkBtn" class="btn primary" type="submit">Vincular loja</button>
+      <div id="anotaAiConnectionMsg" class="small muted">Carregando status...</div>
+    </form>
+    <div id="anotaAiPages" style="padding:0 20px 20px"></div>
+  </div>
+
+  <div class="section" style="margin-top:18px">
+    <div class="section-head">
+      <div><b>Pedidos Anota AI recebidos</b><div class="small muted">Atualização automática a cada 30 segundos quando ativada no servidor.</div></div>
+      <div class="actions">
+        <button class="btn outline" type="button" onclick="loadAnotaAiStatus()">Atualizar</button>
+        <button id="anotaAiSyncBtn" class="btn primary" type="button" onclick="syncAnotaAiNow()">Sincronizar agora</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Tipo</th><th>Origem</th><th>Atualizado</th></tr></thead>
+        <tbody id="anotaAiOrdersTable"></tbody>
       </table>
     </div>
   </div>
@@ -1349,7 +1396,7 @@
 <section id="audit" class="page"><h1 class="title">Auditoria</h1><p class="muted">Eventos de segurança e operação em linguagem simples.</p><div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Usuário</th><th>Evento</th><th>Detalhes</th></tr></thead><tbody id="auditTable"></tbody></table></div></div></section>
     </div>
   </main>
-  <div class="mobile-nav admin-mobile-nav"><button data-admin-group="dashboard">Dashboard</button><button data-admin-group="operations">Operação</button><button data-admin-group="ifood">iFood</button><button data-admin-group="management">Gestão</button><button data-admin-group="system">Sistema</button></div>
+  <div class="mobile-nav admin-mobile-nav"><button data-admin-group="dashboard">Dashboard</button><button data-admin-group="operations">Operação</button><button data-admin-group="ifood">Integrações</button><button data-admin-group="management">Gestão</button><button data-admin-group="system">Sistema</button></div>
 </div>
 
 
@@ -3693,6 +3740,103 @@ async function loadIfoodStatus(){
 
 
 
+function anotaAiStatusBadge(code,status){
+  const map={
+    0:['yellow','EM ANÁLISE'],1:['yellow','EM PRODUÇÃO'],2:['green','PRONTO'],
+    3:['green','FINALIZADO'],4:['red','CANCELADO'],5:['red','NEGADO'],6:['red','CANCELAMENTO SOLICITADO']
+  };
+  const item=map[Number(code)]||['gray',String(status||'DESCONHECIDO').replaceAll('_',' ')];
+  return `<span class="badge ${item[0]}">${item[1]}</span>`;
+}
+
+async function loadAnotaAiStatus(){
+  try{
+    const d=await api('/api/admin/anotaai/status');
+    const states=Array.isArray(d.states)?d.states:[];
+    const pages=Array.isArray(d.pages)?d.pages:[];
+    const lastSuccess=states.map(x=>x.last_success_at).filter(Boolean).sort().at(-1);
+    $('anotaAiStatusCards').innerHTML=`
+      <div class="card"><div class="label">Credenciais</div><div style="margin-top:10px"><span class="badge ${d.configured?'green':'red'}">${d.configured?'CONFIGURADAS':'PENDENTES'}</span></div></div>
+      <div class="card"><div class="label">Lojas</div><div class="metric">${pages.length}</div></div>
+      <div class="card"><div class="label">Pedidos recebidos</div><div class="metric">${Number(d.counts?.total||0)}</div></div>
+      <div class="card"><div class="label">Sincronização</div><div style="margin-top:10px"><span class="badge ${d.automaticSyncEnabled?'green':'yellow'}">${d.automaticSyncEnabled?'AUTOMÁTICA':'MANUAL'}</span></div><div class="small muted" style="margin-top:7px">${lastSuccess?'Última: '+localDate(lastSuccess):'Ainda não sincronizado'}</div></div>`;
+    $('anotaAiPages').innerHTML=pages.length
+      ? `<div class="small muted" style="margin-bottom:6px">Loja(s) vinculada(s)</div>${pages.map(page=>`<div style="padding:10px 0;border-top:1px solid var(--line)"><b>Anota AI</b><div class="small muted">Page ID: ${escapeHtml(page.page_id)}</div></div>`).join('')}`
+      : '<div class="empty">Nenhuma loja vinculada.</div>';
+
+    if(!d.configured){
+      $('anotaAiConnectionMsg').innerHTML='<div class="msg err">Configure as credenciais de integrador do Anota AI no Render.</div>';
+    }else if(!pages.length){
+      $('anotaAiConnectionMsg').innerHTML='<div class="msg">Credenciais disponíveis. Cole a Chave de integração da loja para concluir o vínculo.</div>';
+    }else{
+      const failed=states.filter(x=>x.last_error&&(!x.last_success_at||new Date(x.last_error_at)>new Date(x.last_success_at)));
+      $('anotaAiConnectionMsg').innerHTML=failed.length
+        ? `<div class="msg err">${escapeHtml(failed[0].last_error)}</div>`
+        : `<div class="msg ok">Conectado a ${pages.length} loja(s). ${d.automaticSyncEnabled?'Atualização automática ativa.':'Use “Sincronizar agora” para buscar pedidos.'}</div>`;
+    }
+
+    $('anotaAiOrdersTable').innerHTML=(d.recentOrders||[]).map(order=>`<tr>
+      <td><b>#${escapeHtml(order.display_id||order.order_id)}</b><div class="small muted">${escapeHtml(order.order_id)}</div></td>
+      <td>${escapeHtml(order.customer_name||'—')}</td>
+      <td>${anotaAiStatusBadge(order.status_code,order.status)}</td>
+      <td>${escapeHtml(order.order_type||'—')}</td>
+      <td>${escapeHtml(order.sales_channel||'anotaai')}</td>
+      <td>${localDate(order.remote_updated_at||order.remote_created_at||order.updated_at)}</td>
+    </tr>`).join('')||empty(6);
+  }catch(err){
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+    $('anotaAiOrdersTable').innerHTML=empty(6);
+  }
+}
+
+async function testAnotaAiConnection(){
+  const button=$('anotaAiTestBtn');
+  button.disabled=true;
+  $('anotaAiConnectionMsg').innerHTML='<div class="msg">Testando OAuth e acesso às lojas...</div>';
+  try{
+    const d=await api('/api/admin/anotaai/test-connection',{method:'POST'});
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message)}</div>`;
+    await loadAnotaAiStatus();
+  }catch(err){
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }finally{button.disabled=false}
+}
+
+async function linkAnotaAiPage(event){
+  event.preventDefault();
+  const button=$('anotaAiLinkBtn');
+  const token=$('anotaAiPageToken');
+  button.disabled=true;
+  $('anotaAiConnectionMsg').innerHTML='<div class="msg">Vinculando a loja com segurança...</div>';
+  try{
+    const d=await api('/api/admin/anotaai/link-page',{
+      method:'POST',
+      body:JSON.stringify({page_token:token.value,page_id:$('anotaAiPageId').value.trim()||undefined})
+    });
+    token.value='';
+    $('anotaAiPageId').value='';
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg ${d.pageStored?'ok':'err'}">${escapeHtml(d.message)}</div>`;
+    await loadAnotaAiStatus();
+    if(d.pageStored)await syncAnotaAiNow();
+  }catch(err){
+    token.value='';
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }finally{button.disabled=false}
+}
+
+async function syncAnotaAiNow(){
+  const button=$('anotaAiSyncBtn');
+  button.disabled=true;
+  $('anotaAiConnectionMsg').innerHTML='<div class="msg">Buscando pedidos no Anota AI...</div>';
+  try{
+    const d=await api('/api/admin/anotaai/sync-now',{method:'POST'});
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg ${d.errors?.length?'err':'ok'}">${d.listed||0} pedido(s) consultado(s), ${d.inserted||0} novo(s) e ${d.changed||0} atualizado(s).</div>`;
+    await loadAnotaAiStatus();
+  }catch(err){
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }finally{button.disabled=false}
+}
+
 async function pauseIfoodDispatch(){
   const reason=prompt('Motivo da pausa dos despachos iFood:','Pausa operacional de emergência');
   if(reason===null)return;
@@ -4172,7 +4316,10 @@ const auditNames={
   COURIER_PIX_VERIFIED:'PIX confirmado pelo administrador',
   PAYMENT_RULE_UPDATED:'Regra de pagamento atualizada',
   PAYMENT_UPDATED:'Pagamento de motoboy atualizado',
-  PAYMENT_REPORT_EXPORTED:'Relatório de pagamentos exportado'
+  PAYMENT_REPORT_EXPORTED:'Relatório de pagamentos exportado',
+  ANOTAAI_CONNECTION_TESTED:'Conexão Anota AI testada',
+  ANOTAAI_PAGE_LINKED:'Loja Anota AI vinculada',
+  ANOTAAI_MANUAL_SYNC:'Sincronização Anota AI executada'
 };
 function friendlyAuditDetails(x){
   const d=x.details||{};
@@ -4278,7 +4425,7 @@ const adminGroups={
   operations:{label:'Operação',defaultPage:'operations',tabs:[
     ['operations','Agora'],['attendance','Presença'],['wallboard','Telão'],['history','Histórico'],['conflicts','Conflitos']
   ]},
-  ifood:{label:'iFood',defaultPage:'ifood',tabs:[]},
+  ifood:{label:'Integrações',defaultPage:'ifood',tabs:[['ifood','iFood'],['anotaai','Anota AI']]},
   management:{label:'Gestão',defaultPage:'management',tabs:[
     ['management','Desempenho'],['report','Relatórios'],['payments','Financeiro'],['couriers','Motoboys']
   ]},
@@ -4289,7 +4436,7 @@ const adminGroups={
 const adminPageGroup={
   dashboard:'dashboard',
   operations:'operations',attendance:'operations',wallboard:'operations',history:'operations',conflicts:'operations',
-  ifood:'ifood',
+  ifood:'ifood',anotaai:'ifood',
   management:'management',report:'management',payments:'management',couriers:'management',
   alerts:'system',notifications:'system',security:'system',audit:'system'
 };
@@ -4320,6 +4467,7 @@ async function activateAdminPage(page,explicitGroup){
   else if(page==='attendance')await loadAttendance();
   else if(page==='operations')await loadOperations();
   else if(page==='ifood')await loadIfoodStatus();
+  else if(page==='anotaai')await loadAnotaAiStatus();
   else if(page==='conflicts')await loadConflicts();
   else if(page==='report')await loadReport();
   else if(page==='wallboard')await loadWallboard();
@@ -4427,6 +4575,9 @@ socket.on('ifood:changed',d=>{
   const scopedCouriers=Array.isArray(d?.courier_ids)?d.courier_ids:null;
   const affectsCurrentCourier=d?.scope!=='admin'&&(!scopedCouriers||scopedCouriers.some(id=>Number(id)===Number(me?.id)));
   if(me?.role==='courier'&&affectsCurrentCourier)queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,250,{visibleOnly:true});
+});
+socket.on('anotaai:changed',()=>{
+  if(me?.role==='admin'&&$('anotaai')?.classList.contains('active'))queueRealtimeRefresh('anotaai-status',loadAnotaAiStatus,750,{visibleOnly:true});
 });
 socket.on('delivery:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});

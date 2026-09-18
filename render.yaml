@@ -24,3 +24,11 @@ services:
 
       - key: IFOOD_MERCHANT_ID
         sync: false
+      - key: ANOTAAI_ENABLED
+        value: "false"
+      - key: ANOTAAI_CLIENT_ID
+        sync: false
+      - key: ANOTAAI_CLIENT_SECRET
+        sync: false
+      - key: ANOTAAI_PAGE_ID
+        sync: false
