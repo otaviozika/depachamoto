@@ -19,7 +19,19 @@ const checks = {
   courierCard: html.includes('id="courierDeliveriesCard"'),
   confirmationModal: html.includes('id="deliveryConfirmModal"'),
   courierOnlyOwnOrders: html.includes("Rota e pedidos") && html.includes("Entregas e confirmações"),
-  successText: html.includes("Confirmar entrega")
+  successText: html.includes("Confirmar entrega"),
+  platformColumn: server.includes("ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual'"),
+  platformLookupEndpoint: server.includes('/api/courier/orders/lookup'),
+  platformChoiceRequired: server.includes('code: "ORDER_PLATFORM_REQUIRED"'),
+  uiPlatformChoice: html.includes("renderPlatformChoice") && html.includes("getOrderPlatformSelections"),
+  anotaDispatchLinks: server.includes("CREATE TABLE IF NOT EXISTS anotaai_dispatch_links"),
+  anotaDeliveryTable: server.includes("CREATE TABLE IF NOT EXISTS anotaai_delivery_confirmations"),
+  anotaDeliveryEndpoint: server.includes('/api/courier/anotaai/orders/:orderId/confirm-delivery'),
+  anotaNoCode: server.includes('confirmation_mode: "NO_CODE"'),
+  mixedProgress: server.includes("anotaai_delivery_confirmations adc") &&
+    server.includes("o.platform='anotaai'") &&
+    server.includes("o.platform='ifood'"),
+  anotaAutoReturn: server.includes('source: "AUTO_ANOTAAI_CONFIRMED"')
 };
 
 const failed = Object.entries(checks).filter(([, ok]) => !ok);
