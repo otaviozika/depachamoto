@@ -1055,10 +1055,7 @@
     </div>
     <form id="anotaAiLinkForm" class="form" style="padding:20px;max-width:720px" onsubmit="linkAnotaAiPage(event)">
       <label>Chave de integração da loja
-        <input id="anotaAiPageToken" type="password" autocomplete="off" maxlength="4096" placeholder="Cole a chave exibida no admin Anota AI" required>
-      </label>
-      <label>ID da página (opcional)
-        <input id="anotaAiPageId" autocomplete="off" maxlength="200" placeholder="Preencha apenas se o portal informar separadamente">
+        <input id="anotaAiPageToken" type="password" autocomplete="new-password" maxlength="4096" placeholder="Cole a chave exibida no admin Anota AI" required>
       </label>
       <button id="anotaAiLinkBtn" class="btn primary" type="submit">Vincular loja</button>
       <div id="anotaAiConnectionMsg" class="small muted">Carregando status...</div>
@@ -3811,7 +3808,7 @@ async function linkAnotaAiPage(event){
   try{
     const d=await api('/api/admin/anotaai/link-page',{
       method:'POST',
-      body:JSON.stringify({page_token:token.value,page_id:$('anotaAiPageId').value.trim()||undefined})
+      body:JSON.stringify({page_token:token.value})
     });
     token.value='';
     $('anotaAiPageId').value='';

@@ -6854,16 +6854,12 @@ app.post("/api/admin/anotaai/link-page", auth, adminOnly, asyncRoute(async (req,
     });
   }
   const pageToken = String(req.body?.page_token || "").trim();
-  const requestedPageId = String(req.body?.page_id || "").trim();
   if (!pageToken || pageToken.length > 4096) {
     return res.status(400).json({ error: "Chave de integração da loja inválida." });
   }
-  if (requestedPageId && !/^[A-Za-z0-9_-]{3,200}$/.test(requestedPageId)) {
-    return res.status(400).json({ error: "ID da página Anota AI inválido." });
-  }
 
   const linked = await anotaAiClient.linkPage(pageToken);
-  const pageId = requestedPageId || linked.pageId;
+  const pageId = linked.pageId || anotaAiEnvironmentPageIds()[0] || null;
   if (pageId) {
     await pool.query(`
       INSERT INTO anotaai_pages(page_id,active,source,linked_at,last_seen_at)
@@ -6883,7 +6879,7 @@ app.post("/api/admin/anotaai/link-page", auth, adminOnly, asyncRoute(async (req,
     page_id: pageId || null,
     message: pageId
       ? "Loja Anota AI vinculada. A sincronização já pode ser testada."
-      : "A loja foi vinculada, mas o ID da página não veio no token. Informe o ID exibido no Portal de Integração e vincule novamente."
+      : "A loja foi vinculada, mas o Anota AI não informou o ID da página. Configure ANOTAAI_PAGE_ID no Render e tente novamente."
   });
 }));
 
