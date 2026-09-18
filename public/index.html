@@ -3811,7 +3811,6 @@ async function linkAnotaAiPage(event){
       body:JSON.stringify({page_token:token.value})
     });
     token.value='';
-    $('anotaAiPageId').value='';
     $('anotaAiConnectionMsg').innerHTML=`<div class="msg ${d.pageStored?'ok':'err'}">${escapeHtml(d.message)}</div>`;
     await loadAnotaAiStatus();
     if(d.pageStored)await syncAnotaAiNow();
