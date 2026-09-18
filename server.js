@@ -22,7 +22,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.1";
+const VERSION = "3.6.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -639,6 +639,19 @@ ON anotaai_orders(page_id,updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS anotaai_orders_status_idx
 ON anotaai_orders(status,updated_at DESC);
+
+-- v3.6.2: confirmação local de entrega para pedidos Anota AI.
+-- Diferente do iFood, não existe código do cliente nesta etapa.
+CREATE TABLE IF NOT EXISTS anotaai_delivery_confirmations (
+  anotaai_order_id TEXT NOT NULL REFERENCES anotaai_orders(order_id) ON DELETE CASCADE,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY(anotaai_order_id,dispatch_id)
+);
+
+CREATE INDEX IF NOT EXISTS anotaai_delivery_confirmations_courier_idx
+ON anotaai_delivery_confirmations(courier_id,confirmed_at DESC);
 
 CREATE TABLE IF NOT EXISTS anotaai_sync_state (
   page_id TEXT PRIMARY KEY,
@@ -2843,6 +2856,77 @@ async function getCourierIfoodDeliveries(courierId) {
       pending.push(item);
     } else {
       completed.push(item);
+    }
+  }
+
+  return { current, pending, completed };
+}
+
+async function getCourierAnotaAiDeliveries(courierId) {
+  const rows = (await pool.query(`
+    SELECT
+      a.order_id,a.display_id,a.status AS order_status,a.status_code,a.payload,
+      d.id AS dispatch_id,d.departed_at,d.status AS dispatch_status,
+      o.order_number AS local_order_number,
+      c.confirmed_at
+    FROM dispatches d
+    JOIN dispatch_orders o ON o.dispatch_id=d.id
+    JOIN anotaai_orders a
+      ON LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) =
+         LOWER(REGEXP_REPLACE(COALESCE(o.order_number,''), '^#', ''))
+     AND (COALESCE(a.remote_created_at,a.created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+         (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+    LEFT JOIN ifood_dispatch_links il
+      ON il.dispatch_id=d.id AND il.local_order_number=o.order_number
+    LEFT JOIN anotaai_delivery_confirmations c
+      ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
+    WHERE d.courier_id=$1
+      AND il.ifood_order_id IS NULL
+      AND (
+        d.status='ON_ROAD'
+        OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
+           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      )
+    ORDER BY
+      CASE WHEN d.status='ON_ROAD' THEN 0 ELSE 1 END,
+      d.departed_at DESC,
+      a.display_id
+  `, [courierId])).rows;
+
+  const current = [];
+  const pending = [];
+  const completed = [];
+
+  for (const row of rows) {
+    const remoteStatus = String(row.order_status || "UNKNOWN").toUpperCase();
+    const cancelled = ["CANCELLED","DENIED","CANCELLATION_REQUESTED"].includes(remoteStatus);
+    const confirmed = Boolean(row.confirmed_at);
+    const item = {
+      platform: "anotaai",
+      order_id: row.order_id,
+      display_id: row.display_id || String(row.local_order_number || "").replace(/^#/, ""),
+      local_order_number: row.local_order_number,
+      order_status: remoteStatus,
+      dispatch_status: row.dispatch_status,
+      departed_at: row.departed_at,
+      confirmation_status: confirmed ? "CONCLUDED" : "PENDING",
+      concluded_at: row.confirmed_at,
+      state: confirmed ? "CONCLUDED" : (cancelled ? "CANCELLED" : "WAITING_CONFIRMATION"),
+      label: confirmed ? "Entrega confirmada" : (cancelled ? "Cancelado" : "Em rota"),
+      can_confirm: !confirmed && !cancelled,
+      message: confirmed
+        ? "Entrega confirmada no DespacheFull."
+        : (cancelled
+          ? "Pedido cancelado no Anota AI."
+          : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código.")
+    };
+
+    if (confirmed) {
+      completed.push(item);
+    } else if (row.dispatch_status === "ON_ROAD") {
+      current.push(item);
+    } else {
+      pending.push(item);
     }
   }
 
@@ -5113,6 +5197,98 @@ app.put("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
       ? "PIX removido."
       : "PIX enviado. Aguarde a confirmação do administrador antes de ele ser usado para pagamento.",
     server_now: new Date().toISOString()
+  });
+}));
+
+app.get("/api/courier/anotaai/deliveries", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const deliveries = await getCourierAnotaAiDeliveries(req.session.user.id);
+  res.json({
+    ...deliveries,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const orderId = String(req.params.orderId || "").trim();
+  if (!orderId) return res.status(400).json({ error: "Pedido Anota AI inválido." });
+
+  const row = (await pool.query(`
+    SELECT
+      a.order_id,a.display_id,a.status AS order_status,
+      d.id AS dispatch_id,d.courier_id,d.departed_at,d.status AS dispatch_status,
+      o.order_number AS local_order_number,
+      c.confirmed_at
+    FROM anotaai_orders a
+    JOIN dispatch_orders o
+      ON LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) =
+         LOWER(REGEXP_REPLACE(COALESCE(o.order_number,''), '^#', ''))
+    JOIN dispatches d ON d.id=o.dispatch_id
+    LEFT JOIN ifood_dispatch_links il
+      ON il.dispatch_id=d.id AND il.local_order_number=o.order_number
+    LEFT JOIN anotaai_delivery_confirmations c
+      ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
+    WHERE a.order_id=$1
+      AND d.courier_id=$2
+      AND il.ifood_order_id IS NULL
+      AND (COALESCE(a.remote_created_at,a.created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+          (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
+      AND d.departed_at >= NOW()-INTERVAL '24 hours'
+    ORDER BY d.departed_at DESC,d.id DESC
+    LIMIT 1
+  `, [orderId, req.session.user.id])).rows[0];
+
+  if (!row) {
+    return res.status(404).json({
+      error: "Essa entrega Anota AI não está vinculada a você.",
+      code: "ANOTAAI_DELIVERY_NOT_ASSIGNED"
+    });
+  }
+
+  if (["CANCELLED","DENIED","CANCELLATION_REQUESTED"].includes(String(row.order_status || "").toUpperCase())) {
+    return res.status(409).json({
+      error: "Esse pedido está cancelado no Anota AI e não pode ser confirmado.",
+      code: "ANOTAAI_DELIVERY_CANCELLED"
+    });
+  }
+
+  if (row.confirmed_at) {
+    return res.json({
+      ok: true,
+      already_confirmed: true,
+      confirmed_at: row.confirmed_at,
+      message: "Essa entrega já foi confirmada."
+    });
+  }
+
+  const confirmed = (await pool.query(`
+    INSERT INTO anotaai_delivery_confirmations(
+      anotaai_order_id,dispatch_id,courier_id,confirmed_at
+    )
+    VALUES($1,$2,$3,NOW())
+    ON CONFLICT(anotaai_order_id,dispatch_id) DO UPDATE SET
+      confirmed_at=COALESCE(anotaai_delivery_confirmations.confirmed_at,EXCLUDED.confirmed_at)
+    RETURNING confirmed_at
+  `, [row.order_id,row.dispatch_id,req.session.user.id])).rows[0];
+
+  await auditBestEffort(req.session.user.id, "ANOTAAI_DELIVERY_CONFIRMED", "dispatch", row.dispatch_id, {
+    anotaai_order_id: row.order_id,
+    order_number: row.local_order_number,
+    confirmation_mode: "NO_CODE"
+  });
+
+  io.emit("dispatch:changed", {
+    courier_id: req.session.user.id,
+    dispatch_id: row.dispatch_id,
+    change: "ANOTAAI_DELIVERY_CONFIRMED"
+  });
+
+  res.json({
+    ok: true,
+    confirmed: true,
+    confirmed_at: confirmed.confirmed_at,
+    message: "Entrega Anota AI confirmada."
   });
 }));
 
