@@ -3716,6 +3716,7 @@ async function createDispatchTransaction({
   clientToken = null,
   departedAt = null,
   ifoodLinks = [],
+  anotaAiLinks = [],
   append = false,
   recovery = false
 }) {
@@ -3776,7 +3777,18 @@ async function createDispatchTransaction({
       if (count + orders.length > 5) throw Object.assign(new Error("A rota pode conter no máximo 5 pedidos."), { status: 409 });
     }
     const orderDates = new Map();
-    // Lock UUIDs in a stable order and recheck lifecycle after waiting for the route lock.
+    const orderPlatforms = new Map();
+    for (const order of orders) {
+      const key = plainLocalOrderNumber(order);
+      const platform = ifoodLinks.some(x => plainLocalOrderNumber(x.order_number) === key)
+        ? "ifood"
+        : anotaAiLinks.some(x => plainLocalOrderNumber(x.order_number) === key)
+          ? "anotaai"
+          : "manual";
+      orderPlatforms.set(key, platform);
+    }
+
+    // Lock external IDs in a stable order and recheck lifecycle after waiting for the route lock.
     for (const link of [...ifoodLinks].sort((a,b)=>a.order_id.localeCompare(b.order_id))) {
       const current = (await client.query('SELECT * FROM ifood_orders WHERE order_id=$1 FOR UPDATE', [link.order_id])).rows[0];
       if (!current || !orderDateSP(current.order_created_at) ||
@@ -3785,8 +3797,42 @@ async function createDispatchTransaction({
           (recovery ? canonicalIfoodOrderStatus(current.status) !== 'DISPATCHED' : !ifoodOrderCanBeSelected(current.status))) {
         throw Object.assign(new Error("O pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
       }
-      orderDates.set(link.order_number, orderDateSP(current.order_created_at));
+      orderDates.set(plainLocalOrderNumber(link.order_number), orderDateSP(current.order_created_at));
     }
+
+    for (const link of [...anotaAiLinks].sort((a,b)=>a.order_id.localeCompare(b.order_id))) {
+      const current = (await client.query(
+        'SELECT * FROM anotaai_orders WHERE order_id=$1 FOR UPDATE',
+        [link.order_id]
+      )).rows[0];
+      const status = String(current?.status || "UNKNOWN").trim().toUpperCase();
+      const alreadyLinked = current
+        ? (await client.query(
+            'SELECT 1 FROM anotaai_dispatch_links WHERE anotaai_order_id=$1',
+            [link.order_id]
+          )).rowCount > 0
+        : false;
+
+      if (!current ||
+          plainLocalOrderNumber(current.display_id) !== plainLocalOrderNumber(link.order_number) ||
+          !["PRODUCTION","READY"].includes(status) ||
+          alreadyLinked) {
+        const err = new Error(
+          alreadyLinked
+            ? `Pedido Anota AI ${link.order_number} já foi vinculado a outra saída.`
+            : "O pedido mudou no Anota AI. Atualize e valide novamente."
+        );
+        err.code = alreadyLinked ? "ANOTAAI_ORDER_ALREADY_LINKED" : "ANOTAAI_ORDER_CHANGED";
+        err.status = 409;
+        throw err;
+      }
+
+      orderDates.set(
+        plainLocalOrderNumber(link.order_number),
+        link.order_date || orderDateSP(current.remote_created_at || current.remote_updated_at || new Date())
+      );
+    }
+
     const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
     if (append || recovery) {
       const routeShift=resolveDispatchShift({
@@ -3829,13 +3875,15 @@ async function createDispatchTransaction({
     const dispatch = result.rows[0];
 
     for (const order of orders) {
+      const key = plainLocalOrderNumber(order);
+      const platform = orderPlatforms.get(key) || "manual";
       await client.query(
-        "INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)",
-        [dispatch.id, order]
+        "INSERT INTO dispatch_orders(dispatch_id,order_number,platform) VALUES($1,$2,$3)",
+        [dispatch.id, order, platform]
       );
       await client.query(
-        "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date) VALUES($1,$2,$3,$4::date)",
-        [order, dispatch.id, courierId, orderDates.get(order) || orderDateSP(effectiveDeparture)]
+        "INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date,platform) VALUES($1,$2,$3,$4::date,$5)",
+        [order, dispatch.id, courierId, orderDates.get(key) || orderDateSP(effectiveDeparture), platform]
       );
     }
 
@@ -3865,6 +3913,24 @@ async function createDispatchTransaction({
       `, [link.order_id, dispatch.id]);
     }
 
+    for (const link of anotaAiLinks) {
+      const linked = await client.query(`
+        INSERT INTO anotaai_dispatch_links(
+          anotaai_order_id,dispatch_id,local_order_number
+        )
+        VALUES($1,$2,$3)
+        ON CONFLICT(anotaai_order_id) DO NOTHING
+        RETURNING anotaai_order_id
+      `, [link.order_id, dispatch.id, link.order_number]);
+
+      if (!linked.rowCount) {
+        const err = new Error(`Pedido Anota AI ${link.order_number} já foi vinculado a outra saída.`);
+        err.code = "ANOTAAI_ORDER_ALREADY_LINKED";
+        err.status = 409;
+        throw err;
+      }
+    }
+
     if (existingRoute) {
       await client.query('UPDATE dispatches SET route_sla_minutes=$2 WHERE id=$1', [dispatch.id,
         operationalRouteSlaMinutes(Number((await client.query('SELECT COUNT(*)::int AS count FROM dispatch_orders WHERE dispatch_id=$1', [dispatch.id])).rows[0].count), operationalSla)]);
@@ -3873,6 +3939,7 @@ async function createDispatchTransaction({
       'INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5::jsonb)',
       [actorUserId, recovery ? 'EXTERNAL_DISPATCH_LINKED' : 'ROUTE_ORDER_ADDED', 'dispatch', dispatch.id,
         JSON.stringify({ courier_id: courierId, order_numbers: orders, ifood_order_ids: ifoodLinks.map(x=>x.order_id),
+          anotaai_order_ids: anotaAiLinks.map(x=>x.order_id),
           reason: adminReason, recovered_departure: recovery && !existingRoute,
           departure_time_source: recovery && !existingRoute ? 'ADMIN_REPORTED' : 'EXISTING_ROUTE', departed_at: effectiveDeparture,
           external_dispatch: recovery })]);
