@@ -2765,16 +2765,20 @@ function courierDeliveryWazeButton(x){
 
 function courierDeliveryRow(x){
   const display='#'+escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
+  const platform=String(x.platform||'ifood').toLowerCase();
   const canConfirm=x.can_confirm===true;
+  const platformLabel=platform==='anotaai'?'Anota AI':'iFood';
   const btn=canConfirm
-    ? `<button type="button" class="btn success" onclick='openDeliveryConfirmModal(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
+    ? (platform==='anotaai'
+      ? `<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
+      : `<button type="button" class="btn success" onclick='openDeliveryConfirmModal(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`)
     : '';
 
   return `<div class="delivery-item">
     <div class="delivery-item-head">
       <div>
         <div class="delivery-order">${display}</div>
-        <div class="delivery-meta">Saída ${x.departed_at?localTime(x.departed_at):'—'}</div>
+        <div class="delivery-meta">${escapeHtml(platformLabel)} · Saída ${x.departed_at?localTime(x.departed_at):'—'}</div>
       </div>
       ${courierDeliveryBadge(x)}
     </div>
@@ -2788,10 +2792,14 @@ function courierDeliveryRow(x){
 async function loadCourierDeliveries(){
   if(!me||me.role!=='courier'||!$('courierDeliveriesCard'))return;
   try{
-    const d=await api('/api/courier/ifood/deliveries');
-    const current=d.current||[];
-    const pending=d.pending||[];
-    const completed=d.completed||[];
+    const [ifood,anotaai]=await Promise.all([
+      api('/api/courier/ifood/deliveries'),
+      api('/api/courier/anotaai/deliveries')
+    ]);
+    const byDeparture=(a,b)=>Date.parse(b?.departed_at||0)-Date.parse(a?.departed_at||0);
+    const current=[...(ifood.current||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.current||[])].sort(byDeparture);
+    const pending=[...(ifood.pending||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.pending||[])].sort(byDeparture);
+    const completed=[...(ifood.completed||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.completed||[])].sort(byDeparture);
     const hasAny=current.length||pending.length||completed.length;
     const attentionCount=current.filter(x=>x.can_confirm===true).length+pending.length;
     const routeBadge=$('courierRouteBadge');
@@ -2820,6 +2828,22 @@ async function loadCourierDeliveries(){
     $('courierDeliveriesList').innerHTML=out;
   }catch(err){
     $('courierDeliveriesList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function confirmAnotaAiDelivery(orderId,displayId){
+  const label=String(displayId||'').replace(/^#/,'');
+  if(!window.confirm(`Confirmar que o pedido #${label} do Anota AI foi entregue ao cliente?`))return;
+  try{
+    const d=await api(`/api/courier/anotaai/orders/${encodeURIComponent(orderId)}/confirm-delivery`,{
+      method:'POST',
+      body:JSON.stringify({})
+    });
+    toast(d.message||'Entrega Anota AI confirmada.','ok');
+    await loadCourier();
+  }catch(err){
+    toast(err.message||'Não foi possível confirmar a entrega Anota AI.','err');
+    await loadCourierDeliveries().catch(()=>{});
   }
 }
 
