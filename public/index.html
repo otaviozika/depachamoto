@@ -2839,10 +2839,10 @@ async function confirmAnotaAiDelivery(orderId,displayId){
       method:'POST',
       body:JSON.stringify({})
     });
-    toast(d.message||'Entrega Anota AI confirmada.','ok');
+    alert(d.message||'Entrega Anota AI confirmada.');
     await loadCourier();
   }catch(err){
-    toast(err.message||'Não foi possível confirmar a entrega Anota AI.','err');
+    alert(err.message||'Não foi possível confirmar a entrega Anota AI.');
     await loadCourierDeliveries().catch(()=>{});
   }
 }
