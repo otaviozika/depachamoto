@@ -5862,6 +5862,177 @@ app.get("/api/courier/ifood/available", auth, courierOnly, asyncRoute(async (req
   });
 }));
 
+function platformInspectionEntry(rows, order) {
+  const key = plainLocalOrderNumber(order);
+  return rows.find(x => plainLocalOrderNumber(x.order_number) === key) || null;
+}
+
+async function resolveCourierOrderPlatforms(orders, body = {}) {
+  const [ifoodInspection, anotaAiInspection] = await Promise.all([
+    inspectIfoodOrdersForDeparture(orders),
+    inspectAnotaAiOrdersForDeparture(orders)
+  ]);
+  const requested = requestedPlatformMap(body, orders);
+  const ifoodLinks = [];
+  const anotaAiLinks = [];
+  const ambiguities = [];
+  const errors = [];
+  const selections = [];
+
+  for (const order of orders) {
+    const key = plainLocalOrderNumber(order);
+    const ifoodMatched = platformInspectionEntry(ifoodInspection.matched, order);
+    const anotaMatched = platformInspectionEntry(anotaAiInspection.matched, order);
+    const ifoodAccepted = platformInspectionEntry(ifoodInspection.accepted, order);
+    const anotaAccepted = platformInspectionEntry(anotaAiInspection.accepted, order);
+    const ifoodBlocked = platformInspectionEntry(ifoodInspection.blocked, order);
+    const anotaBlocked = platformInspectionEntry(anotaAiInspection.blocked, order);
+    const hasIfood = Boolean(ifoodMatched || ifoodAccepted || ifoodBlocked);
+    const hasAnota = Boolean(anotaMatched || anotaAccepted || anotaBlocked);
+    let platform = requested.get(key) || null;
+
+    if (hasIfood && hasAnota && !platform) {
+      ambiguities.push({
+        order_number: order,
+        code: "ORDER_PLATFORM_REQUIRED",
+        platforms: [
+          {
+            platform: "ifood",
+            label: "iFood",
+            valid: Boolean(ifoodAccepted),
+            status: ifoodAccepted?.status || ifoodMatched?.status || null,
+            message: ifoodBlocked?.message || null
+          },
+          {
+            platform: "anotaai",
+            label: "Anota AI",
+            valid: Boolean(anotaAccepted),
+            status: anotaAccepted?.status || anotaMatched?.status || null,
+            message: anotaBlocked?.message || null
+          }
+        ]
+      });
+      continue;
+    }
+
+    if (!platform) {
+      if (hasIfood && !hasAnota) platform = "ifood";
+      else if (hasAnota && !hasIfood) platform = "anotaai";
+    }
+
+    if (!platform) {
+      errors.push({
+        order_number: order,
+        code: "ORDER_PLATFORM_NOT_FOUND",
+        message: `Pedido ${order} não foi encontrado nem no iFood nem no Anota AI.`
+      });
+      continue;
+    }
+
+    if (platform === "ifood") {
+      if (!hasIfood) {
+        errors.push({
+          order_number: order,
+          code: "ORDER_PLATFORM_MISMATCH",
+          message: `O pedido ${order} não foi encontrado no iFood.`
+        });
+        continue;
+      }
+      if (ifoodBlocked || !ifoodAccepted) {
+        errors.push(ifoodBlocked || {
+          order_number: order,
+          code: "IFOOD_ORDER_REQUIRED",
+          message: `O pedido ${order} não está disponível no iFood.`
+        });
+        continue;
+      }
+      ifoodLinks.push(ifoodAccepted);
+      selections.push({ order_number: order, platform: "ifood", external_order_id: ifoodAccepted.order_id });
+      continue;
+    }
+
+    if (!hasAnota) {
+      errors.push({
+        order_number: order,
+        code: "ORDER_PLATFORM_MISMATCH",
+        message: `O pedido ${order} não foi encontrado no Anota AI.`
+      });
+      continue;
+    }
+    if (anotaBlocked || !anotaAccepted) {
+      errors.push(anotaBlocked || {
+        order_number: order,
+        code: "ANOTAAI_ORDER_REQUIRED",
+        message: `O pedido ${order} não está disponível no Anota AI.`
+      });
+      continue;
+    }
+    anotaAiLinks.push(anotaAccepted);
+    selections.push({ order_number: order, platform: "anotaai", external_order_id: anotaAccepted.order_id });
+  }
+
+  return {
+    ifoodInspection,
+    anotaAiInspection,
+    ifoodLinks,
+    anotaAiLinks,
+    ambiguities,
+    errors,
+    selections
+  };
+}
+
+app.get("/api/courier/orders/lookup", auth, courierOnly, asyncRoute(async (req, res) => {
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+
+  let order = String(req.query.order || "").trim();
+  if (!order) return res.status(400).json({ error: "Informe o pedido." });
+  if (!order.startsWith("#")) order = "#" + order;
+
+  const result = await resolveCourierOrderPlatforms([order], {});
+
+  if (result.ambiguities.length) {
+    return res.json({
+      found: true,
+      valid: false,
+      requires_selection: true,
+      code: "ORDER_PLATFORM_REQUIRED",
+      order_number: order,
+      platforms: result.ambiguities[0].platforms,
+      message: "Esse número existe no iFood e no Anota AI. Escolha qual pedido você está levando."
+    });
+  }
+
+  if (result.errors.length) {
+    const error = result.errors[0];
+    const known = Boolean(
+      result.ifoodInspection.matched.length ||
+      result.ifoodInspection.blocked.length ||
+      result.anotaAiInspection.matched.length ||
+      result.anotaAiInspection.blocked.length
+    );
+    return res.json({
+      found: known,
+      valid: false,
+      requires_selection: false,
+      ...error
+    });
+  }
+
+  const selected = result.selections[0];
+  const link = selected?.platform === "ifood" ? result.ifoodLinks[0] : result.anotaAiLinks[0];
+  return res.json({
+    found: true,
+    valid: true,
+    requires_selection: false,
+    platform: selected.platform,
+    platform_label: selected.platform === "ifood" ? "iFood" : "Anota AI",
+    order_number: order,
+    external_order_id: selected.external_order_id,
+    status: link?.status || null
+  });
+}));
+
 app.get("/api/courier/ifood/lookup", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
 
@@ -6072,47 +6243,50 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
   }
 
-  const ifoodInspection = await inspectIfoodOrdersForDeparture(orders);
-  if (ifoodInspection.blocked.length) {
+  const platformResolution = await resolveCourierOrderPlatforms(orders, req.body);
+
+  if (platformResolution.ambiguities.length) {
+    await logOperationalConflict({
+      type: "ORDER_PLATFORM_SELECTION_REQUIRED",
+      severity: "info",
+      actorUserId: req.session.user.id,
+      courierId: req.session.user.id,
+      orders: platformResolution.ambiguities.map(x => x.order_number),
+      details: { ambiguities: platformResolution.ambiguities }
+    });
     return res.status(409).json({
-      error: ifoodInspection.blocked[0].message,
-      code: ifoodInspection.blocked[0].code,
-      ifood: ifoodInspection.blocked[0],
+      error: "Um número de pedido existe em mais de uma plataforma. Escolha iFood ou Anota AI antes de despachar.",
+      code: "ORDER_PLATFORM_REQUIRED",
+      ambiguities: platformResolution.ambiguities,
       server_now: new Date().toISOString()
     });
   }
 
-  // Todo pedido informado pelo motoboy precisa existir no iFood e passar pela
-  // validação de entrega própria. Pedidos não encontrados são considerados
-  // manuais e só podem ser registrados pelo endpoint administrativo.
-  const matchedIfoodOrders = new Set(
-    ifoodInspection.matched.map(x => plainLocalOrderNumber(x.order_number))
-  );
-  const missingIfoodOrders = orders.filter(
-    x => !matchedIfoodOrders.has(plainLocalOrderNumber(x))
-  );
-
-  if (missingIfoodOrders.length) {
+  if (platformResolution.errors.length) {
+    const first = platformResolution.errors[0];
     await logOperationalConflict({
-      type: "COURIER_NON_IFOOD_ORDER_BLOCKED",
+      type: "COURIER_PLATFORM_ORDER_BLOCKED",
       severity: "warning",
       actorUserId: req.session.user.id,
       courierId: req.session.user.id,
-      orders: missingIfoodOrders,
-      details: { requested_orders: orders }
+      orders: platformResolution.errors.map(x => x.order_number),
+      details: { errors: platformResolution.errors }
     });
     return res.status(409).json({
-      error: `Pedido(s) ${missingIfoodOrders.join(", ")} não encontrado(s) no iFood. Somente o administrador pode registrar saída manual.`,
-      code: "IFOOD_ORDER_REQUIRED",
-      missing_orders: missingIfoodOrders,
+      error: first.message,
+      code: first.code || "ORDER_PLATFORM_INVALID",
+      platform_error: first,
       server_now: new Date().toISOString()
     });
   }
 
-  if (ifoodInspection.accepted.length !== orders.length) {
+  const ifoodLinks = platformResolution.ifoodLinks;
+  const anotaAiLinks = platformResolution.anotaAiLinks;
+
+  if (ifoodLinks.length + anotaAiLinks.length !== orders.length) {
     return res.status(409).json({
-      error: "Todos os pedidos da saída precisam estar vinculados ao iFood e disponíveis para entrega própria.",
-      code: "IFOOD_ORDER_REQUIRED",
+      error: "Todos os pedidos precisam estar identificados no iFood ou no Anota AI antes da saída.",
+      code: "ORDER_PLATFORM_REQUIRED",
       server_now: new Date().toISOString()
     });
   }
@@ -6143,7 +6317,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     }
   }
 
-  const inspection = await inspectOrders(orders, ifoodInspection.accepted);
+  const inspection = await inspectOrders(orders, ifoodLinks, anotaAiLinks);
 
   if (inspection.active.length) {
     await logOperationalConflict({
@@ -6235,7 +6409,8 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       source: "COURIER",
       clientToken,
       departedAt: queuedDeparture,
-      ifoodLinks: ifoodInspection.accepted
+      ifoodLinks,
+      anotaAiLinks
     });
   } catch (e) {
     if (e.code === "RETURN_CHECKIN_REQUIRED") {
@@ -6246,15 +6421,15 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
         server_now: new Date().toISOString()
       });
     }
-    if (e.code === "IFOOD_ORDER_ALREADY_LINKED") {
+    if (["IFOOD_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_CHANGED"].includes(e.code)) {
       return res.status(409).json({
         error: e.message,
-        code: "IFOOD_ORDER_ALREADY_LINKED"
+        code: e.code
       });
     }
 
     if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
-      const raceInspection = await inspectOrders(orders, ifoodInspection.accepted);
+      const raceInspection = await inspectOrders(orders, ifoodLinks, anotaAiLinks);
       await logOperationalConflict({
         type: "ACTIVE_ORDER_RACE_BLOCKED",
         severity: "critical",
@@ -6278,18 +6453,21 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       order_count: orders.length,
       departed_at: result.dispatch.departed_at,
       source: "COURIER",
+      platform_selections: platformResolution.selections,
       checkin_gate_enforced: true
     });
   }
 
   io.emit("dispatch:changed", { courier_id: req.session.user.id, dispatch_id: result.dispatch.id, change: "CREATED" });
 
-  const ifoodDispatchQueued = ifoodInspection.accepted.length;
+  const ifoodDispatchQueued = ifoodLinks.length;
+  const anotaAiDispatchCount = anotaAiLinks.length;
 
   res.status(result.duplicate ? 200 : 201).json({
     dispatch: result.dispatch,
     closed_previous: result.closedPrevious,
     duplicate: result.duplicate,
+    platforms: platformResolution.selections,
     ifood_dispatch: {
       linked_orders: ifoodDispatchQueued,
       queued: ifoodDispatchQueued > 0,
@@ -6297,6 +6475,9 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       mode: ifoodDispatchQueued
         ? (ifoodDispatchEnabled() ? "ASYNC_AUTOMATIC" : "WAITING_ENABLE")
         : "NONE"
+    },
+    anotaai_dispatch: {
+      linked_orders: anotaAiDispatchCount
     },
     server_now: new Date().toISOString()
   });
