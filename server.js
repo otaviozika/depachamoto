@@ -22,7 +22,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.2";
+const VERSION = "3.6.1";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
