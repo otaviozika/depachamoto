@@ -298,10 +298,10 @@ CREATE TABLE IF NOT EXISTS dispatch_orders (
 ALTER TABLE dispatch_orders
 ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual';
 
-DO $ BEGIN
+DO $$ BEGIN
   ALTER TABLE dispatch_orders ADD CONSTRAINT dispatch_orders_platform_check
     CHECK (platform IN ('ifood','anotaai','manual'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE INDEX IF NOT EXISTS dispatch_orders_platform_idx
 ON dispatch_orders(platform,order_number,dispatch_id);
@@ -767,7 +767,7 @@ ON ifood_dispatch_links(dispatch_id);
 
 -- Preserve existing locks and history while scoping short numbers to order day + platform.
 -- iFood and Anota AI may legitimately expose the same visible number.
-DO $
+DO $$
 BEGIN
   ALTER TABLE active_order_locks ADD COLUMN IF NOT EXISTS order_date DATE;
   ALTER TABLE active_order_locks ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual';
@@ -802,7 +802,7 @@ BEGIN
     ALTER TABLE active_order_locks DROP CONSTRAINT active_order_locks_pkey;
     ALTER TABLE active_order_locks ADD PRIMARY KEY(order_number,order_date,platform);
   END IF;
-END $;
+END $$;
 
 CREATE INDEX IF NOT EXISTS active_order_locks_platform_idx
 ON active_order_locks(platform,order_number,order_date);
