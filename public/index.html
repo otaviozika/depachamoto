@@ -1933,14 +1933,24 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';for(let i=0;i<Number($('departureCount').value);i++)addOrderField();updateOrderUi()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-ifood-valid="false" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleIfoodFieldLookup(this)"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-platform-valid="false" data-platform="" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleOrderFieldLookup(this)"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
-function allCourierOrdersIfoodValidated(){
+function allCourierOrdersPlatformValidated(){
   const inputs=[...$('orderFields').querySelectorAll('.order-input')];
   const count=Number($('departureCount').value);
   const values=inputs.map(i=>normalizedUiOrder(i.value).toLowerCase());
-  return count>=1&&count<=5&&inputs.length===count&&new Set(values).size===count&&inputs.every(i=>i.value.trim()&&i.dataset.ifoodValid==='true'&&i.dataset.validatedValue===normalizedUiOrder(i.value));
+  return count>=1&&count<=5&&inputs.length===count&&new Set(values).size===count&&inputs.every(i=>
+    i.value.trim()&&
+    i.dataset.platformValid==='true'&&
+    ['ifood','anotaai'].includes(String(i.dataset.platform||''))&&
+    i.dataset.validatedValue===normalizedUiOrder(i.value)
+  );
+}
+function getOrderPlatformSelections(){
+  return [...$('orderFields').querySelectorAll('.order-input')]
+    .filter(i=>i.value.trim()&&i.dataset.platformValid==='true')
+    .map(i=>({order_number:normalizedUiOrder(i.value),platform:String(i.dataset.platform||'')}));
 }
 function updateCourierDepartureEligibility(){
   const btn=$('departureSubmit');
@@ -1950,14 +1960,14 @@ function updateCourierDepartureEligibility(){
   const checkinLocked=!!courierActiveDispatch;
   const offline=!navigator.onLine;
   const legacyQueue=getOfflineQueue().length>0;
-  const valid=allCourierOrdersIfoodValidated();
+  const valid=allCourierOrdersPlatformValidated();
   btn.disabled=!!me?.mustChangePassword||attendanceLocked||shiftLocked||checkinLocked||offline||legacyQueue||!valid;
   if(shiftLocked)btn.textContent='Expediente encerrado pelo Admin';
   else if(attendanceLocked)btn.textContent='Confirme presença pelo QR';
   else if(checkinLocked)btn.textContent='Confirme sua chegada para nova saída';
-  else if(offline)btn.textContent='🔒 Conexão necessária para validar iFood';
+  else if(offline)btn.textContent='🔒 Conexão necessária para validar pedido';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
-  else if(!valid)btn.textContent='🔒 Valide os pedidos iFood';
+  else if(!valid)btn.textContent='🔒 Valide os pedidos';
   else btn.textContent='🛵 Confirmar e sair para entrega';
 
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
@@ -1965,9 +1975,7 @@ function updateCourierDepartureEligibility(){
 }
 function updateOrderUi(){const n=$('orderFields').querySelectorAll('.order-row').length;$('orderCounter').textContent=n?`${n} pedido(s)`:'Escolha a quantidade';updateCourierDepartureEligibility()}
 
-
-
-const ifoodFieldTimers=new WeakMap();
+const orderFieldTimers=new WeakMap();
 
 function normalizedUiOrder(v){
   let x=String(v||'').trim();
@@ -1976,49 +1984,98 @@ function normalizedUiOrder(v){
   return x;
 }
 
-function scheduleIfoodFieldLookup(input){
-  const row=input.closest('.order-row');
-  const status=row?.querySelector('.order-validation');
-  input.dataset.ifoodValid='false';
-  if(status){status.className='order-validation';status.textContent=input.value.trim()?'Validando no iFood...':'';}
-  updateCourierDepartureEligibility();
-
-  const old=ifoodFieldTimers.get(input);
-  if(old)clearTimeout(old);
-
-  if(!input.value.trim())return;
-
-  const timer=setTimeout(()=>lookupIfoodField(input),350);
-  ifoodFieldTimers.set(input,timer);
+function platformLabel(platform){
+  return String(platform||'').toLowerCase()==='anotaai'?'Anota AI':'iFood';
 }
 
-async function lookupIfoodField(input){
+function clearOrderPlatformValidation(input){
+  input.dataset.platformValid='false';
+  input.dataset.platform='';
+  input.dataset.validatedValue='';
+}
+
+function scheduleOrderFieldLookup(input){
+  const row=input.closest('.order-row');
+  const status=row?.querySelector('.order-validation');
+  clearOrderPlatformValidation(input);
+  if(status){status.className='order-validation';status.textContent=input.value.trim()?'Procurando iFood / Anota AI...':'';}
+  updateCourierDepartureEligibility();
+
+  const old=orderFieldTimers.get(input);
+  if(old)clearTimeout(old);
+  if(!input.value.trim())return;
+
+  const timer=setTimeout(()=>lookupOrderField(input),350);
+  orderFieldTimers.set(input,timer);
+}
+
+function applyOrderPlatformChoice(input,platform,statusText=''){
+  const row=input.closest('.order-row');
+  const box=row?.querySelector('.order-validation');
+  if(!box)return;
+  const value=normalizedUiOrder(input.value);
+  input.dataset.validatedValue=value;
+  input.dataset.platform=platform;
+  input.dataset.platformValid='true';
+  box.className='order-validation ok';
+  box.innerHTML=`✓ ${escapeHtml(platformLabel(platform))} selecionado${statusText?' • '+escapeHtml(statusText):''} <button type="button" class="btn outline" style="padding:4px 8px;margin-left:6px" onclick="lookupOrderField(this.closest('.order-row').querySelector('.order-input'))">Trocar</button>`;
+  updateCourierDepartureEligibility();
+}
+
+function renderPlatformChoice(input,data){
+  const row=input.closest('.order-row');
+  const box=row?.querySelector('.order-validation');
+  if(!box)return;
+  clearOrderPlatformValidation(input);
+  const candidates=Array.isArray(data?.platforms)?data.platforms:[];
+  const buttons=candidates.map(candidate=>{
+    const platform=String(candidate.platform||'');
+    const disabled=candidate.valid===false?' disabled':'';
+    const reason=candidate.valid===false&&candidate.message
+      ? `<div class="small" style="margin-top:4px">${escapeHtml(candidate.label||platform)}: ${escapeHtml(candidate.message)}</div>`
+      : '';
+    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),'${platform}',${JSON.stringify(candidate.status||'')})">${escapeHtml(candidate.label||platform)}</button>${reason}`;
+  }).join('');
+  box.className='order-validation warn';
+  box.innerHTML=`<b>Pedido encontrado em mais de uma plataforma.</b><div class="small">Qual pedido você está levando?</div>${buttons}`;
+  updateCourierDepartureEligibility();
+}
+
+function markPlatformAmbiguities(ambiguities){
+  for(const ambiguity of (ambiguities||[])){
+    const key=normalizedUiOrder(ambiguity.order_number).toLowerCase();
+    const input=[...$('orderFields').querySelectorAll('.order-input')]
+      .find(i=>normalizedUiOrder(i.value).toLowerCase()===key);
+    if(input)renderPlatformChoice(input,ambiguity);
+  }
+}
+
+async function lookupOrderField(input){
   const row=input.closest('.order-row');
   const box=row?.querySelector('.order-validation');
   if(!box)return;
 
-  let value=normalizedUiOrder(input.value);
+  const value=normalizedUiOrder(input.value);
   if(!value)return;
   input.value=value;
+  clearOrderPlatformValidation(input);
 
   try{
-    const d=await api(`/api/courier/ifood/lookup?order=${encodeURIComponent(value)}`);
-
+    const d=await api(`/api/courier/orders/lookup?order=${encodeURIComponent(value)}`);
     if(normalizedUiOrder(input.value)!==value)return;
-    if(d.found&&d.valid){
-      input.dataset.validatedValue=value;
-      input.dataset.ifoodValid='true';
-      box.className='order-validation ok';
-      box.textContent=`✓ iFood • entrega própria • ${d.status||'disponível'}`;
+
+    if(d.requires_selection){
+      renderPlatformChoice(input,d);
+    }else if(d.found&&d.valid&&d.platform){
+      applyOrderPlatformChoice(input,d.platform,d.status||'disponível');
     }else{
-      input.dataset.ifoodValid='false';
       box.className='order-validation err';
-      box.textContent=`✕ ${d.message||'Pedido não disponível no iFood. Somente o Admin pode fazer saída manual.'}`;
+      box.textContent=`✕ ${d.message||'Pedido não disponível no iFood ou Anota AI.'}`;
     }
   }catch(err){
-    input.dataset.ifoodValid='false';
+    clearOrderPlatformValidation(input);
     box.className='order-validation err';
-    box.textContent='Não foi possível validar no iFood. Conexão obrigatória para registrar a saída.';
+    box.textContent='Não foi possível validar o pedido. A conexão é obrigatória para registrar a saída.';
   }finally{
     updateCourierDepartureEligibility();
   }
@@ -3028,10 +3085,10 @@ async function depart(e){
     return message('departureMsg','Existe uma saída antiga aguardando sincronização. Resolva essa pendência antes de registrar outra.','err');
   }
   if(!navigator.onLine){
-    return message('departureMsg','Conexão obrigatória: o pedido precisa ser validado no iFood no momento da saída. Peça ao Admin para registrar manualmente se necessário.','err');
+    return message('departureMsg','Conexão obrigatória: o pedido precisa ser validado no iFood ou Anota AI no momento da saída. Peça ao Admin para registrar manualmente se necessário.','err');
   }
-  if(!allCourierOrdersIfoodValidated()){
-    return message('departureMsg','Todos os pedidos precisam aparecer como ✓ iFood antes de registrar a saída. Pedido manual é exclusivo do Admin.','err');
+  if(!allCourierOrdersPlatformValidated()){
+    return message('departureMsg','Valide cada pedido e, quando o mesmo número existir nas duas plataformas, escolha iFood ou Anota AI antes de sair.','err');
   }
 
   if(!confirm(`Você está saindo com ${orders.length} pedidos: ${orders.join(', ')}. Confirma?`))return;
@@ -3042,6 +3099,7 @@ async function depart(e){
     order_numbers:orders,
     order_count:Number($('departureCount').value),
     confirm_recent_orders:false,
+    platform_selections:getOrderPlatformSelections(),
     client_token:makeClientToken(),
     offline_queued:false,
     estimated_departed_at:new Date(serverNowMs()).toISOString()
@@ -3061,11 +3119,15 @@ async function depart(e){
         resetOrderFields();
         showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
         const ifoodInfo=d.ifood_dispatch;
+        const anotaInfo=d.anotaai_dispatch;
         let successText=`Saída registrada com ${orders.length} pedido(s).`;
         if(ifoodInfo?.queued){
           successText+=ifoodInfo.automatic_enabled
             ? ' iFood: sincronizando despacho em segundo plano.'
             : ' Pedido iFood vinculado; despacho automático está desativado.';
+        }
+        if(Number(anotaInfo?.linked_orders||0)>0){
+          successText+=` Anota AI: ${anotaInfo.linked_orders} pedido(s) vinculado(s) à saída.`;
         }
         message('departureMsg',successText,'ok');
         await loadCourier();
@@ -3094,15 +3156,21 @@ async function depart(e){
         throw new Error(`PEDIDO DUPLICADO BLOQUEADO:\n${text}\n\nProcure o administrador.`);
       }
 
-      if(r.status===409&&String(d.code||'').startsWith('IFOOD_')){
-        throw new Error(d.error||'Pedido iFood indisponível para esta saída.');
+      if(r.status===409&&d.code==='ORDER_PLATFORM_REQUIRED'){
+        markPlatformAmbiguities(d.ambiguities||[]);
+        message('departureMsg','Escolha a plataforma dos pedidos destacados e toque em Confirmar novamente.','err');
+        return;
+      }
+
+      if(r.status===409&&(String(d.code||'').startsWith('IFOOD_')||String(d.code||'').startsWith('ANOTAAI_')||String(d.code||'').startsWith('ORDER_PLATFORM_'))){
+        throw new Error(d.error||'Pedido indisponível para esta saída.');
       }
 
       throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
     }
   }catch(err){
     if(!navigator.onLine||err instanceof TypeError){
-      message('departureMsg','Conexão perdida. A saída NÃO foi registrada. Reconecte para validar os pedidos no iFood, ou peça ao Admin para fazer a saída manual.','err');
+      message('departureMsg','Conexão perdida. A saída NÃO foi registrada. Reconecte para validar os pedidos no iFood/Anota AI, ou peça ao Admin para fazer a saída manual.','err');
     }else{
       message('departureMsg',err.message,'err');
     }
