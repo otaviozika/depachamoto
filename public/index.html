@@ -2854,9 +2854,9 @@ async function loadCourierDeliveries(){
       api('/api/courier/anotaai/deliveries')
     ]);
     const byDeparture=(a,b)=>Date.parse(b?.departed_at||0)-Date.parse(a?.departed_at||0);
-    const current=[...(ifood.current||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.current||[])].sort(byDeparture);
-    const pending=[...(ifood.pending||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.pending||[])].sort(byDeparture);
-    const completed=[...(ifood.completed||[]).map(x=>({...x,platform:'ifood'}),...(anotaai.completed||[])].sort(byDeparture);
+    const current=[...(ifood.current||[]).map(x=>({...x,platform:'ifood'})),...(anotaai.current||[])].sort(byDeparture);
+    const pending=[...(ifood.pending||[]).map(x=>({...x,platform:'ifood'})),...(anotaai.pending||[])].sort(byDeparture);
+    const completed=[...(ifood.completed||[]).map(x=>({...x,platform:'ifood'})),...(anotaai.completed||[])].sort(byDeparture);
     const hasAny=current.length||pending.length||completed.length;
     const attentionCount=current.filter(x=>x.can_confirm===true).length+pending.length;
     const routeBadge=$('courierRouteBadge');
