@@ -992,15 +992,33 @@ ON CONFLICT (setting_key) DO NOTHING;
 
 
 await pool.query(`
-INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date)
-SELECT o.order_number,d.id,d.courier_id,
-  (COALESCE(i.order_created_at,d.departed_at) AT TIME ZONE 'America/Sao_Paulo')::date
+INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date,platform)
+SELECT
+  o.order_number,
+  d.id,
+  d.courier_id,
+  (
+    COALESCE(
+      CASE WHEN o.platform='ifood' THEN i.order_created_at END,
+      CASE WHEN o.platform='anotaai' THEN COALESCE(a.remote_created_at,a.remote_updated_at) END,
+      d.departed_at
+    ) AT TIME ZONE 'America/Sao_Paulo'
+  )::date,
+  o.platform
 FROM dispatch_orders o
 JOIN dispatches d ON d.id=o.dispatch_id
-LEFT JOIN ifood_dispatch_links l ON l.dispatch_id=d.id AND l.local_order_number=o.order_number
+LEFT JOIN ifood_dispatch_links l
+  ON o.platform='ifood'
+ AND l.dispatch_id=d.id
+ AND LOWER(l.local_order_number)=LOWER(o.order_number)
 LEFT JOIN ifood_orders i ON i.order_id=l.ifood_order_id
+LEFT JOIN anotaai_dispatch_links al
+  ON o.platform='anotaai'
+ AND al.dispatch_id=d.id
+ AND LOWER(al.local_order_number)=LOWER(o.order_number)
+LEFT JOIN anotaai_orders a ON a.order_id=al.anotaai_order_id
 WHERE d.status='ON_ROAD'
-ON CONFLICT(order_number,order_date) DO NOTHING;
+ON CONFLICT(order_number,order_date,platform) DO NOTHING;
 `);
 
 async function seedAdmin() {
