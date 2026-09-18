@@ -2034,7 +2034,7 @@ function renderPlatformChoice(input,data){
     const reason=candidate.valid===false&&candidate.message
       ? `<div class="small" style="margin-top:4px">${escapeHtml(candidate.label||platform)}: ${escapeHtml(candidate.message)}</div>`
       : '';
-    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),'${platform}',${JSON.stringify(candidate.status||'')})">${escapeHtml(candidate.label||platform)}</button>${reason}`;
+    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),'${platform}')">${escapeHtml(candidate.label||platform)}</button>${reason}`;
   }).join('');
   box.className='order-validation warn';
   box.innerHTML=`<b>Pedido encontrado em mais de uma plataforma.</b><div class="small">Qual pedido você está levando?</div>${buttons}`;
