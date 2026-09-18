@@ -5887,7 +5887,9 @@ async function resolveCourierOrderPlatforms(orders, body = {}) {
     const anotaAccepted = platformInspectionEntry(anotaAiInspection.accepted, order);
     const ifoodBlocked = platformInspectionEntry(ifoodInspection.blocked, order);
     const anotaBlocked = platformInspectionEntry(anotaAiInspection.blocked, order);
-    const hasIfood = Boolean(ifoodMatched || ifoodAccepted || ifoodBlocked);
+    const ifoodBlockedIsCurrent = Boolean(ifoodBlocked) &&
+      !["IFOOD_ORDER_DAY_NOT_FOUND","IFOOD_MERCHANT_MISMATCH"].includes(String(ifoodBlocked.code || ""));
+    const hasIfood = Boolean(ifoodMatched || ifoodAccepted || ifoodBlockedIsCurrent);
     const hasAnota = Boolean(anotaMatched || anotaAccepted || anotaBlocked);
     let platform = requested.get(key) || null;
 
