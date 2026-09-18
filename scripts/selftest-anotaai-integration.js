@@ -15,7 +15,7 @@ assert.match(server, /if \(!anotaAiAutoEnabled\(\) \|\| !anotaAiConfigured\(\)\)
 assert.match(html, /<section id="anotaai" class="page">/);
 assert.match(html, /type="password"[^>]+id="anotaAiPageToken"|id="anotaAiPageToken"[^>]+type="password"/);
 assert.match(html, /id="anotaAiPageToken"[^>]+autocomplete="new-password"/);
-assert.doesNotMatch(html, /id="anotaAiPageId"/);
+assert.doesNotMatch(html, /anotaAiPageId/);
 assert.doesNotMatch(server, /req\.body\?\.page_id/);
 assert.match(html, /ifood:\{label:'Integrações'.*\['anotaai','Anota AI'\]/);
 assert.match(env, /ANOTAAI_ENABLED=false/);
