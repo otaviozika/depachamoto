@@ -948,8 +948,21 @@ WHERE (
 `);
 
 await pool.query(`
-INSERT INTO dispatch_orders(dispatch_id, order_number)
-SELECT d.id, d.order_number
+INSERT INTO dispatch_orders(dispatch_id, order_number, platform)
+SELECT
+  d.id,
+  d.order_number,
+  CASE
+    WHEN EXISTS (
+      SELECT 1 FROM ifood_dispatch_links l
+      WHERE l.dispatch_id=d.id AND LOWER(l.local_order_number)=LOWER(d.order_number)
+    ) THEN 'ifood'
+    WHEN EXISTS (
+      SELECT 1 FROM anotaai_dispatch_links l
+      WHERE l.dispatch_id=d.id AND LOWER(l.local_order_number)=LOWER(d.order_number)
+    ) THEN 'anotaai'
+    ELSE 'manual'
+  END
 FROM dispatches d
 WHERE NOT EXISTS (SELECT 1 FROM dispatch_orders o WHERE o.dispatch_id=d.id)
 ON CONFLICT DO NOTHING;
@@ -6125,7 +6138,7 @@ async function assignCompletedIfoodOrder({ actorUserId, courierId, link, departe
       departed_at,status,operational_stage,closed_reason,released_at,released_by)
       VALUES($1,$2,$3,$4,'ADMIN_RECOVERED',$5,$6::timestamptz,'RELEASED','COMPLETED','COMPLETED_ORDER_ASSIGNED',NOW(),$4)
       RETURNING *`, [code,link.order_number,courierId,actorUserId,adminReason,departedAt])).rows[0];
-    await client.query('INSERT INTO dispatch_orders(dispatch_id,order_number) VALUES($1,$2)', [dispatch.id,link.order_number]);
+    await client.query('INSERT INTO dispatch_orders(dispatch_id,order_number,platform) VALUES($1,$2,\'ifood\')', [dispatch.id,link.order_number]);
     await client.query(`INSERT INTO ifood_dispatch_links(ifood_order_id,dispatch_id,local_order_number,ifood_dispatch_status)
       VALUES($1,$2,$3,'CONCLUDED')`, [order.order_id,dispatch.id,link.order_number]);
     await client.query(`INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,'COMPLETED_ORDER_ASSIGNED','dispatch',$2,$3::jsonb)`,
