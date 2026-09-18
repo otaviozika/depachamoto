@@ -15,6 +15,7 @@ import webpush from "web-push";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
+import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -609,6 +610,46 @@ VALUES('2026-09-12',6.00,0.00,65.00,45.00,55.00,60.00,75.00,10.00)
 ON CONFLICT(effective_from) DO UPDATE SET
   lunch_mon_thu=45.00,lunch_fri_sun=55.00,dinner_mon_thu=60.00,dinner_fri_sun=75.00,rain_bonus=10.00;
 
+CREATE TABLE IF NOT EXISTS anotaai_pages (
+  page_id TEXT PRIMARY KEY,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  source TEXT NOT NULL DEFAULT 'LINK_PAGE',
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS anotaai_orders (
+  order_id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  display_id TEXT,
+  status TEXT NOT NULL DEFAULT 'UNKNOWN',
+  status_code INTEGER,
+  sales_channel TEXT,
+  order_type TEXT,
+  customer_name TEXT,
+  remote_created_at TIMESTAMPTZ,
+  remote_updated_at TIMESTAMPTZ,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS anotaai_orders_page_updated_idx
+ON anotaai_orders(page_id,updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS anotaai_orders_status_idx
+ON anotaai_orders(status,updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS anotaai_sync_state (
+  page_id TEXT PRIMARY KEY,
+  last_poll_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_error TEXT,
+  last_error_at TIMESTAMPTZ,
+  last_order_count INTEGER NOT NULL DEFAULT 0,
+  total_orders_received BIGINT NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS ifood_merchants (
   merchant_id TEXT PRIMARY KEY,
   name TEXT,
@@ -970,6 +1011,215 @@ async function audit(userId, action, entity, entityId, details = {}) {
     "INSERT INTO audit_logs(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)",
     [userId || null, action, entity, normalized.entity_id, JSON.stringify(normalized.details)]
   );
+}
+
+const anotaAiClient = createAnotaAiClient({
+  clientId: process.env.ANOTAAI_CLIENT_ID,
+  clientSecret: process.env.ANOTAAI_CLIENT_SECRET,
+  userAgent: `DespacheFull/${VERSION} (${process.env.NODE_ENV === "production" ? "production" : "development"}; Node.js/${process.versions.node})`
+});
+let anotaAiSyncRunning = false;
+
+function anotaAiConfigured() {
+  return anotaAiClient.configured();
+}
+
+function anotaAiAutoEnabled() {
+  return String(process.env.ANOTAAI_ENABLED || "false").toLowerCase() === "true";
+}
+
+function anotaAiSafeError(error) {
+  let safe = String(error?.message || error || "Erro desconhecido.");
+  const sensitiveValues = [
+    [String(process.env.ANOTAAI_CLIENT_SECRET || "").trim(), "[SECRET]"],
+    [String(process.env.ANOTAAI_CLIENT_ID || "").trim(), "[CLIENT_ID]"]
+  ];
+  for (const [value, replacement] of sensitiveValues) {
+    if (value) safe = safe.replaceAll(value, replacement);
+  }
+  return safe.slice(0, 600);
+}
+
+function anotaAiEnvironmentPageIds() {
+  return [...new Set(
+    String(process.env.ANOTAAI_PAGE_IDS || process.env.ANOTAAI_PAGE_ID || "")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean)
+  )];
+}
+
+async function getAnotaAiPageIds() {
+  const stored = (await pool.query(`
+    SELECT page_id FROM anotaai_pages WHERE active=TRUE ORDER BY linked_at
+  `)).rows.map(row => String(row.page_id));
+  return [...new Set([...anotaAiEnvironmentPageIds(), ...stored])];
+}
+
+function validAnotaAiDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+async function upsertAnotaAiOrder(pageId, normalized) {
+  if (!normalized.orderId) return { inserted: false, changed: false };
+  const previous = (await pool.query(`
+    SELECT status_code,remote_updated_at FROM anotaai_orders WHERE order_id=$1
+  `, [normalized.orderId])).rows[0];
+  const remoteCreatedAt = validAnotaAiDate(normalized.remoteCreatedAt);
+  const remoteUpdatedAt = validAnotaAiDate(normalized.remoteUpdatedAt);
+  await pool.query(`
+    INSERT INTO anotaai_orders(
+      order_id,page_id,display_id,status,status_code,sales_channel,order_type,
+      customer_name,remote_created_at,remote_updated_at,payload,updated_at
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,NOW())
+    ON CONFLICT(order_id) DO UPDATE SET
+      page_id=EXCLUDED.page_id,
+      display_id=EXCLUDED.display_id,
+      status=EXCLUDED.status,
+      status_code=EXCLUDED.status_code,
+      sales_channel=EXCLUDED.sales_channel,
+      order_type=EXCLUDED.order_type,
+      customer_name=EXCLUDED.customer_name,
+      remote_created_at=COALESCE(EXCLUDED.remote_created_at,anotaai_orders.remote_created_at),
+      remote_updated_at=COALESCE(EXCLUDED.remote_updated_at,anotaai_orders.remote_updated_at),
+      payload=EXCLUDED.payload,
+      updated_at=NOW()
+  `, [
+    normalized.orderId,
+    pageId,
+    normalized.displayId || normalized.orderId,
+    normalized.status,
+    normalized.statusCode,
+    normalized.salesChannel || "anotaai",
+    normalized.orderType || "UNKNOWN",
+    normalized.customerName || null,
+    remoteCreatedAt,
+    remoteUpdatedAt,
+    JSON.stringify(normalized.payload || {})
+  ]);
+  return {
+    inserted: !previous,
+    changed: !previous || Number(previous.status_code) !== Number(normalized.statusCode) ||
+      (remoteUpdatedAt && new Date(previous.remote_updated_at || 0).toISOString() !== remoteUpdatedAt)
+  };
+}
+
+async function syncAnotaAiPage(pageId) {
+  await pool.query(`
+    INSERT INTO anotaai_sync_state(page_id,last_poll_at)
+    VALUES($1,NOW())
+    ON CONFLICT(page_id) DO UPDATE SET last_poll_at=NOW()
+  `, [pageId]);
+
+  let currentPage = 1;
+  let listed = 0;
+  let inserted = 0;
+  let changed = 0;
+  const seen = new Set();
+
+  try {
+    while (currentPage <= 20) {
+      const body = await anotaAiClient.listOrders(pageId, { currentPage });
+      if (body?.success === false) throw new Error(String(body?.message || body?.err || "Falha ao listar pedidos Anota AI."));
+      const info = body?.info && typeof body.info === "object" ? body.info : {};
+      const docs = Array.isArray(info.docs) ? info.docs : [];
+      const limit = Math.max(1, Number(info.limit || 100));
+      const total = Math.max(docs.length, Number(info.count || docs.length));
+
+      for (const summary of docs) {
+        const summaryOrder = normalizeAnotaAiOrder(summary);
+        if (!summaryOrder.orderId || seen.has(summaryOrder.orderId)) continue;
+        seen.add(summaryOrder.orderId);
+        listed += 1;
+
+        const previous = (await pool.query(`
+          SELECT status_code,remote_updated_at,payload FROM anotaai_orders WHERE order_id=$1
+        `, [summaryOrder.orderId])).rows[0];
+        const summaryUpdated = validAnotaAiDate(summaryOrder.remoteUpdatedAt);
+        const shouldFetch = !previous || Number(previous.status_code) !== Number(summaryOrder.statusCode) ||
+          (summaryUpdated && validAnotaAiDate(previous.remote_updated_at) !== summaryUpdated) ||
+          !previous.payload || Object.keys(previous.payload).length < 2;
+
+        let normalized = summaryOrder;
+        if (shouldFetch) {
+          const detailsBody = await anotaAiClient.getOrder(pageId, summaryOrder.orderId);
+          if (detailsBody?.success === false) throw new Error(String(detailsBody?.message || "Falha ao consultar pedido Anota AI."));
+          normalized = normalizeAnotaAiOrder(detailsBody?.info || detailsBody, summary);
+        }
+
+        const result = await upsertAnotaAiOrder(pageId, normalized);
+        if (result.inserted) {
+          inserted += 1;
+          createNotification({
+            type: "ANOTAAI_ORDER_RECEIVED",
+            severity: "info",
+            title: "Novo pedido Anota AI",
+            message: `Pedido #${normalized.displayId || normalized.orderId} recebido.`,
+            uniqueKey: `anotaai-order:${pageId}:${normalized.orderId}`
+          }).catch(() => {});
+        }
+        if (result.changed) changed += 1;
+      }
+
+      if (!docs.length || docs.length < limit || currentPage * limit >= total) break;
+      currentPage += 1;
+    }
+
+    await pool.query(`
+      INSERT INTO anotaai_sync_state(
+        page_id,last_poll_at,last_success_at,last_error,last_error_at,last_order_count,total_orders_received
+      ) VALUES($1,NOW(),NOW(),NULL,NULL,$2,$3)
+      ON CONFLICT(page_id) DO UPDATE SET
+        last_poll_at=NOW(),last_success_at=NOW(),last_error=NULL,last_error_at=NULL,
+        last_order_count=EXCLUDED.last_order_count,
+        total_orders_received=anotaai_sync_state.total_orders_received+EXCLUDED.total_orders_received
+    `, [pageId, listed, inserted]);
+    return { pageId, listed, inserted, changed };
+  } catch (error) {
+    await pool.query(`
+      INSERT INTO anotaai_sync_state(page_id,last_poll_at,last_error,last_error_at)
+      VALUES($1,NOW(),$2,NOW())
+      ON CONFLICT(page_id) DO UPDATE SET
+        last_poll_at=NOW(),last_error=EXCLUDED.last_error,last_error_at=NOW()
+    `, [pageId, anotaAiSafeError(error)]);
+    throw error;
+  }
+}
+
+async function syncAnotaAiOnce({ reason = "manual" } = {}) {
+  if (!anotaAiConfigured()) throw Object.assign(new Error("Credenciais do Anota AI não configuradas."), { status: 503 });
+  if (anotaAiSyncRunning) return { ok: true, skipped: true, reason: "already_running" };
+  const pageIds = await getAnotaAiPageIds();
+  if (!pageIds.length) {
+    throw Object.assign(new Error("Nenhuma loja Anota AI vinculada. Informe a Chave de integração na tela de Integrações."), { status: 409 });
+  }
+
+  anotaAiSyncRunning = true;
+  try {
+    const pages = [];
+    const errors = [];
+    for (const pageId of pageIds) {
+      try { pages.push(await syncAnotaAiPage(pageId)); }
+      catch (error) { errors.push({ pageId, error: anotaAiSafeError(error) }); }
+    }
+    if (!pages.length && errors.length) throw Object.assign(new Error(errors[0].error), { status: 502 });
+    const result = {
+      ok: errors.length === 0,
+      reason,
+      pages,
+      errors,
+      listed: pages.reduce((sum, item) => sum + item.listed, 0),
+      inserted: pages.reduce((sum, item) => sum + item.inserted, 0),
+      changed: pages.reduce((sum, item) => sum + item.changed, 0),
+      server_now: new Date().toISOString()
+    };
+    io.emit("anotaai:changed", { reason, inserted: result.inserted, changed: result.changed });
+    return result;
+  } finally {
+    anotaAiSyncRunning = false;
+  }
 }
 
 const IFOOD_AUTH_URL = "https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token";
@@ -6532,6 +6782,123 @@ app.get("/api/admin/wallboard", auth, adminOnly, asyncRoute(async (req, res) => 
   });
 }));
 
+app.get("/api/admin/anotaai/status", auth, adminOnly, asyncRoute(async (req, res) => {
+  const pageIds = await getAnotaAiPageIds();
+  const counts = (await pool.query(`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status='ANALYSIS')::int AS analysis,
+      COUNT(*) FILTER (WHERE status='PRODUCTION')::int AS production,
+      COUNT(*) FILTER (WHERE status='READY')::int AS ready,
+      COUNT(*) FILTER (WHERE status='FINISHED')::int AS finished,
+      COUNT(*) FILTER (WHERE status IN ('CANCELLED','DENIED'))::int AS cancelled
+    FROM anotaai_orders
+  `)).rows[0];
+  const states = (await pool.query(`
+    SELECT page_id,last_poll_at,last_success_at,last_error,last_error_at,
+           last_order_count,total_orders_received
+    FROM anotaai_sync_state
+    ORDER BY page_id
+  `)).rows;
+  const recentOrders = (await pool.query(`
+    SELECT order_id,page_id,display_id,status,status_code,sales_channel,order_type,
+           customer_name,remote_created_at,remote_updated_at,updated_at
+    FROM anotaai_orders
+    ORDER BY COALESCE(remote_updated_at,remote_created_at,updated_at) DESC
+    LIMIT 80
+  `)).rows;
+
+  res.json({
+    configured: anotaAiConfigured(),
+    automaticSyncEnabled: anotaAiAutoEnabled(),
+    syncing: anotaAiSyncRunning,
+    pages: pageIds.map(pageId => ({ page_id: pageId })),
+    counts,
+    states,
+    recentOrders,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/anotaai/test-connection", auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!anotaAiConfigured()) {
+    return res.status(503).json({
+      error: "ANOTAAI_CLIENT_ID/ANOTAAI_CLIENT_SECRET não estão configurados."
+    });
+  }
+  await anotaAiClient.getAccessToken(true);
+  const pageIds = await getAnotaAiPageIds();
+  const checkedPages = [];
+  for (const pageId of pageIds) {
+    const body = await anotaAiClient.listOrders(pageId, { currentPage: 1 });
+    if (body?.success === false) throw new Error(String(body?.message || body?.err || "O Anota AI recusou a consulta da loja."));
+    checkedPages.push({ page_id: pageId, orders: Number(body?.info?.count || 0) });
+  }
+  await auditBestEffort(req.session.user.id, "ANOTAAI_CONNECTION_TESTED", "anotaai", null, {
+    pages: checkedPages.length
+  });
+  res.json({
+    ok: true,
+    connected: true,
+    pages: checkedPages,
+    message: checkedPages.length
+      ? `OAuth autenticado e ${checkedPages.length} loja(s) consultada(s).`
+      : "OAuth autenticado. Agora vincule a loja usando a Chave de integração do Anota AI."
+  });
+}));
+
+app.post("/api/admin/anotaai/link-page", auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!anotaAiConfigured()) {
+    return res.status(503).json({
+      error: "Configure ANOTAAI_CLIENT_ID e ANOTAAI_CLIENT_SECRET antes de vincular a loja."
+    });
+  }
+  const pageToken = String(req.body?.page_token || "").trim();
+  const requestedPageId = String(req.body?.page_id || "").trim();
+  if (!pageToken || pageToken.length > 4096) {
+    return res.status(400).json({ error: "Chave de integração da loja inválida." });
+  }
+  if (requestedPageId && !/^[A-Za-z0-9_-]{3,200}$/.test(requestedPageId)) {
+    return res.status(400).json({ error: "ID da página Anota AI inválido." });
+  }
+
+  const linked = await anotaAiClient.linkPage(pageToken);
+  const pageId = requestedPageId || linked.pageId;
+  if (pageId) {
+    await pool.query(`
+      INSERT INTO anotaai_pages(page_id,active,source,linked_at,last_seen_at)
+      VALUES($1,TRUE,'LINK_PAGE',NOW(),NOW())
+      ON CONFLICT(page_id) DO UPDATE SET active=TRUE,last_seen_at=NOW()
+    `, [pageId]);
+  }
+  await auditBestEffort(req.session.user.id, "ANOTAAI_PAGE_LINKED", "anotaai_page", null, {
+    page_id: pageId || null,
+    page_stored: Boolean(pageId)
+  });
+
+  res.json({
+    ok: true,
+    linked: true,
+    pageStored: Boolean(pageId),
+    page_id: pageId || null,
+    message: pageId
+      ? "Loja Anota AI vinculada. A sincronização já pode ser testada."
+      : "A loja foi vinculada, mas o ID da página não veio no token. Informe o ID exibido no Portal de Integração e vincule novamente."
+  });
+}));
+
+app.post("/api/admin/anotaai/sync-now", auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await syncAnotaAiOnce({ reason: "admin_manual" });
+  await auditBestEffort(req.session.user.id, "ANOTAAI_MANUAL_SYNC", "anotaai", null, {
+    pages: result.pages?.length || 0,
+    listed: result.listed || 0,
+    inserted: result.inserted || 0,
+    changed: result.changed || 0,
+    errors: result.errors?.length || 0
+  });
+  res.json(result);
+}));
+
 app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) => {
   const configuredMerchantId = ifoodPrimaryMerchantId();
 
@@ -8300,6 +8667,11 @@ app.get("/api/health", async (req, res) => {
         dispatchFlagEnabled: ifoodDispatchEnabled(),
         dispatchPaused: ifoodControl.dispatch_paused,
         productionSafetyReady: ifoodProductionSafetyReady()
+      },
+      anotaai: {
+        configured: anotaAiConfigured(),
+        automaticSyncEnabled: anotaAiAutoEnabled(),
+        syncing: anotaAiSyncRunning
       }
     });
   } catch (err) {
@@ -8324,6 +8696,20 @@ setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 100
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
+
+// Anota AI recomenda polling de pedidos a cada 30 segundos.
+// A integração só chama a API quando credenciais e ANOTAAI_ENABLED=true estão configurados.
+setInterval(() => {
+  if (!anotaAiAutoEnabled() || !anotaAiConfigured()) return;
+  syncAnotaAiOnce({ reason: "automatic_30s" })
+    .catch(error => console.error("Anota AI automatic sync:", anotaAiSafeError(error)));
+}, 30 * 1000);
+
+setTimeout(() => {
+  if (!anotaAiAutoEnabled() || !anotaAiConfigured()) return;
+  syncAnotaAiOnce({ reason: "automatic_startup" })
+    .catch(error => console.error("Anota AI startup sync:", anotaAiSafeError(error)));
+}, 10_000);
 
 // iFood Fase 1: polling automático somente quando IFOOD_ENABLED=true.
 // Com false, nenhuma chamada automática ao iFood é feita.

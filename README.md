@@ -4,6 +4,17 @@ Sistema de despacho para operação com administradores e motoboys, desenvolvido
 
 Versão atual: **3.6.1**
 
+## Integração Anota AI
+
+O painel administrativo possui uma segunda integração em **iFood → Anota AI**. Ela usa o fluxo oficial OAuth `client_credentials`, vincula a unidade pela **Chave de integração** da loja e consulta pedidos pelo identificador `x-page-id`. A sincronização automática segue o intervalo de 30 segundos recomendado na documentação oficial.
+
+1. Cadastre o DespacheFull como integrador no Portal de Integração do Anota AI.
+2. Configure `ANOTAAI_CLIENT_ID` e `ANOTAAI_CLIENT_SECRET` somente no Render.
+3. Na tela **Anota AI**, teste o OAuth e informe a Chave de integração disponível no admin da loja. A chave é enviada diretamente ao Anota AI e não é gravada pelo DespacheFull.
+4. Confirme que a loja aparece no painel, execute **Sincronizar agora** e só então altere `ANOTAAI_ENABLED=true` para ativar o polling automático.
+
+`ANOTAAI_PAGE_ID` é um fallback opcional quando o token de vínculo não contém o ID da página. Nenhuma credencial ou chave da loja deve ser adicionada ao repositório.
+
 ## Rotas e recuperação de pedidos
 
 - O motoboy escolhe a quantidade (1–5), preenche exatamente os campos escolhidos e valida todos no iFood antes da saída.

@@ -5,15 +5,19 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const css=fs.readFileSync(new URL('../public/login-desktop.css',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
-// All desktop declarations stay under one media boundary. Visibility remains
-// owned by .hidden!important, even for the root screen after session restore.
+// Desktop declarations stay under their media boundary. The file may then
+// contain the independently scoped mobile composition added by the mobile hero.
 const clean=css.replace(/\/\*[\s\S]*?\*\//g,'').trim();
 assert.ok(clean.startsWith('@media (min-width:901px){'));
 let depth=0;
 for(let i=clean.indexOf('{');i<clean.length;i++){
   if(clean[i]==='{')depth++;
   if(clean[i]==='}')depth--;
-  if(depth===0)assert.equal(clean.slice(i+1).trim(),'','Desktop styles escaped the media boundary');
+  if(depth===0){
+    const remainder=clean.slice(i+1).trim();
+    assert.ok(!remainder||remainder.startsWith('@media (max-width:900px){'),'Styles after the desktop block must be mobile-scoped');
+    break;
+  }
 }
 assert.equal(depth,0);
 assert.doesNotMatch(clean,/display\s*:\s*(?!none\b)[\w-]+\s*!important/i,'Display rules must not defeat authentication visibility');
