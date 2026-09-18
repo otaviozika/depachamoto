@@ -2908,22 +2908,15 @@ async function getCourierAnotaAiDeliveries(courierId) {
   const rows = (await pool.query(`
     SELECT
       a.order_id,a.display_id,a.status AS order_status,a.status_code,a.payload,
-      d.id AS dispatch_id,d.departed_at,d.status AS dispatch_status,
-      o.order_number AS local_order_number,
+      l.dispatch_id,l.local_order_number,
+      d.departed_at,d.status AS dispatch_status,
       c.confirmed_at
-    FROM dispatches d
-    JOIN dispatch_orders o ON o.dispatch_id=d.id
-    JOIN anotaai_orders a
-      ON LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) =
-         LOWER(REGEXP_REPLACE(COALESCE(o.order_number,''), '^#', ''))
-     AND (COALESCE(a.remote_created_at,a.created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
-         (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
-    LEFT JOIN ifood_dispatch_links il
-      ON il.dispatch_id=d.id AND il.local_order_number=o.order_number
+    FROM anotaai_dispatch_links l
+    JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+    JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN anotaai_delivery_confirmations c
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
     WHERE d.courier_id=$1
-      AND il.ifood_order_id IS NULL
       AND (
         d.status='ON_ROAD'
         OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
@@ -2963,13 +2956,9 @@ async function getCourierAnotaAiDeliveries(courierId) {
           : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código.")
     };
 
-    if (confirmed) {
-      completed.push(item);
-    } else if (row.dispatch_status === "ON_ROAD") {
-      current.push(item);
-    } else {
-      pending.push(item);
-    }
+    if (confirmed) completed.push(item);
+    else if (row.dispatch_status === "ON_ROAD") current.push(item);
+    else pending.push(item);
   }
 
   return { current, pending, completed };
@@ -5482,23 +5471,16 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
   const row = (await pool.query(`
     SELECT
       a.order_id,a.display_id,a.status AS order_status,
-      d.id AS dispatch_id,d.courier_id,d.departed_at,d.status AS dispatch_status,
-      o.order_number AS local_order_number,
+      l.dispatch_id,l.local_order_number,
+      d.courier_id,d.departed_at,d.status AS dispatch_status,
       c.confirmed_at
-    FROM anotaai_orders a
-    JOIN dispatch_orders o
-      ON LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) =
-         LOWER(REGEXP_REPLACE(COALESCE(o.order_number,''), '^#', ''))
-    JOIN dispatches d ON d.id=o.dispatch_id
-    LEFT JOIN ifood_dispatch_links il
-      ON il.dispatch_id=d.id AND il.local_order_number=o.order_number
+    FROM anotaai_dispatch_links l
+    JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+    JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN anotaai_delivery_confirmations c
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
-    WHERE a.order_id=$1
+    WHERE l.anotaai_order_id=$1
       AND d.courier_id=$2
-      AND il.ifood_order_id IS NULL
-      AND (COALESCE(a.remote_created_at,a.created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
-          (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date
       AND d.departed_at >= NOW()-INTERVAL '24 hours'
     ORDER BY d.departed_at DESC,d.id DESC
     LIMIT 1
