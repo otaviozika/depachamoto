@@ -1245,6 +1245,27 @@ function anotaAiHasHumanReference(displayId, orderId) {
   return true;
 }
 
+const anotaAiDetailShapeLogged = new Set();
+
+function summarizeAnotaAiResponseShape(value, depth = 0) {
+  if (depth > 4) return "[depth-limit]";
+  if (Array.isArray(value)) {
+    return { type: "array", length: value.length, sample: value.length ? summarizeAnotaAiResponseShape(value[0], depth + 1) : null };
+  }
+  if (!value || typeof value !== "object") return typeof value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (["customer","items","payments","deliveryAddress","accessToken","access_token","token"].includes(key)) {
+      out[key] = "[redacted]";
+      continue;
+    }
+    if (child && typeof child === "object") out[key] = summarizeAnotaAiResponseShape(child, depth + 1);
+    else out[key] = typeof child;
+  }
+  return out;
+}
+
+
 async function syncAnotaAiPage(pageId) {
   await pool.query(`
     INSERT INTO anotaai_sync_state(page_id,last_poll_at)
@@ -1290,6 +1311,12 @@ async function syncAnotaAiPage(pageId) {
           if (detailsBody?.success === false) throw new Error(String(detailsBody?.message || "Falha ao consultar pedido Anota AI."));
           const candidate = extractAnotaAiOrderCandidate(detailsBody, summaryOrder.orderId);
           normalized = normalizeAnotaAiOrder(candidate, summary);
+          if (!anotaAiHasHumanReference(normalized.displayId, summaryOrder.orderId) &&
+              !anotaAiDetailShapeLogged.has(summaryOrder.orderId)) {
+            anotaAiDetailShapeLogged.add(summaryOrder.orderId);
+            console.log("ANOTAAI_DETAIL_SHAPE", summaryOrder.orderId,
+              JSON.stringify(summarizeAnotaAiResponseShape(detailsBody)));
+          }
         }
 
         const result = await upsertAnotaAiOrder(pageId, normalized);
