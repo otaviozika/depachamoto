@@ -655,11 +655,48 @@ CREATE TABLE IF NOT EXISTS anotaai_dispatch_links (
   anotaai_order_id TEXT PRIMARY KEY REFERENCES anotaai_orders(order_id) ON DELETE RESTRICT,
   dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
   local_order_number TEXT NOT NULL,
-  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  anotaai_dispatch_status TEXT NOT NULL DEFAULT 'PENDING',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processing_started_at TIMESTAMPTZ,
+  dispatched_at TIMESTAMPTZ,
+  last_http_status INTEGER,
+  last_error TEXT,
+  last_response JSONB
 );
+
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS anotaai_dispatch_status TEXT NOT NULL DEFAULT 'PENDING';
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS last_http_status INTEGER;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS last_error TEXT;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS last_response JSONB;
+
+UPDATE anotaai_dispatch_links l
+SET anotaai_dispatch_status='SENT',
+    dispatched_at=COALESCE(l.dispatched_at,a.remote_updated_at,NOW()),
+    next_attempt_at=NOW()
+FROM anotaai_orders a
+WHERE a.order_id=l.anotaai_order_id
+  AND UPPER(COALESCE(a.status,''))='FINISHED'
+  AND l.anotaai_dispatch_status<>'SENT';
 
 CREATE INDEX IF NOT EXISTS anotaai_dispatch_links_dispatch_idx
 ON anotaai_dispatch_links(dispatch_id);
+
+CREATE INDEX IF NOT EXISTS anotaai_dispatch_links_status_idx
+ON anotaai_dispatch_links(anotaai_dispatch_status,next_attempt_at);
 
 -- v3.6.2: confirmação local de entrega para pedidos Anota AI.
 -- Diferente do iFood, não existe código do cliente nesta etapa.
@@ -1420,6 +1457,152 @@ async function syncAnotaAiOnce({ reason = "manual" } = {}) {
     return result;
   } finally {
     anotaAiSyncRunning = false;
+  }
+}
+
+let anotaAiDispatchWorkerRunning = false;
+
+function anotaAiDispatchBackoffSeconds(attempts) {
+  const n = Math.max(1, Number(attempts) || 1);
+  return Math.min(600, 10 * Math.pow(2, Math.min(6, n - 1)));
+}
+
+async function markAnotaAiDispatchSent(job, responseBody = null) {
+  await pool.query(`
+    UPDATE anotaai_dispatch_links
+    SET anotaai_dispatch_status='SENT',
+        processing_started_at=NULL,
+        dispatched_at=COALESCE(dispatched_at,NOW()),
+        next_attempt_at=NOW(),
+        last_http_status=200,
+        last_error=NULL,
+        last_response=$2::jsonb
+    WHERE anotaai_order_id=$1
+  `, [job.order_id, JSON.stringify(responseBody || {})]);
+
+  await pool.query(`
+    UPDATE anotaai_orders
+    SET status='FINISHED',
+        status_code=3,
+        remote_updated_at=COALESCE(remote_updated_at,NOW()),
+        updated_at=NOW()
+    WHERE order_id=$1
+  `, [job.order_id]);
+
+  await auditBestEffort(null, "ANOTAAI_DISPATCH_SENT", "dispatch", job.dispatch_id, {
+    anotaai_order_id: job.order_id,
+    order_number: job.local_order_number,
+    endpoint_action: "FINALIZE"
+  });
+
+  io.emit("anotaai:changed", {
+    change: "ANOTAAI_DISPATCH_SENT",
+    dispatch_id: job.dispatch_id,
+    order_id: job.order_id
+  });
+}
+
+async function runAnotaAiDispatchWorkerOnce() {
+  if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
+  anotaAiDispatchWorkerRunning = true;
+
+  try {
+    const jobs = (await pool.query(`
+      SELECT
+        l.anotaai_order_id AS order_id,
+        l.dispatch_id,
+        l.local_order_number,
+        l.attempts,
+        a.page_id,
+        a.status AS order_status,
+        a.status_code,
+        a.order_type,
+        d.departed_at
+      FROM anotaai_dispatch_links l
+      JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+      JOIN dispatches d ON d.id=l.dispatch_id
+      WHERE l.anotaai_dispatch_status IN ('PENDING','FAILED')
+        AND l.next_attempt_at <= NOW()
+        AND d.departed_at >= NOW()-INTERVAL '48 hours'
+        AND UPPER(COALESCE(a.order_type,''))='DELIVERY'
+        AND UPPER(COALESCE(a.status,'')) NOT IN ('CANCELLED','DENIED','CANCELLATION_REQUESTED')
+      ORDER BY l.next_attempt_at,l.linked_at
+      LIMIT 10
+    `)).rows;
+
+    for (const job of jobs) {
+      const claim = (await pool.query(`
+        UPDATE anotaai_dispatch_links
+        SET anotaai_dispatch_status='PROCESSING',
+            attempts=attempts+1,
+            processing_started_at=NOW(),
+            last_error=NULL
+        WHERE anotaai_order_id=$1
+          AND anotaai_dispatch_status IN ('PENDING','FAILED')
+        RETURNING attempts
+      `, [job.order_id])).rows[0];
+
+      if (!claim) continue;
+      const attempts = Number(claim.attempts || 1);
+
+      try {
+        if (String(job.order_status || "").toUpperCase() === "FINISHED" || Number(job.status_code) === 3) {
+          await markAnotaAiDispatchSent(job, { already_finished: true });
+          continue;
+        }
+
+        const body = await anotaAiClient.finalizeOrder(job.page_id, job.order_id);
+        await markAnotaAiDispatchSent(job, body);
+
+        setImmediate(() => {
+          syncAnotaAiOnce({ reason: "dispatch_finalize" }).catch(error => {
+            console.error("Anota AI sync after finalize:", anotaAiSafeError(error));
+          });
+        });
+      } catch (error) {
+        let remotelyFinished = false;
+        let remoteBody = null;
+
+        if ([400,404,409,412].includes(Number(error?.statusCode || 0))) {
+          try {
+            remoteBody = await anotaAiClient.getOrder(job.page_id, job.order_id);
+            const candidate = extractAnotaAiOrderCandidate(remoteBody, job.order_id);
+            const normalized = normalizeAnotaAiOrder(candidate, {});
+            remotelyFinished = Number(normalized.statusCode) === 3 ||
+              String(normalized.status || "").toUpperCase() === "FINISHED";
+            if (normalized.orderId) await upsertAnotaAiOrder(job.page_id, normalized);
+          } catch {}
+        }
+
+        if (remotelyFinished) {
+          await markAnotaAiDispatchSent(job, remoteBody || { already_finished: true });
+          continue;
+        }
+
+        const backoff = anotaAiDispatchBackoffSeconds(attempts);
+        await pool.query(`
+          UPDATE anotaai_dispatch_links
+          SET anotaai_dispatch_status='FAILED',
+              processing_started_at=NULL,
+              next_attempt_at=NOW()+($2::text || ' seconds')::interval,
+              last_http_status=$3,
+              last_error=$4
+          WHERE anotaai_order_id=$1
+        `, [
+          job.order_id,
+          String(backoff),
+          Number(error?.statusCode || 0) || null,
+          anotaAiSafeError(error)
+        ]);
+
+        console.error(
+          `Anota AI finalize #${job.local_order_number} tentativa ${attempts}:`,
+          anotaAiSafeError(error)
+        );
+      }
+    }
+  } finally {
+    anotaAiDispatchWorkerRunning = false;
   }
 }
 
@@ -6807,6 +6990,11 @@ async function addRouteOrder(req, res, recovery) {
       console.error('iFood dispatch after route addition:', ifoodDispatchErrorText(err))
     ));
   }
+  if (anotaAiLinks.length) {
+    setImmediate(() => runAnotaAiDispatchWorkerOnce().catch(err =>
+      console.error('Anota AI dispatch after route addition:', anotaAiSafeError(err))
+    ));
+  }
 }
 app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
 app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
@@ -10285,6 +10473,20 @@ setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 100
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
+
+// Envia a baixa dos pedidos Anota AI vinculados a uma saída.
+// A fila é durável: falhas externas não desfazem a saída do motoboy e são reprocessadas.
+setInterval(() => {
+  runAnotaAiDispatchWorkerOnce().catch(error => {
+    console.error("Anota AI dispatch worker:", anotaAiSafeError(error));
+  });
+}, 10 * 1000);
+
+setTimeout(() => {
+  runAnotaAiDispatchWorkerOnce().catch(error => {
+    console.error("Anota AI dispatch startup:", anotaAiSafeError(error));
+  });
+}, 12_000);
 
 // Anota AI recomenda polling de pedidos a cada 30 segundos.
 // A integração só chama a API quando credenciais e ANOTAAI_ENABLED=true estão configurados.
