@@ -1192,6 +1192,59 @@ async function upsertAnotaAiOrder(pageId, normalized) {
   };
 }
 
+function extractAnotaAiOrderCandidate(body, expectedOrderId = null) {
+  const expected = String(expectedOrderId || "").trim();
+  const queue = [{ value: body, depth: 0 }];
+  const seen = new Set();
+  let best = null;
+  let bestScore = -1;
+
+  while (queue.length) {
+    const { value, depth } = queue.shift();
+    if (!value || depth > 5) continue;
+
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 50)) queue.push({ value: item, depth: depth + 1 });
+      continue;
+    }
+    if (typeof value !== "object" || seen.has(value)) continue;
+    seen.add(value);
+
+    const objectId = String(value._id ?? value.id ?? "").trim();
+    const humanReference = value.shortReference ?? value.short_reference ??
+      value.displayId ?? value.display_id ?? value.orderNumber ?? value.order_number ??
+      value.number ?? value.reference ?? null;
+    let score = 0;
+    if (expected && objectId === expected) score += 100;
+    if (humanReference !== null && humanReference !== undefined && String(humanReference).trim()) score += 40;
+    if (value.check !== undefined && value.check !== null) score += 10;
+    if (value.createdAt || value.created_at) score += 5;
+    if (value.merchant || value.customer || value.items) score += 3;
+
+    if (score > bestScore) {
+      best = value;
+      bestScore = score;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (["items","products","cart"].includes(key) && depth >= 2) continue;
+      if (child && (typeof child === "object")) queue.push({ value: child, depth: depth + 1 });
+    }
+  }
+
+  return best && typeof best === "object" ? best : body;
+}
+
+function anotaAiHasHumanReference(displayId, orderId) {
+  const display = String(displayId || "").replace(/^#/, "").trim();
+  const id = String(orderId || "").trim();
+  if (!display) return false;
+  if (id && display.toLowerCase() === id.toLowerCase()) return false;
+  // ObjectId técnico do Anota AI: não serve como número digitável do pedido.
+  if (/^[a-f0-9]{24}$/i.test(display)) return false;
+  return true;
+}
+
 async function syncAnotaAiPage(pageId) {
   await pool.query(`
     INSERT INTO anotaai_sync_state(page_id,last_poll_at)
@@ -1221,10 +1274,13 @@ async function syncAnotaAiPage(pageId) {
         listed += 1;
 
         const previous = (await pool.query(`
-          SELECT status_code,remote_updated_at,payload FROM anotaai_orders WHERE order_id=$1
+          SELECT status_code,remote_updated_at,payload,display_id FROM anotaai_orders WHERE order_id=$1
         `, [summaryOrder.orderId])).rows[0];
         const summaryUpdated = validAnotaAiDate(summaryOrder.remoteUpdatedAt);
-        const shouldFetch = !previous || Number(previous.status_code) !== Number(summaryOrder.statusCode) ||
+        const missingHumanReference = !previous ||
+          !anotaAiHasHumanReference(previous.display_id, summaryOrder.orderId);
+        const shouldFetch = !previous || missingHumanReference ||
+          Number(previous.status_code) !== Number(summaryOrder.statusCode) ||
           (summaryUpdated && validAnotaAiDate(previous.remote_updated_at) !== summaryUpdated) ||
           !previous.payload || Object.keys(previous.payload).length < 2;
 
@@ -1232,7 +1288,8 @@ async function syncAnotaAiPage(pageId) {
         if (shouldFetch) {
           const detailsBody = await anotaAiClient.getOrder(pageId, summaryOrder.orderId);
           if (detailsBody?.success === false) throw new Error(String(detailsBody?.message || "Falha ao consultar pedido Anota AI."));
-          normalized = normalizeAnotaAiOrder(detailsBody?.info || detailsBody, summary);
+          const candidate = extractAnotaAiOrderCandidate(detailsBody, summaryOrder.orderId);
+          normalized = normalizeAnotaAiOrder(candidate, summary);
         }
 
         const result = await upsertAnotaAiOrder(pageId, normalized);
