@@ -7306,6 +7306,14 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       });
     });
   }
+
+  if (anotaAiDispatchCount > 0) {
+    setImmediate(() => {
+      runAnotaAiDispatchWorkerOnce().catch(err => {
+        console.error("Anota AI dispatch after departure:", anotaAiSafeError(err));
+      });
+    });
+  }
 }));
 
 
