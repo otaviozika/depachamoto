@@ -3007,6 +3007,106 @@ function buildIfoodDeliveryDetails(payload) {
   return Object.values(details).some(Boolean) ? details : null;
 }
 
+function normalizePaymentMethodLabel(method, brand = "") {
+  const key = String(method || "").trim().toUpperCase();
+  const brandText = String(brand || "").trim().toUpperCase();
+  const labels = {
+    CASH: "Dinheiro",
+    CREDIT: "Crédito",
+    DEBIT: "Débito",
+    PIX: "Pix",
+    MEAL_VOUCHER: "Vale-refeição",
+    FOOD_VOUCHER: "Vale-refeição",
+    DIGITAL_WALLET: "Carteira digital"
+  };
+  const base = labels[key] || key.replaceAll("_"," ") || "Pagamento";
+  return brandText && !["PIX","CASH"].includes(key)
+    ? `${base} · ${brandText.replaceAll("_"," ")}`
+    : base;
+}
+
+function buildIfoodPaymentInfo(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+  const payments = order.payments && typeof order.payments === "object" ? order.payments : {};
+  const methods = Array.isArray(payments.methods) ? payments.methods : [];
+  const pending = Number(payments.pending);
+  const pendingAmount = Number.isFinite(pending)
+    ? Math.max(0,pending)
+    : methods.filter(m => m?.prepaid === false || String(m?.type||"").toUpperCase()==="OFFLINE")
+        .reduce((sum,m) => sum + (Number(m?.value)||0),0);
+  if (!(pendingAmount > 0)) return { collect_on_delivery:false, amount:0, method:null };
+
+  const offline = methods.find(m =>
+    m?.prepaid === false ||
+    String(m?.type||"").toUpperCase()==="OFFLINE"
+  ) || methods[0] || {};
+  return {
+    collect_on_delivery:true,
+    amount:pendingAmount,
+    method:normalizePaymentMethodLabel(
+      offline.method,
+      offline.card?.brand || offline.wallet?.name || ""
+    )
+  };
+}
+
+function findNestedPaymentValue(value, keys, depth = 0, seen = new Set()) {
+  if (depth > 7 || !value || typeof value !== "object" || seen.has(value)) return null;
+  seen.add(value);
+  if (!Array.isArray(value)) {
+    for (const key of keys) {
+      const candidate=value[key];
+      if (candidate !== undefined && candidate !== null && String(candidate).trim()!=="") return candidate;
+    }
+  }
+  for (const child of (Array.isArray(value)?value:Object.values(value))) {
+    if (child && typeof child === "object") {
+      const found=findNestedPaymentValue(child,keys,depth+1,seen);
+      if (found !== null && found !== undefined) return found;
+    }
+  }
+  return null;
+}
+
+function buildAnotaAiPaymentInfo(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+
+  const explicitPending=findNestedPaymentValue(order,[
+    "pending","pendingValue","pending_value","amountToCollect","amount_to_collect",
+    "valueToCollect","value_to_collect","remainingValue","remaining_value"
+  ]);
+  const explicitPaid=findNestedPaymentValue(order,[
+    "paid","isPaid","is_paid","paymentPaid","payment_paid","prepaid"
+  ]);
+  const method=findNestedPaymentValue(order,[
+    "paymentMethod","payment_method","paymentType","payment_type","method","payment"
+  ]);
+  const total=findNestedPaymentValue(order,[
+    "total","totalValue","total_value","orderAmount","order_amount","value"
+  ]);
+
+  let amount=Number(explicitPending);
+  if (!Number.isFinite(amount) || amount < 0) amount=0;
+
+  const paidText=String(explicitPaid ?? "").trim().toLowerCase();
+  const explicitlyPaid=explicitPaid===true || ["true","1","yes","sim","paid","pago"].includes(paidText);
+  const methodText=String(method || "").trim();
+  const offlineHint=/dinheiro|cash|pix|credito|crédito|debito|débito|voucher|vale|cart[aã]o/i.test(methodText);
+
+  if (!(amount > 0) && !explicitlyPaid && offlineHint) {
+    const totalNumber=Number(total);
+    if (Number.isFinite(totalNumber) && totalNumber > 0) amount=totalNumber;
+  }
+
+  return {
+    collect_on_delivery:amount > 0,
+    amount:amount > 0 ? amount : 0,
+    method:methodText ? normalizePaymentMethodLabel(methodText) : null
+  };
+}
+
 function buildIfoodDeliveryDestination(payload) {
   const order = parseJsonPayload(payload);
   if (!order) return null;
@@ -3212,6 +3312,7 @@ async function getCourierIfoodDeliveries(courierId) {
       last_error: row.confirmation_last_error,
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
+      payment: buildIfoodPaymentInfo(row.payload),
       ...ui
     };
 
@@ -3283,7 +3384,8 @@ async function getCourierAnotaAiDeliveries(courierId) {
         ? (row.confirmed_at ? "Entrega confirmada no DespacheFull." : "Entrega já finalizada no Anota AI.")
         : (cancelled
           ? "Pedido cancelado no Anota AI."
-          : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código.")
+          : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código."),
+      payment: buildAnotaAiPaymentInfo(row.payload)
     };
 
     if (confirmed) completed.push(item);
