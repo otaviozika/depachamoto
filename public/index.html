@@ -1129,7 +1129,7 @@
           </div>
           <div class="table-wrap">
             <table class="table">
-              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Origem</th><th>Saída</th><th>Etapa / Status</th></tr></thead>
+              <thead><tr><th>Código</th><th>Pedido(s)</th><th>Motoboy</th><th>Origem</th><th>Saída</th><th>Etapa / Status</th><th>Ações</th></tr></thead>
               <tbody id="historyTable"></tbody>
             </table>
           </div>
@@ -1549,6 +1549,34 @@
   </nav>
 </div>
 
+<div id="transferOrderModal" class="modal">
+  <div class="modal-box" style="max-width:520px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h2 style="margin:0">Transferir pedido</h2>
+        <div id="transferOrderFrom" class="small muted" style="margin-top:4px"></div>
+      </div>
+      <button type="button" class="btn outline" onclick="closeTransferOrderModal()">×</button>
+    </div>
+    <div class="warning" style="margin-top:16px">
+      Use esta opção para corrigir uma alocação feita para o motoboy errado. A entrega, confirmação, plataforma e horário serão preservados; a contagem e o pagamento passam para o motoboy correto.
+    </div>
+    <form id="transferOrderForm" class="form">
+      <label>Pedido
+        <select id="transferOrderItem" required></select>
+      </label>
+      <label>Novo motoboy
+        <select id="transferOrderCourier" required></select>
+      </label>
+      <label>Motivo da correção
+        <textarea id="transferOrderReason" rows="3" maxlength="250" required placeholder="Ex.: pedido digitado no motoboy errado"></textarea>
+      </label>
+      <button id="transferOrderBtn" type="submit" class="btn primary">Transferir pedido</button>
+    </form>
+    <div id="transferOrderMsg"></div>
+  </div>
+</div>
+
 <div id="deliveryConfirmModal" class="modal">
   <div class="modal-box" style="max-width:430px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -1659,6 +1687,7 @@ let isFlushingQueue=false;
 let sessionRedirecting=false;
 const OFFLINE_QUEUE_PREFIX='dm_departure_queue_v17_';
 let historyState={page:1,pageSize:25,pages:1,total:0};
+let historyRows=[];
 let paymentState={date:null,rule:null,rows:[],summary:{}};
 let attendanceState={date:null,summary:{present:0,outside:0,available:0,ended:0,absent:0},rows:[]};
 let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownTimer=null;
@@ -2510,11 +2539,83 @@ async function loadHistory(){
   try{
     const d=await api('/api/admin/history?'+p.toString());
     historyState={...historyState,...d.pagination};
-    $('historyTable').innerHTML=d.rows.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${escapeHtml(x.dispatch_code)}</td><td>${ordersHtml(x)}</td><td>${escapeHtml(x.courier_name)}</td><td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN_RECOVERED'?'SAÍDA RECUPERADA':x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td></tr>`}).join('')||empty(6);
+    historyRows=Array.isArray(d.rows)?d.rows:[];
+    $('historyTable').innerHTML=historyRows.map(x=>{
+      const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';
+      const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';
+      return `<tr>
+        <td>${escapeHtml(x.dispatch_code)}</td>
+        <td>${ordersHtml(x)}</td>
+        <td>${escapeHtml(x.courier_name)}</td>
+        <td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN_RECOVERED'?'SAÍDA RECUPERADA':x.registration_source==='ADMIN_TRANSFER'?'CORREÇÃO ADMIN':x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td>
+        <td>${localDate(x.departed_at)}</td>
+        <td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td>
+        <td><button type="button" class="btn outline" onclick="openTransferOrderModal(${Number(x.id)})">Transferir pedido</button></td>
+      </tr>`;
+    }).join('')||empty(7);
     $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
     $('historyPrev').disabled=historyState.page<=1;
     $('historyNext').disabled=historyState.page>=historyState.pages;
-  }catch(err){$('historyTable').innerHTML=`<tr><td colspan="6"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}
+  }catch(err){
+    historyRows=[];
+    $('historyTable').innerHTML=`<tr><td colspan="7"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`;
+  }
+}
+
+function openTransferOrderModal(dispatchId){
+  const row=historyRows.find(x=>Number(x.id)===Number(dispatchId));
+  if(!row)return alert('Registro não encontrado. Atualize o histórico.');
+  const items=Array.isArray(row.order_items)?row.order_items:[];
+  if(!items.length)return alert('Esse registro não possui pedidos disponíveis para transferência.');
+
+  $('transferOrderFrom').textContent=`Motoboy atual: ${row.courier_name}`;
+  $('transferOrderItem').innerHTML=items.map(item=>{
+    const platform=String(item.platform||'manual').toLowerCase()==='anotaai'?'Anota AI':String(item.platform||'manual').toLowerCase()==='ifood'?'iFood':'Manual';
+    return `<option value="${Number(item.id)}">${escapeHtml(item.order_number)} • ${platform}</option>`;
+  }).join('');
+
+  const couriers=(dashboard?.couriers||[]).filter(c=>
+    Number(c.id)!==Number(row.courier_id)&&c.active&&c.approval_status==='APPROVED'
+  );
+  $('transferOrderCourier').innerHTML='<option value="">Selecione...</option>'+couriers.map(c=>
+    `<option value="${Number(c.id)}">${escapeHtml(c.name)}</option>`
+  ).join('');
+  $('transferOrderReason').value='';
+  message('transferOrderMsg','','');
+  $('transferOrderModal').style.display='grid';
+}
+
+function closeTransferOrderModal(){
+  $('transferOrderModal').style.display='none';
+  message('transferOrderMsg','','');
+}
+
+async function submitTransferOrder(e){
+  e.preventDefault();
+  const orderItemId=Number($('transferOrderItem').value);
+  const targetCourierId=Number($('transferOrderCourier').value);
+  const reason=String($('transferOrderReason').value||'').trim();
+  if(!Number.isInteger(orderItemId)||orderItemId<1)return message('transferOrderMsg','Selecione o pedido.','err');
+  if(!Number.isInteger(targetCourierId)||targetCourierId<1)return message('transferOrderMsg','Selecione o novo motoboy.','err');
+  if(reason.length<3)return message('transferOrderMsg','Informe o motivo da correção.','err');
+
+  const btn=$('transferOrderBtn');
+  btn.disabled=true;
+  message('transferOrderMsg','Transferindo pedido...','');
+  try{
+    const d=await api(`/api/admin/dispatch-orders/${orderItemId}/transfer`,{
+      method:'POST',
+      body:JSON.stringify({target_courier_id:targetCourierId,reason})
+    });
+    message('transferOrderMsg',d.message||'Pedido transferido.','ok');
+    await Promise.all([loadAdmin(),loadHistory()]);
+    if($('payments')?.classList.contains('active'))await loadPayments();
+    setTimeout(closeTransferOrderModal,900);
+  }catch(err){
+    message('transferOrderMsg',err.message,'err');
+  }finally{
+    btn.disabled=false;
+  }
 }
 function applyHistoryFilters(){historyState.page=1;loadHistory()}
 function changeHistoryPage(delta){const next=historyState.page+delta;if(next<1||next>historyState.pages)return;historyState.page=next;loadHistory()}
@@ -4704,6 +4805,8 @@ updateConnectionState();
 showSessionNotice();
 loadPublicConfig();
 (async()=>{try{const d=await api('/api/me');me=d.user;showApp()}catch{}})();
+
+$('transferOrderForm')?.addEventListener('submit',submitTransferOrder);
 </script>
 </body>
 </html>
