@@ -3697,6 +3697,146 @@ async function inspectAnotaAiOrdersForDeparture(orders) {
   return { accepted, blocked, matched };
 }
 
+async function inspectAnotaAiOrdersForAdminAllocation(orders, { orderId = null, referenceAt = new Date() } = {}) {
+  const requested = [...new Set(orders.map(plainLocalOrderNumber).filter(Boolean))];
+  if (!requested.length) return { accepted: [], blocked: [], matched: [] };
+
+  const rows = (await pool.query(`
+    SELECT
+      a.order_id,a.page_id,a.display_id,a.status,a.status_code,a.sales_channel,a.order_type,
+      a.customer_name,a.remote_created_at,a.remote_updated_at,a.updated_at,
+      l.dispatch_id AS linked_dispatch_id,
+      d.status AS linked_dispatch_status,
+      u.name AS linked_courier_name
+    FROM anotaai_orders a
+    LEFT JOIN anotaai_dispatch_links l ON l.anotaai_order_id=a.order_id
+    LEFT JOIN dispatches d ON d.id=l.dispatch_id
+    LEFT JOIN users u ON u.id=d.courier_id
+    WHERE LOWER(REGEXP_REPLACE(COALESCE(a.display_id,''), '^#', '')) = ANY($1::text[])
+      AND ($2::text IS NULL OR a.order_id=$2)
+    ORDER BY COALESCE(a.remote_updated_at,a.remote_created_at,a.updated_at) DESC
+  `, [requested, orderId])).rows;
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = plainLocalOrderNumber(row.display_id);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+
+  const accepted = [];
+  const blocked = [];
+  const matched = [];
+
+  for (const localOrder of orders) {
+    const key = plainLocalOrderNumber(localOrder);
+    const candidates = grouped.get(key) || [];
+    if (!candidates.length) continue;
+
+    if (candidates.length > 1) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        code: "ANOTAAI_ORDER_AMBIGUOUS",
+        message: "Há mais de um pedido Anota AI com esse número. Selecione o pedido pela tela do Anota AI."
+      });
+      matched.push(...candidates.map(row => ({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        display_id: row.display_id,
+        status: String(row.status || "UNKNOWN").toUpperCase()
+      })));
+      continue;
+    }
+
+    const row = candidates[0];
+    const status = String(row.status || "UNKNOWN").trim().toUpperCase();
+    const orderType = String(row.order_type || "").trim().toUpperCase();
+    matched.push({
+      platform: "anotaai",
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      status,
+      order_type: orderType
+    });
+
+    if (orderType !== "DELIVERY") {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: orderType === "TAKE" ? "ANOTAAI_TAKEOUT" : "ANOTAAI_NOT_DELIVERY",
+        message: orderType === "TAKE"
+          ? "Esse pedido Anota AI é retirada no local e não pode ser alocado para motoboy."
+          : "Esse pedido Anota AI não é uma entrega e não pode ser alocado para motoboy."
+      });
+      continue;
+    }
+
+    if (row.linked_dispatch_id) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_ALREADY_LINKED",
+        message: row.linked_courier_name
+          ? `Esse pedido Anota AI já está alocado para ${row.linked_courier_name}.`
+          : "Esse pedido Anota AI já possui motoboy."
+      });
+      continue;
+    }
+
+    if (["CANCELLED","DENIED","CANCELLATION_REQUESTED"].includes(status)) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_CLOSED",
+        message: `Esse pedido Anota AI não pode ser alocado (${status}).`
+      });
+      continue;
+    }
+
+    if (!["PRODUCTION","READY","FINISHED"].includes(status)) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_ORDER_NOT_AVAILABLE",
+        message: "Esse pedido Anota AI ainda não está disponível para alocação."
+      });
+      continue;
+    }
+
+    const createdAt = validAnotaAiDate(row.remote_created_at);
+    const referenceMs = Date.parse(referenceAt);
+    if (createdAt && Number.isFinite(referenceMs) && referenceMs < Date.parse(createdAt)) {
+      blocked.push({
+        platform: "anotaai",
+        order_number: localOrder,
+        order_id: row.order_id,
+        code: "ANOTAAI_DEPARTURE_BEFORE_ORDER",
+        message: "O horário informado é anterior à criação do pedido Anota AI."
+      });
+      continue;
+    }
+
+    accepted.push({
+      platform: "anotaai",
+      order_date: orderDateSP(row.remote_created_at || row.remote_updated_at || referenceAt),
+      order_number: localOrder,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      status,
+      order_type: orderType
+    });
+  }
+
+  return { accepted, blocked, matched };
+}
+
 async function inspectOrders(orders, ifoodLinks = [], anotaAiLinks = []) {
   if (!orders.length) return { active: [], recent: [] };
 
@@ -6292,47 +6432,324 @@ async function assignCompletedIfoodOrder({ actorUserId, courierId, link, departe
   } finally { client.release(); }
 }
 
+async function assignCompletedAnotaAiOrder({ actorUserId, courierId, link, departedAt, adminReason }) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
+
+    const actor = (await client.query(
+      "SELECT role FROM users WHERE id=$1 AND active=TRUE",
+      [actorUserId]
+    )).rows[0];
+    if (actor?.role !== "admin") {
+      throw Object.assign(new Error("Apenas o Admin pode alocar uma entrega concluída."), { status: 403 });
+    }
+
+    const courier = (await client.query(
+      "SELECT id FROM users WHERE id=$1 AND role='courier' AND active=TRUE AND approval_status='APPROVED' FOR UPDATE",
+      [courierId]
+    )).rows[0];
+    if (!courier) {
+      throw Object.assign(new Error("Motoboy indisponível para esta operação."), { status: 409 });
+    }
+
+    const order = (await client.query(
+      "SELECT * FROM anotaai_orders WHERE order_id=$1 FOR UPDATE",
+      [link.order_id]
+    )).rows[0];
+
+    const status = String(order?.status || "").trim().toUpperCase();
+    const orderType = String(order?.order_type || "").trim().toUpperCase();
+    if (!order || status !== "FINISHED" || orderType !== "DELIVERY" ||
+        plainLocalOrderNumber(order.display_id) !== plainLocalOrderNumber(link.order_number)) {
+      throw Object.assign(new Error("O pedido mudou no Anota AI. Atualize e valide novamente."), { status: 409 });
+    }
+
+    const time = Date.parse(departedAt);
+    const createdAt = Date.parse(order.remote_created_at || "");
+    if (!Number.isFinite(time) || time > Date.now() || time < Date.now()-23*60*60*1000 ||
+        (Number.isFinite(createdAt) && time < createdAt) ||
+        !adminReason || adminReason.length < 3 || adminReason.length > 250) {
+      throw Object.assign(new Error("Confira o motivo e o horário real da saída (últimas 23 horas, após a criação do pedido)."), { status: 400 });
+    }
+
+    if ((await client.query(
+      "SELECT 1 FROM anotaai_dispatch_links WHERE anotaai_order_id=$1",
+      [order.order_id]
+    )).rowCount) {
+      throw Object.assign(new Error("Esse pedido Anota AI já possui um motoboy vinculado."), {
+        status: 409,
+        code: "ANOTAAI_ORDER_ALREADY_LINKED"
+      });
+    }
+
+    const recoveredShift = resolveDispatchShift({
+      departedAt,
+      recovery: true,
+      recoveryShiftCode: null
+    });
+    const payment = (await client.query(`
+      SELECT status FROM courier_payments
+      WHERE courier_id=$1 AND payment_date=$2::date AND shift_code=$3
+      FOR UPDATE
+    `, [courierId,recoveredShift.operational_date,recoveredShift.shift_code])).rows[0];
+
+    if (payment && payment.status !== "OPEN") {
+      throw Object.assign(new Error(
+        `O pagamento de ${recoveredShift.shift_label} já foi revisado ou pago. Reabra este turno no Financeiro antes de vincular o pedido.`
+      ), { status: 409 });
+    }
+
+    const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
+      Math.random().toString(36).slice(2,6).toUpperCase();
+
+    const dispatch = (await client.query(`
+      INSERT INTO dispatches(
+        dispatch_code,order_number,courier_id,registered_by,registration_source,admin_reason,
+        departed_at,status,operational_stage,closed_reason,released_at,released_by,
+        operational_date,shift_code
+      )
+      VALUES(
+        $1,$2,$3,$4,'ADMIN_RECOVERED',$5,$6::timestamptz,
+        'RELEASED','COMPLETED','COMPLETED_ANOTAAI_ORDER_ASSIGNED',NOW(),$4,$7::date,$8
+      )
+      RETURNING *
+    `, [
+      code,link.order_number,courierId,actorUserId,adminReason,departedAt,
+      recoveredShift.operational_date,recoveredShift.shift_code
+    ])).rows[0];
+
+    await client.query(
+      "INSERT INTO dispatch_orders(dispatch_id,order_number,platform) VALUES($1,$2,'anotaai')",
+      [dispatch.id,link.order_number]
+    );
+
+    await client.query(`
+      INSERT INTO anotaai_dispatch_links(anotaai_order_id,dispatch_id,local_order_number)
+      VALUES($1,$2,$3)
+    `, [order.order_id,dispatch.id,link.order_number]);
+
+    await client.query(`
+      INSERT INTO anotaai_delivery_confirmations(
+        anotaai_order_id,dispatch_id,courier_id,confirmed_at
+      )
+      VALUES($1,$2,$3,COALESCE($4::timestamptz,NOW()))
+      ON CONFLICT(anotaai_order_id,dispatch_id) DO NOTHING
+    `, [order.order_id,dispatch.id,courierId,order.remote_updated_at || null]);
+
+    await client.query(`
+      INSERT INTO audit_logs(user_id,action,entity,entity_id,details)
+      VALUES($1,'COMPLETED_ANOTAAI_ORDER_ASSIGNED','dispatch',$2,$3::jsonb)
+    `, [
+      actorUserId,
+      dispatch.id,
+      JSON.stringify({
+        courier_id: courierId,
+        anotaai_order_id: order.order_id,
+        order_number: link.order_number,
+        reason: adminReason,
+        departed_at: departedAt,
+        departure_time_source: "ADMIN_REPORTED",
+        anotaai_status: status,
+        completed_assignment: true
+      })
+    ]);
+
+    await client.query("COMMIT");
+    return {
+      dispatch: { ...dispatch, order_numbers: [link.order_number] },
+      completedAssignment: true
+    };
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function addRouteOrder(req, res, recovery) {
   const courierId = recovery ? Number(req.body.courier_id) : req.session.user.id;
   if (!Number.isInteger(courierId) || courierId < 1) return res.status(400).json({error:'Selecione um motoboy.'});
   const courier = (await pool.query("SELECT * FROM users WHERE id=$1 AND role='courier'", [courierId])).rows[0];
-  if (!courier?.active || courier.approval_status !== 'APPROVED' || (!recovery && courier.must_change_password)) return res.status(403).json({error:'Motoboy indisponível para esta operação.'});
+  if (!courier?.active || courier.approval_status !== 'APPROVED' || (!recovery && courier.must_change_password)) {
+    return res.status(403).json({error:'Motoboy indisponível para esta operação.'});
+  }
+
   const orders = normalizeOrders(req.body);
-  if (orders.length !== 1 || !Array.isArray(req.body.order_numbers) || req.body.order_numbers.length !== 1) return res.status(400).json({error:'Informe exatamente um pedido.'});
+  if (orders.length !== 1 || !Array.isArray(req.body.order_numbers) || req.body.order_numbers.length !== 1) {
+    return res.status(400).json({error:'Informe exatamente um pedido.'});
+  }
+
   const reason = String(req.body.reason || '').trim();
-  if (recovery && (reason.length < 3 || reason.length > 250)) return res.status(400).json({error:'Informe o motivo do vínculo (3 a 250 caracteres).'});
+  if (recovery && (reason.length < 3 || reason.length > 250)) {
+    return res.status(400).json({error:'Informe o motivo do vínculo (3 a 250 caracteres).'});
+  }
+
   let departedAt = null;
   if (recovery) {
     departedAt = req.body.departed_at;
     const time = Date.parse(departedAt);
-    if (!Number.isFinite(time) || time > Date.now() || time < Date.now()-23*60*60*1000) return res.status(400).json({error:'Informe o horário real da saída, nas últimas 23 horas.'});
+    if (!Number.isFinite(time) || time > Date.now() || time < Date.now()-23*60*60*1000) {
+      return res.status(400).json({error:'Informe o horário real da saída, nas últimas 23 horas.'});
+    }
   }
-  const orderId = recovery ? String(req.body.ifood_order_id || '').trim().slice(0,100) || null : null;
-  const inspection = await inspectIfoodOrdersForDeparture(orders, { recovery, allowCompleted:recovery, orderId, referenceAt: departedAt || new Date() });
-  if (inspection.blocked.length || inspection.accepted.length !== 1) return res.status(409).json({error:inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'});
-  const completedAssignment = recovery && ['CONCLUDED','DELIVERED'].includes(inspection.accepted[0].status);
+
+  let ifoodLinks = [];
+  let anotaAiLinks = [];
+  let selectedPlatform = "ifood";
+  let completedAssignment = false;
+
+  if (recovery) {
+    const requested = requestedPlatformMap(req.body, orders);
+    const requestedPlatform = requested.get(plainLocalOrderNumber(orders[0])) || null;
+    const ifoodOrderId = String(req.body.ifood_order_id || '').trim().slice(0,100) || null;
+    const anotaAiOrderId = String(req.body.anotaai_order_id || '').trim().slice(0,100) || null;
+
+    const [ifoodInspection, anotaInspection] = await Promise.all([
+      inspectIfoodOrdersForDeparture(orders, {
+        recovery: true,
+        allowCompleted: true,
+        orderId: ifoodOrderId,
+        referenceAt: departedAt
+      }),
+      inspectAnotaAiOrdersForAdminAllocation(orders, {
+        orderId: anotaAiOrderId,
+        referenceAt: departedAt
+      })
+    ]);
+
+    const ifoodAccepted = ifoodInspection.accepted[0] || null;
+    const anotaAccepted = anotaInspection.accepted[0] || null;
+
+    if (ifoodAccepted && anotaAccepted && !requestedPlatform) {
+      return res.status(409).json({
+        error: "Esse número existe no iFood e no Anota AI. Escolha a plataforma antes de alocar.",
+        code: "ORDER_PLATFORM_REQUIRED",
+        platforms: [
+          { platform: "ifood", label: "iFood", status: ifoodAccepted.status },
+          { platform: "anotaai", label: "Anota AI", status: anotaAccepted.status }
+        ]
+      });
+    }
+
+    selectedPlatform = requestedPlatform ||
+      (ifoodAccepted && !anotaAccepted ? "ifood" : null) ||
+      (anotaAccepted && !ifoodAccepted ? "anotaai" : null);
+
+    if (selectedPlatform === "ifood") {
+      if (!ifoodAccepted) {
+        const blocked = ifoodInspection.blocked[0];
+        return res.status(409).json({
+          error: blocked?.message || "Pedido não encontrado ou indisponível no iFood.",
+          code: blocked?.code || "IFOOD_ORDER_REQUIRED"
+        });
+      }
+      ifoodLinks = [ifoodAccepted];
+      completedAssignment = ['CONCLUDED','DELIVERED'].includes(ifoodAccepted.status);
+    } else if (selectedPlatform === "anotaai") {
+      if (!anotaAccepted) {
+        const blocked = anotaInspection.blocked[0];
+        return res.status(409).json({
+          error: blocked?.message || "Pedido não encontrado ou indisponível no Anota AI.",
+          code: blocked?.code || "ANOTAAI_ORDER_REQUIRED"
+        });
+      }
+      anotaAiLinks = [anotaAccepted];
+      completedAssignment = anotaAccepted.status === "FINISHED";
+    } else {
+      const blocked = anotaInspection.blocked[0] || ifoodInspection.blocked[0];
+      return res.status(409).json({
+        error: blocked?.message || `Pedido ${orders[0]} não foi encontrado no iFood nem no Anota AI.`,
+        code: blocked?.code || "ORDER_PLATFORM_NOT_FOUND"
+      });
+    }
+  } else {
+    // Adição à rota pelo motoboy mantém a validação atual do iFood.
+    const inspection = await inspectIfoodOrdersForDeparture(orders);
+    if (inspection.blocked.length || inspection.accepted.length !== 1) {
+      return res.status(409).json({
+        error: inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'
+      });
+    }
+    ifoodLinks = inspection.accepted;
+  }
+
   if (!completedAssignment) {
     const routeShift = getCurrentOperationalShift();
-    if (!routeShift) return res.status(409).json({error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',code:'OUTSIDE_OPERATIONAL_SHIFT'});
+    if (!routeShift) {
+      return res.status(409).json({
+        error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',
+        code:'OUTSIDE_OPERATIONAL_SHIFT'
+      });
+    }
     const attendance = await getCourierAttendance(courierId, routeShift.operational_date, routeShift.shift_code);
-    if (!attendance || attendance.checked_out_at) return res.status(403).json({error:'É necessário estar com presença confirmada e expediente aberto neste turno.',code:'ATTENDANCE_REQUIRED',shift_code:routeShift.shift_code});
+    if (!attendance || attendance.checked_out_at) {
+      return res.status(403).json({
+        error:'É necessário estar com presença confirmada e expediente aberto neste turno.',
+        code:'ATTENDANCE_REQUIRED',
+        shift_code:routeShift.shift_code
+      });
+    }
   }
+
   let result;
   try {
-    result = completedAssignment
-      ? await assignCompletedIfoodOrder({actorUserId:req.session.user.id,courierId,link:inspection.accepted[0],departedAt,adminReason:reason})
-      : await createDispatchTransaction({actorUserId:req.session.user.id,courierId,orders,
-      source:recovery ? 'ADMIN_RECOVERED' : 'COURIER', adminReason:reason || null,
-      departedAt, ifoodLinks:inspection.accepted, append:!recovery, recovery});
+    if (completedAssignment && selectedPlatform === "ifood") {
+      result = await assignCompletedIfoodOrder({
+        actorUserId:req.session.user.id,
+        courierId,
+        link:ifoodLinks[0],
+        departedAt,
+        adminReason:reason
+      });
+    } else if (completedAssignment && selectedPlatform === "anotaai") {
+      result = await assignCompletedAnotaAiOrder({
+        actorUserId:req.session.user.id,
+        courierId,
+        link:anotaAiLinks[0],
+        departedAt,
+        adminReason:reason
+      });
+    } else {
+      result = await createDispatchTransaction({
+        actorUserId:req.session.user.id,
+        courierId,
+        orders,
+        source:recovery ? 'ADMIN_RECOVERED' : 'COURIER',
+        adminReason:reason || null,
+        departedAt,
+        ifoodLinks,
+        anotaAiLinks,
+        append:!recovery,
+        recovery
+      });
+    }
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({error:'Este pedido já está vinculado. Atualize a rota.'});
+    if (err.code === '23505') {
+      return res.status(409).json({error:'Este pedido já está vinculado. Atualize a rota.'});
+    }
     throw err;
   }
+
   io.emit('dispatch:changed',{courier_id:courierId,dispatch_id:result.dispatch.id,change:'ORDER_ADDED'});
   io.emit('payment:changed',{courier_id:courierId,change:'ORDER_ADDED'});
-  io.emit('ifood:changed');
-  res.status(201).json({dispatch:result.dispatch,external_dispatch:recovery,completed_assignment:completedAssignment});
-  if (!recovery) setImmediate(() => runIfoodDispatchWorkerOnce().catch(err => console.error('iFood dispatch after route addition:', ifoodDispatchErrorText(err))));
+  if (ifoodLinks.length) io.emit('ifood:changed');
+  if (anotaAiLinks.length) io.emit('anotaai:changed');
+
+  res.status(201).json({
+    dispatch:result.dispatch,
+    external_dispatch:recovery,
+    completed_assignment:completedAssignment,
+    platform:selectedPlatform
+  });
+
+  if (!recovery && ifoodLinks.length) {
+    setImmediate(() => runIfoodDispatchWorkerOnce().catch(err =>
+      console.error('iFood dispatch after route addition:', ifoodDispatchErrorText(err))
+    ));
+  }
 }
 app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
 app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
@@ -7913,10 +8330,17 @@ app.get("/api/admin/anotaai/status", auth, adminOnly, asyncRoute(async (req, res
     ORDER BY page_id
   `)).rows;
   const recentOrders = (await pool.query(`
-    SELECT order_id,page_id,display_id,status,status_code,sales_channel,order_type,
-           customer_name,remote_created_at,remote_updated_at,updated_at
-    FROM anotaai_orders
-    ORDER BY COALESCE(remote_updated_at,remote_created_at,updated_at) DESC
+    SELECT
+      a.order_id,a.page_id,a.display_id,a.status,a.status_code,a.sales_channel,a.order_type,
+      a.customer_name,a.remote_created_at,a.remote_updated_at,a.updated_at,
+      l.dispatch_id AS linked_dispatch_id,
+      d.courier_id AS linked_courier_id,
+      u.name AS local_courier_name
+    FROM anotaai_orders a
+    LEFT JOIN anotaai_dispatch_links l ON l.anotaai_order_id=a.order_id
+    LEFT JOIN dispatches d ON d.id=l.dispatch_id
+    LEFT JOIN users u ON u.id=d.courier_id
+    ORDER BY COALESCE(a.remote_updated_at,a.remote_created_at,a.updated_at) DESC
     LIMIT 80
   `)).rows;
 
