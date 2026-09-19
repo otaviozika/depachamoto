@@ -42,6 +42,11 @@
 .delivery-address{display:flex;gap:8px;align-items:flex-start;color:#475569;font-size:12px;line-height:1.35}
 .delivery-address-pin{width:22px;height:22px;min-width:22px;border-radius:50%;background:#e0f2fe;color:#0284c7;display:inline-grid;place-items:center;font-size:12px;font-weight:900}
 .delivery-details{display:grid;gap:6px;padding:10px 12px;border-left:3px solid #f97316;border-radius:6px;background:#fff7ed;color:#334155;font-size:13px;line-height:1.45;min-width:0}
+.delivery-payment{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:11px;border:2px solid #f59e0b;border-radius:12px;background:linear-gradient(135deg,#fffbeb,#fff7d6);box-shadow:0 5px 18px rgba(245,158,11,.12)}
+.delivery-payment-cell{min-width:0;padding:2px 6px}.delivery-payment-cell+.delivery-payment-cell{border-left:1px solid #fbbf24}
+.delivery-payment-label{font-size:11px;font-weight:900;letter-spacing:.35px;text-transform:uppercase;color:#92400e}
+.delivery-payment-value{margin-top:3px;font-size:20px;line-height:1.1;font-weight:950;color:#111827;overflow-wrap:anywhere}.delivery-payment-method{font-size:16px}
+@media(max-width:520px){.delivery-payment{grid-template-columns:1fr 1fr}.delivery-payment-value{font-size:19px}.delivery-payment-method{font-size:15px}}
 .delivery-detail{white-space:pre-wrap;overflow-wrap:anywhere}
 .delivery-detail strong{color:#9a3412}
 .delivery-section-label{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-top:12px}
@@ -2929,6 +2934,25 @@ function courierDeliveryWazeButton(x){
   return `<a class="btn waze" href="${escapeHtml(url)}" target="_blank" rel="noopener"><span class="waze-mark"><img src="/waze-icon.png" alt="" loading="lazy"></span> Ir para o Waze</a>`;
 }
 
+function moneyBRL(value){
+  const n=Number(value);
+  return Number.isFinite(n)?n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—';
+}
+function courierDeliveryPaymentHtml(x){
+  const p=x?.payment;
+  if(!p||p.collect_on_delivery!==true||!(Number(p.amount)>0))return '';
+  return `<div class="delivery-payment">
+    <div class="delivery-payment-cell">
+      <div class="delivery-payment-label">💰 Cobrar na entrega</div>
+      <div class="delivery-payment-value">${moneyBRL(p.amount)}</div>
+    </div>
+    <div class="delivery-payment-cell">
+      <div class="delivery-payment-label">Forma de pagamento</div>
+      <div class="delivery-payment-value delivery-payment-method">${escapeHtml(p.method||'Consultar pedido')}</div>
+    </div>
+  </div>`;
+}
+
 function courierDeliveryRow(x){
   const display='#'+escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
   const platform=String(x.platform||'ifood').toLowerCase();
@@ -2950,6 +2974,7 @@ function courierDeliveryRow(x){
     </div>
     ${courierDeliveryAddressHtml(x)}
     ${courierDeliveryDetailsHtml(x)}
+    ${courierDeliveryPaymentHtml(x)}
     <div class="small">${escapeHtml(x.message||'')}</div>
     <div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>
   </div>`;
