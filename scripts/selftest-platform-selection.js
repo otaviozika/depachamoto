@@ -6,6 +6,10 @@ const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "
 const sw = fs.readFileSync(new URL("../public/service-worker.js", import.meta.url), "utf8");
 
 const checks = {
+  adminAnotaAllocation: server.includes("inspectAnotaAiOrdersForAdminAllocation") &&
+    server.includes("assignCompletedAnotaAiOrder") &&
+    html.includes("openUnassignedAnotaAiOrder") &&
+    html.includes("routePlatformLabel"),
   combined_lookup: server.includes('/api/courier/orders/lookup'),
   both_platforms_inspected:
     server.includes('inspectIfoodOrdersForDeparture(orders)') &&
@@ -28,7 +32,7 @@ const checks = {
   ifood_code_flow_preserved: html.includes('/verify-delivery'),
   anota_no_code_flow_preserved: html.includes('/confirm-delivery'),
   pwa_cache_refreshed: html.includes("serviceWorker.register('/service-worker.js')") &&
-    sw.includes('admin-order-transfer-v1')
+    sw.includes('admin-anota-allocation-v1')
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
