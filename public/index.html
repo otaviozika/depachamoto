@@ -1743,7 +1743,15 @@ const apiGetInFlight=new Map();
 async function api(url,opt={}){
   const method=String(opt.method||'GET').toUpperCase();
   const request=async()=>{
-    const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
+    let r;
+    try{
+      r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
+    }catch(cause){
+      const err=new Error('Não foi possível conectar ao DespacheFull. Verifique a internet e tente novamente.');
+      err.code='NETWORK_ERROR';
+      err.cause=cause;
+      throw err;
+    }
     let d={};try{d=await r.json()}catch{}
     await stopForExpiredSession(r);
     if(!r.ok){const err=new Error(d.error||'Erro na operação.');err.status=r.status;err.code=d.code;err.payload=d;throw err}
@@ -2322,7 +2330,33 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden&&scannerLoopActive)closeOrderScanner();
 });
 
-async function login(e){e.preventDefault();try{const d=await api('/api/login',{method:'POST',body:JSON.stringify({username:$('loginUser').value,password:$('loginPass').value})});me=d.user;showApp()}catch(err){message('authMsg',err.message,'err')}}
+async function login(e){
+  e.preventDefault();
+  const form=$('loginForm');
+  const submit=form?.querySelector('button[type="submit"]');
+  if(submit?.disabled)return;
+  if(submit)submit.disabled=true;
+  message('authMsg','','err');
+  try{
+    const payload={username:$('loginUser').value,password:$('loginPass').value};
+    let d;
+    try{
+      d=await api('/api/login',{method:'POST',body:JSON.stringify(payload)});
+    }catch(err){
+      if(err.code!=='NETWORK_ERROR')throw err;
+      await new Promise(resolve=>setTimeout(resolve,900));
+      d=await api('/api/login',{method:'POST',body:JSON.stringify(payload)});
+    }
+    me=d.user;
+    showApp();
+  }catch(err){
+    message('authMsg',err.code==='NETWORK_ERROR'
+      ?'Sem conexão com o DespacheFull. Verifique a internet e tente novamente.'
+      :err.message,'err');
+  }finally{
+    if(submit)submit.disabled=false;
+  }
+}
 async function register(e){e.preventDefault();if($('regPass').value!==$('regPass2').value)return message('authMsg','As senhas não conferem.','err');try{const d=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('regName').value,username:$('regUser').value,password:$('regPass').value})});setAuth('login');$('loginUser').value=d.user.username;message('authMsg',d.message||'Cadastro enviado para aprovação.','ok')}catch(err){message('authMsg',err.message,'err')}}
 async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}location.reload()}
 
