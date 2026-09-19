@@ -1073,7 +1073,7 @@
     </div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Tipo</th><th>Origem</th><th>Atualizado</th></tr></thead>
+        <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Tipo</th><th>Origem</th><th>Atualizado</th><th>Ação</th></tr></thead>
         <tbody id="anotaAiOrdersTable"></tbody>
       </table>
     </div>
@@ -1632,7 +1632,15 @@
   <p id="routeOrderHelp" class="small muted"></p><div id="routeOrderMsg"></div>
   <form id="routeOrderForm" class="form" onsubmit="submitRouteOrder(event)">
     <label id="routeCourierLabel">Motoboy<select id="routeCourier"></select></label>
-    <label>Pedido iFood<input id="routeOrderNumber" required maxlength="50" placeholder="#4415" autocomplete="off"></label>
+    <label>Pedido (iFood ou Anota AI)<input id="routeOrderNumber" required maxlength="50" placeholder="#4415" autocomplete="off"></label>
+    <label id="routePlatformLabel" class="hidden">Plataforma
+      <select id="routePlatform">
+        <option value="">Identificar automaticamente</option>
+        <option value="ifood">iFood</option>
+        <option value="anotaai">Anota AI</option>
+      </select>
+      <span class="small muted">Só é necessário escolher quando o mesmo número existir nas duas plataformas.</span>
+    </label>
     <label id="routeReasonLabel">Motivo do vínculo<input id="routeReason" minlength="3" maxlength="250" placeholder="Ex.: motoboy esqueceu de registrar no aplicativo"></label>
     <label id="routeTimeLabel">Horário real da saída<input id="routeDepartureTime" type="datetime-local"><span class="small muted">Usado se for necessário recuperar uma saída. Informe quando o motoboy saiu com o pedido.</span></label>
     <button id="routeOrderSubmit" class="btn primary">Validar e vincular pedido</button>
@@ -3133,14 +3141,18 @@ async function arriveAtStore(id){
   }catch(err){alert(err.message)}
 }
 
-let routeOrderRecovery=false,routeOrderId=null;
+let routeOrderRecovery=false,routeOrderId=null,routeOrderSourcePlatform=null;
 function closeRouteOrderModal(){$('routeOrderModal').style.display='none'}
 function openRouteOrderModal(recovery){
-  routeOrderRecovery=recovery;routeOrderId=null;
+  routeOrderRecovery=recovery;routeOrderId=null;routeOrderSourcePlatform=null;
   $('routeOrderNumber').readOnly=false;
   $('routeOrderForm').reset();$('routeOrderMsg').innerHTML='';
+  $('routePlatform').value='';
+  $('routePlatformLabel').classList.add('hidden');
   $('routeOrderTitle').textContent=recovery?'Alocar pedido sem motoboy':'Adicionar pedido à rota atual';
-  $('routeOrderHelp').textContent=recovery?'Entrega própria sem motoboy: pedidos despachados entram na rota; entregas já confirmadas são alocadas no histórico e na contagem de pagamento, mantendo a entrega concluída. Informe o motivo e o horário real da saída.':'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
+  $('routeOrderHelp').textContent=recovery
+    ? 'Localize pedidos de entrega do iFood ou Anota AI e aloque ao motoboy correto. Pedidos já concluídos também podem ser recuperados para o histórico e pagamento sem reabrir a entrega.'
+    : 'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
   for(const id of ['routeCourierLabel','routeReasonLabel','routeTimeLabel'])$(id).classList.toggle('hidden',!recovery);
   for(const id of ['routeCourier','routeReason','routeDepartureTime'])$(id).required=recovery;
   $('routeCourier').innerHTML='<option value="">Selecione...</option>'+(dashboard?.couriers||[]).map(c=>'<option value="'+Number(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
@@ -3152,20 +3164,62 @@ async function openUnassignedOrder(orderId){
   if(document.fullscreenElement)await document.exitFullscreen();
   openRouteOrderModal(true);
   routeOrderId=row.order_id;
+  routeOrderSourcePlatform='ifood';
+  $('routePlatform').value='ifood';
+  $('routePlatformLabel').classList.remove('hidden');
   $('routeOrderNumber').value=row.display_id||'';
+  $('routeOrderNumber').readOnly=true;
+}
+function openUnassignedAnotaAiOrder(orderId,displayId){
+  if(me?.role!=='admin')return;
+  openRouteOrderModal(true);
+  routeOrderId=String(orderId||'');
+  routeOrderSourcePlatform='anotaai';
+  $('routePlatform').value='anotaai';
+  $('routePlatformLabel').classList.remove('hidden');
+  $('routeOrderNumber').value=String(displayId||'');
   $('routeOrderNumber').readOnly=true;
 }
 async function submitRouteOrder(e){
   e.preventDefault();const btn=$('routeOrderSubmit');btn.disabled=true;
   try{
-    const payload={order_numbers:[$('routeOrderNumber').value.trim()]};
-    if(routeOrderId)payload.ifood_order_id=routeOrderId;
-    if(routeOrderRecovery){payload.courier_id=Number($('routeCourier').value);payload.reason=$('routeReason').value.trim();payload.departed_at=new Date($('routeDepartureTime').value).toISOString()}
-    await api(routeOrderRecovery?'/api/admin/dispatches/link-external':'/api/courier/route/orders',{method:'POST',body:JSON.stringify(payload)});
-    message('routeOrderMsg','Pedido vinculado com sucesso.','ok');
-    if(routeOrderRecovery){await loadAdmin();await loadWallboard()}else await loadCourier();
+    const orderNumber=$('routeOrderNumber').value.trim();
+    const payload={order_numbers:[orderNumber]};
+    const selectedPlatform=$('routePlatform').value||routeOrderSourcePlatform||'';
+    if(selectedPlatform){
+      payload.platform_selections=[{order_number:orderNumber,platform:selectedPlatform}];
+    }
+    if(routeOrderId&&routeOrderSourcePlatform==='ifood')payload.ifood_order_id=routeOrderId;
+    if(routeOrderId&&routeOrderSourcePlatform==='anotaai')payload.anotaai_order_id=routeOrderId;
+    if(routeOrderRecovery){
+      payload.courier_id=Number($('routeCourier').value);
+      payload.reason=$('routeReason').value.trim();
+      const rawTime=$('routeDepartureTime').value;
+      if(!rawTime)throw new Error('Informe o horário real da saída.');
+      payload.departed_at=new Date(rawTime).toISOString();
+    }
+    const d=await api(routeOrderRecovery?'/api/admin/dispatches/link-external':'/api/courier/route/orders',{
+      method:'POST',
+      body:JSON.stringify(payload)
+    });
+    const platformLabel=d.platform==='anotaai'?'Anota AI':d.platform==='ifood'?'iFood':'pedido';
+    message('routeOrderMsg',`Pedido ${platformLabel} vinculado com sucesso.`,'ok');
+    if(routeOrderRecovery){
+      await Promise.all([loadAdmin(),loadWallboard(),loadAnotaAiStatus().catch(()=>{})]);
+    }else await loadCourier();
     closeRouteOrderModal();
-  }catch(err){message('routeOrderMsg',err.message,'err')}finally{btn.disabled=false}
+  }catch(err){
+    if(err.code==='ORDER_PLATFORM_REQUIRED'){
+      const platforms=Array.isArray(err.payload?.platforms)?err.payload.platforms:[];
+      $('routePlatform').innerHTML='<option value="">Escolha a plataforma...</option>'+platforms.map(p=>
+        `<option value="${escapeHtml(p.platform)}">${escapeHtml(p.label||p.platform)}${p.status?' • '+escapeHtml(p.status):''}</option>`
+      ).join('');
+      $('routePlatformLabel').classList.remove('hidden');
+      message('routeOrderMsg','Esse número existe no iFood e no Anota AI. Escolha a plataforma e confirme novamente.','err');
+    }else{
+      message('routeOrderMsg',err.message,'err');
+    }
+  }finally{btn.disabled=false}
 }
 async function depart(e){
   e.preventDefault();
@@ -3965,17 +4019,28 @@ async function loadAnotaAiStatus(){
         : `<div class="msg ok">Conectado a ${pages.length} loja(s). ${d.automaticSyncEnabled?'Atualização automática ativa.':'Use “Sincronizar agora” para buscar pedidos.'}</div>`;
     }
 
-    $('anotaAiOrdersTable').innerHTML=(d.recentOrders||[]).map(order=>`<tr>
-      <td><b>#${escapeHtml(order.display_id||order.order_id)}</b><div class="small muted">${escapeHtml(order.order_id)}</div></td>
-      <td>${escapeHtml(order.customer_name||'—')}</td>
-      <td>${anotaAiStatusBadge(order.status_code,order.status)}</td>
-      <td>${escapeHtml(order.order_type||'—')}</td>
-      <td>${escapeHtml(order.sales_channel||'anotaai')}</td>
-      <td>${localDate(order.remote_updated_at||order.remote_created_at||order.updated_at)}</td>
-    </tr>`).join('')||empty(6);
+    $('anotaAiOrdersTable').innerHTML=(d.recentOrders||[]).map(order=>{
+      const status=String(order.status||'').toUpperCase();
+      const orderType=String(order.order_type||'').toUpperCase();
+      let action='—';
+      if(order.local_courier_name){
+        action=`<span class="badge green">Com ${escapeHtml(order.local_courier_name)}</span>`;
+      }else if(orderType==='DELIVERY'&&['PRODUCTION','READY','FINISHED'].includes(status)){
+        action=`<button class="btn outline" type="button" onclick='openUnassignedAnotaAiOrder(${JSON.stringify(order.order_id)},${JSON.stringify(order.display_id||order.order_id)})'>Alocar</button>`;
+      }
+      return `<tr>
+        <td><b>#${escapeHtml(order.display_id||order.order_id)}</b><div class="small muted">${escapeHtml(order.order_id)}</div></td>
+        <td>${escapeHtml(order.customer_name||'—')}</td>
+        <td>${anotaAiStatusBadge(order.status_code,order.status)}</td>
+        <td>${escapeHtml(order.order_type||'—')}</td>
+        <td>${escapeHtml(order.sales_channel||'anotaai')}</td>
+        <td>${localDate(order.remote_updated_at||order.remote_created_at||order.updated_at)}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('')||empty(7);
   }catch(err){
     $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
-    $('anotaAiOrdersTable').innerHTML=empty(6);
+    $('anotaAiOrdersTable').innerHTML=empty(7);
   }
 }
 
