@@ -6618,6 +6618,350 @@ function parseHistoryFilters(query) {
   return { page, pageSize, courierId, status, from, to, search };
 }
 
+
+async function transferDispatchOrderAdmin({
+  actorUserId,
+  orderItemId,
+  targetCourierId,
+  reason
+}) {
+  const operationalSla = await getOperationalSlaSettings();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const orderRow = (await client.query(`
+      SELECT
+        o.id AS order_item_id,o.dispatch_id,o.order_number,o.platform,
+        d.courier_id AS source_courier_id,d.departed_at,d.released_at,d.status,
+        d.operational_stage,d.returning_at,d.returned_at,
+        d.route_sla_minutes,d.return_sla_minutes,d.operational_date,d.shift_code,
+        d.dispatch_code,d.registration_source,
+        u.name AS source_courier_name
+      FROM dispatch_orders o
+      JOIN dispatches d ON d.id=o.dispatch_id
+      JOIN users u ON u.id=d.courier_id
+      WHERE o.id=$1
+      FOR UPDATE OF o,d
+    `, [orderItemId])).rows[0];
+
+    if (!orderRow) {
+      throw Object.assign(new Error("Pedido não encontrado no histórico."), { status: 404, code: "TRANSFER_ORDER_NOT_FOUND" });
+    }
+
+    if (Number(orderRow.source_courier_id) === Number(targetCourierId)) {
+      throw Object.assign(new Error("Esse pedido já está alocado para esse motoboy."), { status: 409, code: "TRANSFER_SAME_COURIER" });
+    }
+
+    const targetCourier = (await client.query(`
+      SELECT id,name,active,approval_status
+      FROM users
+      WHERE id=$1 AND role='courier'
+      FOR UPDATE
+    `, [targetCourierId])).rows[0];
+
+    if (!targetCourier || !targetCourier.active || targetCourier.approval_status !== "APPROVED") {
+      throw Object.assign(new Error("O motoboy de destino precisa estar ativo e aprovado."), { status: 409, code: "TRANSFER_TARGET_UNAVAILABLE" });
+    }
+
+    const lockIds = [Number(orderRow.source_courier_id), Number(targetCourierId)].sort((a,b)=>a-b);
+    for (const id of lockIds) await client.query("SELECT pg_advisory_xact_lock($1::int)", [id]);
+
+    const paymentDate = orderRow.operational_date || orderDateSP(orderRow.departed_at);
+    const shiftCode = normalizeShiftCode(orderRow.shift_code);
+    const paymentRows = (await client.query(`
+      SELECT courier_id,status
+      FROM courier_payments
+      WHERE courier_id=ANY($1::int[])
+        AND payment_date=$2::date
+        AND shift_code IS NOT DISTINCT FROM $3::text
+      FOR UPDATE
+    `, [[Number(orderRow.source_courier_id), Number(targetCourierId)], paymentDate, shiftCode])).rows;
+
+    const lockedPayment = paymentRows.find(x => x.status && x.status !== "OPEN");
+    if (lockedPayment) {
+      throw Object.assign(new Error("O pagamento desse turno já foi conferido ou pago. Reabra o turno no Financeiro antes de transferir o pedido."), {
+        status: 409,
+        code: "TRANSFER_PAYMENT_LOCKED"
+      });
+    }
+
+    const sourceCount = Number((await client.query(
+      "SELECT COUNT(*)::int AS c FROM dispatch_orders WHERE dispatch_id=$1",
+      [orderRow.dispatch_id]
+    )).rows[0].c || 0);
+
+    let targetDispatchId = Number(orderRow.dispatch_id);
+    let reusedTargetRoute = false;
+    let createdTargetDispatch = false;
+
+    if (orderRow.status === "ON_ROAD") {
+      const activeTarget = (await client.query(`
+        SELECT *
+        FROM dispatches
+        WHERE courier_id=$1 AND status='ON_ROAD'
+        ORDER BY departed_at DESC,id DESC
+        LIMIT 1
+        FOR UPDATE
+      `, [targetCourierId])).rows[0];
+
+      if (activeTarget) {
+        if (operationalStage(activeTarget.operational_stage) === "RETURNING") {
+          throw Object.assign(new Error("O motoboy de destino já está retornando para a loja. Confirme a chegada antes de transferir um pedido em rota."), {
+            status: 409,
+            code: "TRANSFER_TARGET_RETURNING"
+          });
+        }
+        const targetCount = Number((await client.query(
+          "SELECT COUNT(*)::int AS c FROM dispatch_orders WHERE dispatch_id=$1",
+          [activeTarget.id]
+        )).rows[0].c || 0);
+        if (targetCount >= 5) {
+          throw Object.assign(new Error("A rota do motoboy de destino já possui 5 pedidos."), { status: 409, code: "TRANSFER_TARGET_ROUTE_FULL" });
+        }
+        targetDispatchId = Number(activeTarget.id);
+        reusedTargetRoute = true;
+      } else if (sourceCount === 1) {
+        await client.query("UPDATE dispatches SET courier_id=$2 WHERE id=$1", [orderRow.dispatch_id,targetCourierId]);
+      } else {
+        const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-T" + Math.random().toString(36).slice(2,5).toUpperCase();
+        const newDispatch = (await client.query(`
+          INSERT INTO dispatches(
+            dispatch_code,order_number,courier_id,departed_at,status,
+            registered_by,registration_source,admin_reason,closed_reason,
+            operational_stage,route_sla_minutes,return_sla_minutes,
+            operational_date,shift_code
+          )
+          VALUES($1,$2,$3,$4::timestamptz,'ON_ROAD',$5,'ADMIN_TRANSFER',$6,NULL,
+                 'EN_ROUTE',$7,$8,$9::date,$10)
+          RETURNING id
+        `, [
+          code,orderRow.order_number,targetCourierId,orderRow.departed_at,actorUserId,reason,
+          operationalRouteSlaMinutes(1, operationalSla),orderRow.return_sla_minutes || operationalSla.returnMinutes,
+          paymentDate,shiftCode
+        ])).rows[0];
+        targetDispatchId = Number(newDispatch.id);
+        createdTargetDispatch = true;
+      }
+    } else if (sourceCount === 1) {
+      await client.query("UPDATE dispatches SET courier_id=$2 WHERE id=$1", [orderRow.dispatch_id,targetCourierId]);
+    } else {
+      const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-T" + Math.random().toString(36).slice(2,5).toUpperCase();
+      const newDispatch = (await client.query(`
+        INSERT INTO dispatches(
+          dispatch_code,order_number,courier_id,departed_at,released_at,released_by,status,
+          registered_by,registration_source,admin_reason,closed_reason,
+          operational_stage,returning_at,returned_at,returned_by,
+          return_source,return_reason,arrival_source,arrival_reason,
+          route_sla_minutes,return_sla_minutes,operational_date,shift_code
+        )
+        VALUES(
+          $1,$2,$3,$4::timestamptz,COALESCE($5::timestamptz,NOW()),$6,'RELEASED',
+          $6,'ADMIN_TRANSFER',$7,'ORDER_TRANSFERRED_CORRECTION',
+          'COMPLETED',$8::timestamptz,COALESCE($9::timestamptz,$5::timestamptz,NOW()),$6,
+          'ADMIN_TRANSFER','ORDER_TRANSFERRED_CORRECTION','ADMIN_TRANSFER','ORDER_TRANSFERRED_CORRECTION',
+          $10,$11,$12::date,$13
+        )
+        RETURNING id
+      `, [
+        code,orderRow.order_number,targetCourierId,orderRow.departed_at,orderRow.released_at,
+        actorUserId,reason,orderRow.returning_at,orderRow.returned_at,
+        operationalRouteSlaMinutes(1, operationalSla),orderRow.return_sla_minutes || operationalSla.returnMinutes,
+        paymentDate,shiftCode
+      ])).rows[0];
+      targetDispatchId = Number(newDispatch.id);
+      createdTargetDispatch = true;
+    }
+
+    if (targetDispatchId !== Number(orderRow.dispatch_id)) {
+      await client.query("UPDATE dispatch_orders SET dispatch_id=$2 WHERE id=$1", [orderItemId,targetDispatchId]);
+
+      await client.query(`
+        UPDATE ifood_dispatch_links
+        SET dispatch_id=$2
+        WHERE dispatch_id=$1 AND LOWER(local_order_number)=LOWER($3)
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number]);
+
+      await client.query(`
+        UPDATE anotaai_dispatch_links
+        SET dispatch_id=$2
+        WHERE dispatch_id=$1 AND LOWER(local_order_number)=LOWER($3)
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number]);
+
+      await client.query(`
+        UPDATE ifood_dispatch_jobs
+        SET dispatch_id=$2,updated_at=NOW()
+        WHERE dispatch_id=$1
+          AND ifood_order_id IN (
+            SELECT ifood_order_id FROM ifood_dispatch_links
+            WHERE dispatch_id=$2 AND LOWER(local_order_number)=LOWER($3)
+          )
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number]);
+
+      await client.query(`
+        UPDATE ifood_delivery_confirmations c
+        SET dispatch_id=$2,courier_id=$4,updated_at=NOW()
+        WHERE dispatch_id=$1
+          AND ifood_order_id IN (
+            SELECT ifood_order_id FROM ifood_dispatch_links
+            WHERE dispatch_id=$2 AND LOWER(local_order_number)=LOWER($3)
+          )
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number,targetCourierId]);
+
+      await client.query(`
+        UPDATE anotaai_delivery_confirmations c
+        SET dispatch_id=$2,courier_id=$4
+        WHERE dispatch_id=$1
+          AND anotaai_order_id IN (
+            SELECT anotaai_order_id FROM anotaai_dispatch_links
+            WHERE dispatch_id=$2 AND LOWER(local_order_number)=LOWER($3)
+          )
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number,targetCourierId]);
+
+      await client.query(`
+        UPDATE active_order_locks
+        SET dispatch_id=$2,courier_id=$4
+        WHERE dispatch_id=$1
+          AND LOWER(order_number)=LOWER($3)
+          AND platform=$5
+      `, [orderRow.dispatch_id,targetDispatchId,orderRow.order_number,targetCourierId,orderRow.platform]);
+
+      const remaining = (await client.query(
+        "SELECT id,order_number FROM dispatch_orders WHERE dispatch_id=$1 ORDER BY id LIMIT 1",
+        [orderRow.dispatch_id]
+      )).rows[0];
+
+      if (remaining) {
+        await client.query("UPDATE dispatches SET order_number=$2 WHERE id=$1", [orderRow.dispatch_id,remaining.order_number]);
+      } else {
+        await client.query("DELETE FROM dispatches WHERE id=$1", [orderRow.dispatch_id]);
+      }
+    } else {
+      await client.query(
+        "UPDATE active_order_locks SET courier_id=$2 WHERE dispatch_id=$1 AND LOWER(order_number)=LOWER($3) AND platform=$4",
+        [orderRow.dispatch_id,targetCourierId,orderRow.order_number,orderRow.platform]
+      );
+      await client.query(
+        "UPDATE ifood_delivery_confirmations SET courier_id=$2,updated_at=NOW() WHERE dispatch_id=$1",
+        [orderRow.dispatch_id,targetCourierId]
+      );
+      await client.query(
+        "UPDATE anotaai_delivery_confirmations SET courier_id=$2 WHERE dispatch_id=$1",
+        [orderRow.dispatch_id,targetCourierId]
+      );
+    }
+
+    if (orderRow.status === "ON_ROAD") {
+      const targetCount = Number((await client.query(
+        "SELECT COUNT(*)::int AS c FROM dispatch_orders WHERE dispatch_id=$1",
+        [targetDispatchId]
+      )).rows[0].c || 1);
+      await client.query(
+        "UPDATE dispatches SET route_sla_minutes=$2 WHERE id=$1",
+        [targetDispatchId,operationalRouteSlaMinutes(targetCount,operationalSla)]
+      );
+      if (targetDispatchId !== Number(orderRow.dispatch_id)) {
+        const sourceLeft = Number((await client.query(
+          "SELECT COUNT(*)::int AS c FROM dispatch_orders WHERE dispatch_id=$1",
+          [orderRow.dispatch_id]
+        )).rows[0]?.c || 0);
+        if (sourceLeft > 0) {
+          await client.query(
+            "UPDATE dispatches SET route_sla_minutes=$2 WHERE id=$1",
+            [orderRow.dispatch_id,operationalRouteSlaMinutes(sourceLeft,operationalSla)]
+          );
+        }
+      }
+    }
+
+    await client.query(`
+      INSERT INTO audit_logs(user_id,action,entity,entity_id,details)
+      VALUES($1,'ORDER_TRANSFERRED','dispatch',$2,$3::jsonb)
+    `, [
+      actorUserId,
+      targetDispatchId,
+      JSON.stringify({
+        order_item_id: Number(orderItemId),
+        order_number: orderRow.order_number,
+        platform: orderRow.platform,
+        from_dispatch_id: Number(orderRow.dispatch_id),
+        to_dispatch_id: targetDispatchId,
+        from_courier_id: Number(orderRow.source_courier_id),
+        from_courier_name: orderRow.source_courier_name,
+        to_courier_id: Number(targetCourierId),
+        to_courier_name: targetCourier.name,
+        reason,
+        payment_date: paymentDate,
+        shift_code: shiftCode,
+        reused_target_route: reusedTargetRoute,
+        created_target_dispatch: createdTargetDispatch
+      })
+    ]);
+
+    await client.query("COMMIT");
+
+    return {
+      order_number: orderRow.order_number,
+      platform: orderRow.platform,
+      from_courier_id: Number(orderRow.source_courier_id),
+      from_courier_name: orderRow.source_courier_name,
+      to_courier_id: Number(targetCourierId),
+      to_courier_name: targetCourier.name,
+      from_dispatch_id: Number(orderRow.dispatch_id),
+      to_dispatch_id: targetDispatchId
+    };
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/admin/dispatch-orders/:orderItemId/transfer", auth, adminOnly, asyncRoute(async (req, res) => {
+  const orderItemId = Number(req.params.orderItemId);
+  const targetCourierId = Number(req.body?.target_courier_id);
+  const reason = String(req.body?.reason || "").trim().slice(0,250);
+
+  if (!Number.isInteger(orderItemId) || orderItemId < 1) {
+    return res.status(400).json({ error: "Pedido inválido." });
+  }
+  if (!Number.isInteger(targetCourierId) || targetCourierId < 1) {
+    return res.status(400).json({ error: "Selecione o motoboy de destino." });
+  }
+  if (reason.length < 3) {
+    return res.status(400).json({ error: "Informe o motivo da transferência." });
+  }
+
+  try {
+    const transfer = await transferDispatchOrderAdmin({
+      actorUserId: req.session.user.id,
+      orderItemId,
+      targetCourierId,
+      reason
+    });
+
+    io.emit("dispatch:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
+    io.emit("dispatch:changed", { courier_id: transfer.to_courier_id, dispatch_id: transfer.to_dispatch_id, change: "ORDER_TRANSFERRED" });
+    io.emit("payment:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
+    io.emit("payment:changed", { courier_id: transfer.to_courier_id, change: "ORDER_TRANSFERRED" });
+    io.emit("ifood:changed");
+    io.emit("anotaai:changed");
+
+    res.json({
+      ok: true,
+      transfer,
+      message: `Pedido ${transfer.order_number} transferido de ${transfer.from_courier_name} para ${transfer.to_courier_name}.`,
+      server_now: new Date().toISOString()
+    });
+  } catch (err) {
+    if (err?.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code || "ORDER_TRANSFER_FAILED" });
+    }
+    throw err;
+  }
+}));
+
 app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
   const f = parseHistoryFilters(req.query);
   const params = [];
@@ -6675,7 +7019,16 @@ app.get("/api/admin/history", auth, adminOnly, asyncRoute(async (req, res) => {
            d.registration_source,d.admin_reason,d.registered_by,
            u.id AS courier_id,u.name AS courier_name,u.username,
            ru.name AS registered_by_name,
-           ${orderArraySql("d")}
+           ${orderArraySql("d")},
+           COALESCE((
+             SELECT json_agg(json_build_object(
+               'id',so.id,
+               'order_number',so.order_number,
+               'platform',so.platform
+             ) ORDER BY so.id)
+             FROM dispatch_orders so
+             WHERE so.dispatch_id=d.id
+           ),'[]'::json) AS order_items
     FROM dispatches d
     JOIN users u ON u.id=d.courier_id
     LEFT JOIN users ru ON ru.id=d.registered_by
