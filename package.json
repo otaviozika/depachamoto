@@ -1,6 +1,6 @@
 {
   "name": "despachefull",
-  "version": "3.6.1",
+  "version": "3.6.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -34,7 +34,8 @@
     "selftest:route-orders": "node scripts/selftest-route-orders.js",
     "selftest:waze-navigation": "node scripts/selftest-waze-navigation.js",
     "selftest:ifood-order-days": "node scripts/selftest-ifood-order-days.js",
-    "selftest:platform-selection": "node scripts/selftest-platform-selection.js"
+    "selftest:platform-selection": "node scripts/selftest-platform-selection.js",
+    "selftest:socket-security": "node scripts/selftest-socket-security.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -2358,11 +2358,21 @@ async function login(e){
   }
 }
 async function register(e){e.preventDefault();if($('regPass').value!==$('regPass2').value)return message('authMsg','As senhas não conferem.','err');try{const d=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('regName').value,username:$('regUser').value,password:$('regPass').value})});setAuth('login');$('loginUser').value=d.user.username;message('authMsg',d.message||'Cadastro enviado para aprovação.','ok')}catch(err){message('authMsg',err.message,'err')}}
-async function logout(){try{await api('/api/logout',{method:'POST'})}catch{}location.reload()}
+async function logout(){
+  try{
+    await api('/api/logout',{
+      method:'POST',
+      body:JSON.stringify({socket_id:socket.id||null})
+    });
+  }catch{}
+  socket.disconnect();
+  location.reload();
+}
 
 function showApp(){
   sessionRedirecting=false;
   $('loginScreen').classList.add('hidden');
+  ensureRealtimeConnected();
   if(me.role==='admin'){
     $('adminApp').classList.remove('hidden');if($('adminSideName'))$('adminSideName').textContent=me.name||'Administrador';if($('adminSideUser'))$('adminSideUser').textContent=me.username||'admin';if($('adminSideAvatar'))$('adminSideAvatar').textContent=(me.name||'A').trim().charAt(0).toUpperCase();if($('adminMenuName'))$('adminMenuName').textContent=me.name||'Administrador';if($('adminMenuUser'))$('adminMenuUser').textContent=me.username||'admin';$('reportDate').value=spToday();$('periodFrom').value=firstDayMonthIso(spToday());$('periodTo').value=spToday();if($('paymentDate'))$('paymentDate').value=spToday();if($('paymentRuleEffective'))$('paymentRuleEffective').value=spToday();loadAdmin();loadSecurity();loadNotifications();loadNotificationSettings();
   }else{
@@ -4843,7 +4853,10 @@ function refreshAdminCore(){
   return loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))return loadOperations()});
 }
 
-const socket=io();
+const socket=io({autoConnect:false});
+function ensureRealtimeConnected(){
+  if(me&&!socket.connected)socket.connect();
+}
 socket.on('connect',()=>{
   updateConnectionState();
   if(me?.role==='courier'){
@@ -4851,7 +4864,19 @@ socket.on('connect',()=>{
     queueRealtimeRefresh('courier-reconnect',()=>loadCourier(),250,{visibleOnly:true});
   }
 });
-socket.on('disconnect',()=>{if(!navigator.onLine)setConnectionState('offline')});
+socket.on('connect_error',err=>{
+  if(me&&err?.data?.code==='SOCKET_AUTH_REQUIRED'){
+    me=null;
+    location.reload();
+  }
+});
+socket.on('disconnect',reason=>{
+  if(reason==='io server disconnect'){
+    if(me){me=null;location.reload();}
+    return;
+  }
+  if(!navigator.onLine)setConnectionState('offline');
+});
 socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',d=>{
   if(me?.role==='admin'){

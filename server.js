@@ -22,7 +22,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.1";
+const VERSION = "3.6.2";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -64,7 +64,7 @@ app.use((req, res, next) => {
 });
 
 
-app.use(session({
+const sessionMiddleware = session({
   store: new PgSession({
     pool,
     tableName: "user_sessions",
@@ -79,7 +79,9 @@ app.use(session({
     secure: process.env.NODE_ENV === "production",
     maxAge: 1000 * 60 * 60 * 12
   }
-}));
+});
+app.use(sessionMiddleware);
+io.engine.use(sessionMiddleware);
 
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -1128,6 +1130,121 @@ async function currentUser(userId) {
   );
   return q.rows[0] || null;
 }
+
+const SOCKET_ROOMS = Object.freeze({
+  admins: "role:admin",
+  couriers: "role:courier",
+  user: userId => `user:${Number(userId)}`
+});
+
+const ADMIN_ONLY_REALTIME_EVENTS = new Set([
+  "anotaai:changed",
+  "conflict:new",
+  "conflict:changed",
+  "notification:new",
+  "notification:changed",
+  "notification:settings-changed",
+  "courier:changed",
+  "settings:changed",
+  "security:changed",
+  "dashboard:changed"
+]);
+
+const COURIER_SCOPED_REALTIME_EVENTS = new Set([
+  "dispatch:changed",
+  "attendance:changed",
+  "payment:changed",
+  "pix:changed",
+  "delivery:changed"
+]);
+
+function realtimeCourierIds(payload = {}) {
+  const ids = [];
+  const single = Number(payload?.courier_id);
+  if (Number.isInteger(single) && single > 0) ids.push(single);
+  if (Array.isArray(payload?.courier_ids)) {
+    for (const value of payload.courier_ids) {
+      const id = Number(value);
+      if (Number.isInteger(id) && id > 0) ids.push(id);
+    }
+  }
+  return [...new Set(ids)];
+}
+
+function emitRealtime(event, payload = {}) {
+  const body = payload ?? {};
+
+  if (event === "server:time") {
+    io.to(SOCKET_ROOMS.admins).emit(event, body);
+    io.to(SOCKET_ROOMS.couriers).emit(event, body);
+    return;
+  }
+
+  if (ADMIN_ONLY_REALTIME_EVENTS.has(event)) {
+    io.to(SOCKET_ROOMS.admins).emit(event, body);
+    return;
+  }
+
+  if (event === "ifood:changed") {
+    io.to(SOCKET_ROOMS.admins).emit(event, body);
+    if (body?.scope === "admin") return;
+
+    const ids = realtimeCourierIds(body);
+    if (ids.length) {
+      for (const id of ids) io.to(SOCKET_ROOMS.user(id)).emit(event, body);
+    } else {
+      io.to(SOCKET_ROOMS.couriers).emit(event, body);
+    }
+    return;
+  }
+
+  if (COURIER_SCOPED_REALTIME_EVENTS.has(event)) {
+    io.to(SOCKET_ROOMS.admins).emit(event, body);
+
+    if (body?.all === true) {
+      io.to(SOCKET_ROOMS.couriers).emit(event, body);
+      return;
+    }
+
+    for (const id of realtimeCourierIds(body)) {
+      io.to(SOCKET_ROOMS.user(id)).emit(event, body);
+    }
+    return;
+  }
+
+  // Fail closed: unknown operational events never go to couriers by default.
+  io.to(SOCKET_ROOMS.admins).emit(event, body);
+}
+
+async function revokeUserSessions(userId) {
+  await pool.query(
+    "DELETE FROM user_sessions WHERE (sess::jsonb #>> '{user,id}')=$1",
+    [String(userId)]
+  );
+}
+
+async function disconnectUserSockets(userId) {
+  const id = Number(userId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const sockets = await io.in(SOCKET_ROOMS.user(id)).fetchSockets();
+  for (const socket of sockets) socket.disconnect(true);
+  return sockets.length;
+}
+
+function disconnectSocketForUser(socketId, userId) {
+  const id = String(socketId || "").trim();
+  if (!id) return false;
+  const socket = io.sockets.sockets.get(id);
+  if (!socket || Number(socket.data?.user?.id) !== Number(userId)) return false;
+  socket.disconnect(true);
+  return true;
+}
+
+async function revokeUserAccess(userId) {
+  await revokeUserSessions(userId);
+  return disconnectUserSockets(userId);
+}
+
 async function audit(userId, action, entity, entityId, details = {}) {
   const normalized = normalizeAuditEntityId(entityId, details);
   await pool.query(
@@ -1453,7 +1570,7 @@ async function syncAnotaAiOnce({ reason = "manual" } = {}) {
       changed: pages.reduce((sum, item) => sum + item.changed, 0),
       server_now: new Date().toISOString()
     };
-    io.emit("anotaai:changed", { reason, inserted: result.inserted, changed: result.changed });
+    emitRealtime("anotaai:changed", { reason, inserted: result.inserted, changed: result.changed });
     return result;
   } finally {
     anotaAiSyncRunning = false;
@@ -1495,7 +1612,7 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
     endpoint_action: "FINALIZE"
   });
 
-  io.emit("anotaai:changed", {
+  emitRealtime("anotaai:changed", {
     change: "ANOTAAI_DISPATCH_SENT",
     dispatch_id: job.dispatch_id,
     order_id: job.order_id
@@ -1973,7 +2090,7 @@ async function failIfoodDispatchJob(orderId, reason, httpStatus = null) {
     WHERE ifood_order_id=$1
   `, [String(orderId)]);
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
   return { ok: false, failed: true, orderId: String(orderId), error: String(reason) };
 }
 
@@ -2088,7 +2205,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       uniqueKey: `ifood-dispatch-accepted:${job.ifood_order_id}`
     }).catch(() => {});
 
-    io.emit("ifood:changed");
+    emitRealtime("ifood:changed");
 
     return {
       ok: true,
@@ -2131,7 +2248,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
         WHERE ifood_order_id=$1
       `, [job.ifood_order_id]);
 
-      io.emit("ifood:changed");
+      emitRealtime("ifood:changed");
 
       return {
         ok: false,
@@ -2462,7 +2579,7 @@ function queueIfoodPreparationTimeSync(merchantIds = [], reason = "scheduled") {
         completed_at: new Date().toISOString()
       };
       if (Number(result.changed || 0) > 0) {
-        io.emit("ifood:changed", { scope: "admin", reason: "preparation_time" });
+        emitRealtime("ifood:changed", { scope: "admin", reason: "preparation_time" });
       }
     } catch (err) {
       ifoodPreparationSyncLastResult = {
@@ -3626,7 +3743,7 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
     }
 
     if (events.length > 0) {
-      io.emit("ifood:changed", {
+      emitRealtime("ifood:changed", {
         reason: "events_processed",
         event_count: events.length,
         courier_ids: affectedCourierIds
@@ -3881,7 +3998,7 @@ async function logOperationalConflict({
       JSON.stringify(orders),
       JSON.stringify(details)
     ]);
-    io.emit("conflict:new", q.rows[0]);
+    emitRealtime("conflict:new", q.rows[0]);
     return q.rows[0];
   } catch {
     return null;
@@ -4270,7 +4387,7 @@ async function createNotification({
 
   const notification = q.rows[0] || null;
   if (notification) {
-    io.emit("notification:new", notification);
+    emitRealtime("notification:new", notification);
     sendPushToAdmins(notification).catch(err => {
       console.error("Web Push error:", err?.message || err);
     });
@@ -4809,7 +4926,7 @@ async function markDispatchReturning(dispatchId, { actorUserId = null, source = 
   if (actorUserId) {
     await auditBestEffort(actorUserId, "DISPATCH_RETURN_STARTED", "dispatch", dispatchId, { source, reason });
   }
-  io.emit("dispatch:changed", { courier_id: q.rows[0].courier_id, dispatch_id: q.rows[0].id, change: "RETURNING" });
+  emitRealtime("dispatch:changed", { courier_id: q.rows[0].courier_id, dispatch_id: q.rows[0].id, change: "RETURNING" });
   return q.rows[0];
 }
 
@@ -4865,7 +4982,7 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
     await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
     await client.query("COMMIT");
     await auditBestEffort(actorUserId, "DISPATCH_RETURN_COMPLETED", "dispatch", dispatchId, { source, reason });
-    io.emit("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: "COMPLETED" });
+    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
     await client.query("ROLLBACK");
@@ -5380,7 +5497,7 @@ app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
       courierId: user.id,
       uniqueKey: `registration:${user.id}`
     });
-    io.emit("courier:changed");
+    emitRealtime("courier:changed");
     res.status(201).json({
       user,
       message: "Cadastro recebido. Aguarde a aprovação do administrador."
@@ -5392,8 +5509,14 @@ app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
 }));
 
 app.post("/api/logout", auth, asyncRoute(async (req, res) => {
-  await audit(req.session.user.id, "LOGOUT", "user", req.session.user.id, requestMeta(req));
-  req.session.destroy(() => res.json({ ok: true }));
+  const userId = req.session.user.id;
+  const socketId = String(req.body?.socket_id || "").trim();
+
+  await audit(userId, "LOGOUT", "user", userId, requestMeta(req));
+  await new Promise(resolve => req.session.destroy(() => resolve()));
+  disconnectSocketForUser(socketId, userId);
+
+  res.json({ ok: true });
 }));
 
 app.get("/api/me", auth, asyncRoute(async (req, res) => {
@@ -5607,7 +5730,7 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
       shift_code: shift.shift_code,
       reason
     });
-    io.emit("attendance:changed", {
+    emitRealtime("attendance:changed", {
       courier_id: courierId,
       attendance_date: shift.operational_date,
       shift_code: shift.shift_code
@@ -5706,13 +5829,13 @@ app.post("/api/admin/attendance/:courierId/checkout", auth, adminOnly, asyncRout
     reason
   });
 
-  io.emit("attendance:changed", {
+  emitRealtime("attendance:changed", {
     courier_id: courierId,
     attendance_date: date,
     shift_code: attendanceView.shift_code,
     shift_ended: true
   });
-  io.emit("dashboard:changed");
+  emitRealtime("dashboard:changed");
 
   res.json({
     attendance: updated,
@@ -5767,7 +5890,7 @@ app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async 
       shift_code: payload.s,
       checkin_method: "QR"
     });
-    io.emit("attendance:changed", {
+    emitRealtime("attendance:changed", {
       courier_id: req.session.user.id,
       attendance_date: payload.d,
       shift_code: payload.s
@@ -6052,9 +6175,9 @@ app.put("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
     });
   }
 
-  io.emit("courier:changed");
-  io.emit("payment:changed", { courier_id: current.id });
-  io.emit("pix:changed", { courier_id: current.id });
+  emitRealtime("courier:changed");
+  emitRealtime("payment:changed", { courier_id: current.id });
+  emitRealtime("pix:changed", { courier_id: current.id });
 
   res.json({
     pix: {
@@ -6145,12 +6268,12 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
     confirmation_mode: "NO_CODE"
   });
 
-  io.emit("dispatch:changed", {
+  emitRealtime("dispatch:changed", {
     courier_id: req.session.user.id,
     dispatch_id: row.dispatch_id,
     change: "ANOTAAI_DELIVERY_CONFIRMED"
   });
-  io.emit("delivery:changed", {
+  emitRealtime("delivery:changed", {
     courier_id: req.session.user.id,
     order_id: row.order_id,
     platform: "anotaai"
@@ -6390,8 +6513,8 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
       }
     );
 
-    io.emit("ifood:changed");
-    io.emit("delivery:changed", {
+    emitRealtime("ifood:changed");
+    emitRealtime("delivery:changed", {
       courier_id: req.session.user.id,
       order_id: row.order_id
     });
@@ -6438,7 +6561,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
         : ifoodSafeError(err)
     ]);
 
-    io.emit("delivery:changed", {
+    emitRealtime("delivery:changed", {
       courier_id: req.session.user.id,
       order_id: row.order_id
     });
@@ -7070,10 +7193,10 @@ async function addRouteOrder(req, res, recovery) {
     throw err;
   }
 
-  io.emit('dispatch:changed',{courier_id:courierId,dispatch_id:result.dispatch.id,change:'ORDER_ADDED'});
-  io.emit('payment:changed',{courier_id:courierId,change:'ORDER_ADDED'});
-  if (ifoodLinks.length) io.emit('ifood:changed');
-  if (anotaAiLinks.length) io.emit('anotaai:changed');
+  emitRealtime('dispatch:changed',{courier_id:courierId,dispatch_id:result.dispatch.id,change:'ORDER_ADDED'});
+  emitRealtime('payment:changed',{courier_id:courierId,change:'ORDER_ADDED'});
+  if (ifoodLinks.length) emitRealtime('ifood:changed');
+  if (anotaAiLinks.length) emitRealtime('anotaai:changed');
 
   res.status(201).json({
     dispatch:result.dispatch,
@@ -7372,7 +7495,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
   }
 
-  io.emit("dispatch:changed", { courier_id: req.session.user.id, dispatch_id: result.dispatch.id, change: "CREATED" });
+  emitRealtime("dispatch:changed", { courier_id: req.session.user.id, dispatch_id: result.dispatch.id, change: "CREATED" });
 
   const ifoodDispatchQueued = ifoodLinks.length;
   const anotaAiDispatchCount = anotaAiLinks.length;
@@ -7781,12 +7904,12 @@ app.post("/api/admin/dispatch-orders/:orderItemId/transfer", auth, adminOnly, as
       reason
     });
 
-    io.emit("dispatch:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
-    io.emit("dispatch:changed", { courier_id: transfer.to_courier_id, dispatch_id: transfer.to_dispatch_id, change: "ORDER_TRANSFERRED" });
-    io.emit("payment:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
-    io.emit("payment:changed", { courier_id: transfer.to_courier_id, change: "ORDER_TRANSFERRED" });
-    io.emit("ifood:changed");
-    io.emit("anotaai:changed");
+    emitRealtime("dispatch:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
+    emitRealtime("dispatch:changed", { courier_id: transfer.to_courier_id, dispatch_id: transfer.to_dispatch_id, change: "ORDER_TRANSFERRED" });
+    emitRealtime("payment:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
+    emitRealtime("payment:changed", { courier_id: transfer.to_courier_id, change: "ORDER_TRANSFERRED" });
+    emitRealtime("ifood:changed");
+    emitRealtime("anotaai:changed");
 
     res.json({
       ok: true,
@@ -8271,7 +8394,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     });
   }
 
-  io.emit("dispatch:changed", { courier_id: courierId, dispatch_id: result.dispatch.id, change: "CREATED" });
+  emitRealtime("dispatch:changed", { courier_id: courierId, dispatch_id: result.dispatch.id, change: "CREATED" });
   res.status(result.duplicate ? 200 : 201).json({
     dispatch: result.dispatch,
     closed_previous: result.closedPrevious,
@@ -8318,7 +8441,7 @@ app.post("/api/admin/notifications/:id/read", auth, adminOnly, asyncRoute(async 
 
   if (!q.rowCount) return res.status(404).json({ error: "Notificação não encontrada." });
 
-  io.emit("notification:changed");
+  emitRealtime("notification:changed");
   res.json({ notification: q.rows[0] });
 }));
 
@@ -8333,7 +8456,7 @@ app.post("/api/admin/notifications/read-all", auth, adminOnly, asyncRoute(async 
     count: q.rowCount
   });
 
-  io.emit("notification:changed");
+  emitRealtime("notification:changed");
   res.json({ ok: true, count: q.rowCount });
 }));
 
@@ -8366,7 +8489,7 @@ app.put("/api/admin/settings/notifications", auth, adminOnly, asyncRoute(async (
 
   await audit(req.session.user.id, "NOTIFICATION_SETTINGS_UPDATED", "settings", null, settings);
 
-  io.emit("notification:settings-changed");
+  emitRealtime("notification:settings-changed");
   res.json({ settings });
 }));
 
@@ -8531,7 +8654,7 @@ app.post("/api/admin/conflicts/:id/resolve", auth, adminOnly, asyncRoute(async (
   `, [req.session.user.id, req.params.id]);
 
   if (!q.rowCount) return res.status(404).json({ error: "Conflito não encontrado." });
-  io.emit("conflict:changed");
+  emitRealtime("conflict:changed");
   res.json({ conflict: q.rows[0] });
 }));
 
@@ -8973,7 +9096,7 @@ app.post("/api/admin/ifood/dispatch-control/pause", auth, adminOnly, asyncRoute(
     uniqueKey: `ifood-pause:${Date.now()}`
   }).catch(() => {});
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
 
   res.json({
     ok: true,
@@ -9009,7 +9132,7 @@ app.post("/api/admin/ifood/dispatch-control/resume", auth, adminOnly, asyncRoute
     }
   );
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
 
   setImmediate(() => {
     runIfoodDispatchWorkerOnce().catch(err => {
@@ -9353,7 +9476,7 @@ app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(
     }
   );
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
 
   res.status(202).json({
     ok: true,
@@ -9414,7 +9537,7 @@ app.post("/api/admin/ifood/orders/:id/dispatch-test", auth, adminOnly, asyncRout
     }
   );
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
 
   res.status(result.accepted ? 202 : 200).json({
     ...result,
@@ -9465,7 +9588,7 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
     { order_id: orderId, display_id: row.display_id, result }
   );
 
-  io.emit("ifood:changed");
+  emitRealtime("ifood:changed");
   res.json({ ...result, message: "Nova tentativa executada." });
 }));
 
@@ -9486,7 +9609,7 @@ app.post("/api/admin/ifood/sync-now", auth, adminOnly, asyncRoute(async (req, re
     result
   );
 
-  if (!result.realtimeEmitted) io.emit("ifood:changed", { reason: "admin_manual" });
+  if (!result.realtimeEmitted) emitRealtime("ifood:changed", { reason: "admin_manual" });
   res.json(result);
 }));
 
@@ -9561,7 +9684,7 @@ app.put("/api/admin/payments/rules", auth, adminOnly, asyncRoute(async (req,res)
     dinner_mon_thu=EXCLUDED.dinner_mon_thu,dinner_fri_sun=EXCLUDED.dinner_fri_sun,rain_bonus=EXCLUDED.rain_bonus,created_by=EXCLUDED.created_by,created_at=NOW() RETURNING *`,
     [effectiveFrom,per,dm,df,lm,lf,dm,df,rain,req.session.user.id]);
   await audit(req.session.user.id,'PAYMENT_RULE_UPDATED','payment_rule',q.rows[0].id,{effective_from:effectiveFrom,per_delivery:per,lunch_mon_thu:lm,lunch_fri_sun:lf,dinner_mon_thu:dm,dinner_fri_sun:df,rain_bonus:rain});
-  io.emit('payment:changed',{all:true,change:'RULE_UPDATED'});res.json({rule:await getPaymentRateRule(effectiveFrom),message:'Regra de pagamento por turno salva.'});
+  emitRealtime('payment:changed',{all:true,change:'RULE_UPDATED'});res.json({rule:await getPaymentRateRule(effectiveFrom),message:'Regra de pagamento por turno salva.'});
 }));
 
 app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(async (req,res)=>{
@@ -9588,7 +9711,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
     [date,courierId,shift,finalRain,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,lock?calc.delivery_count:null,lock?calc.per_delivery:null,lock?calc.base_amount:null,lock?calc.rain_bonus:null,lock?calc.total_amount:null,pix.key,pix.type,pix.holder,pix.status,reviewedAt,lock?req.session.user.id:null,paidAt,status==='PAID'?req.session.user.id:null]);}
   else {if(existing)q=await pool.query(`UPDATE courier_payments SET tip_amount=$3,discount_amount=$4,adjustment_amount=$5,payment_method=$6,status=$7,notes=$8,delivery_count_snapshot=$9,per_delivery_snapshot=$10,base_snapshot=$11,total_snapshot=$12,pix_key_snapshot=$13,pix_type_snapshot=$14,pix_holder_name_snapshot=$15,pix_status_snapshot=$16,reviewed_at=$17,reviewed_by=$18,paid_at=$19,paid_by=$20,updated_at=NOW() WHERE id=$1 AND courier_id=$2 RETURNING *`,[existing.id,courierId,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,lock?calc.delivery_count:null,lock?calc.per_delivery:null,lock?calc.base_amount:null,lock?calc.total_amount:null,pix.key,pix.type,pix.holder,pix.status,reviewedAt,lock?req.session.user.id:null,paidAt,status==='PAID'?req.session.user.id:null]);else q=await pool.query(`INSERT INTO courier_payments(payment_date,courier_id,tip_amount,discount_amount,adjustment_amount,payment_method,status,notes) VALUES($1::date,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[date,courierId,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes]);}
   const row=await buildPaymentRow(courier,q.rows[0],date,rule,liveCount,shift,worked);await audit(req.session.user.id,'PAYMENT_UPDATED','courier_payment',q.rows[0].id,{payment_date:date,shift_code:shift,courier_id:courierId,courier_name:courier.name,delivery_count:row.delivery_count,total_amount:row.total_amount,status,rain:finalRain});
-  io.emit('payment:changed',{courier_id:courierId,shift_code:shift});res.json({payment:row,message:`Pagamento de ${row.shift_label} atualizado.`,server_now:new Date().toISOString()});
+  emitRealtime('payment:changed',{courier_id:courierId,shift_code:shift});res.json({payment:row,message:`Pagamento de ${row.shift_label} atualizado.`,server_now:new Date().toISOString()});
 }));
 
 app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req,res)=>{
@@ -9849,8 +9972,8 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
       username,
       pix_status: pixStatus
     });
-    io.emit("courier:changed");
-    io.emit("payment:changed", { courier_id: q.rows[0].id });
+    emitRealtime("courier:changed");
+    emitRealtime("payment:changed", { courier_id: q.rows[0].id });
     res.status(201).json({ user: q.rows[0] });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Esse usuário já existe." });
@@ -9975,10 +10098,12 @@ app.delete("/api/admin/couriers/:id", auth, adminOnly, loginLimiter, asyncRoute(
     ...requestMeta(req)
   });
 
-  io.emit("courier:changed");
-  io.emit("attendance:changed", { courier_id: courierId, deleted: true });
-  io.emit("payment:changed", { courier_id: courierId });
-  io.emit("pix:changed", { courier_id: courierId, deleted: true });
+  await revokeUserAccess(courierId);
+
+  emitRealtime("courier:changed");
+  emitRealtime("attendance:changed", { courier_id: courierId, deleted: true });
+  emitRealtime("payment:changed", { courier_id: courierId });
+  emitRealtime("pix:changed", { courier_id: courierId, deleted: true });
 
   res.json({
     ok: true,
@@ -9997,7 +10122,8 @@ app.patch("/api/admin/couriers/:id", auth, adminOnly, asyncRoute(async (req, res
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   await audit(req.session.user.id, active ? "COURIER_ACTIVATED" : "COURIER_DEACTIVATED", "user", q.rows[0].id, {});
-  io.emit("courier:changed");
+  if (!active) await revokeUserAccess(q.rows[0].id);
+  emitRealtime("courier:changed");
   res.json({ user: q.rows[0] });
 }));
 
@@ -10011,7 +10137,7 @@ app.post("/api/admin/couriers/:id/approve", auth, adminOnly, asyncRoute(async (r
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   await audit(req.session.user.id, "COURIER_APPROVED", "user", q.rows[0].id, {});
-  io.emit("courier:changed");
+  emitRealtime("courier:changed");
   res.json({ user: q.rows[0] });
 }));
 
@@ -10025,7 +10151,8 @@ app.post("/api/admin/couriers/:id/reject", auth, adminOnly, asyncRoute(async (re
   if (!q.rowCount) return res.status(404).json({ error: "Motoboy não encontrado." });
 
   await audit(req.session.user.id, "COURIER_REJECTED", "user", q.rows[0].id, {});
-  io.emit("courier:changed");
+  await revokeUserAccess(q.rows[0].id);
+  emitRealtime("courier:changed");
   res.json({ user: q.rows[0] });
 }));
 
@@ -10094,9 +10221,9 @@ app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (
     pix_changed: pixChanged
   });
 
-  io.emit("courier:changed");
-  io.emit("payment:changed", { courier_id: q.rows[0].id });
-  io.emit("pix:changed", { courier_id: q.rows[0].id });
+  emitRealtime("courier:changed");
+  emitRealtime("payment:changed", { courier_id: q.rows[0].id });
+  emitRealtime("pix:changed", { courier_id: q.rows[0].id });
   res.json({ user: q.rows[0] });
 }));
 
@@ -10139,9 +10266,9 @@ app.post("/api/admin/couriers/:id/pix/verify", auth, adminOnly, asyncRoute(async
     pix_type: courier.pix_type
   });
 
-  io.emit("courier:changed");
-  io.emit("payment:changed", { courier_id: courier.id });
-  io.emit("pix:changed", { courier_id: courier.id });
+  emitRealtime("courier:changed");
+  emitRealtime("payment:changed", { courier_id: courier.id });
+  emitRealtime("pix:changed", { courier_id: courier.id });
 
   res.json({
     user: q.rows[0],
@@ -10168,6 +10295,8 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
     target_username: q.rows[0].username,
     ...requestMeta(req)
   });
+
+  await revokeUserAccess(q.rows[0].id);
 
   res.json({
     user: q.rows[0],
@@ -10221,7 +10350,7 @@ app.put("/api/admin/security/registration", auth, adminOnly, asyncRoute(async (r
   const enabled = !!req.body.enabled;
   await setSetting("public_registration_enabled", enabled ? "true" : "false");
   await audit(req.session.user.id, "PUBLIC_REGISTRATION_SETTING_CHANGED", "settings", null, { enabled });
-  io.emit("security:changed");
+  emitRealtime("security:changed");
   res.json({ registrationEnabled: enabled });
 }));
 
@@ -10327,7 +10456,7 @@ app.put("/api/admin/settings/operational-sla", auth, adminOnly, asyncRoute(async
   await audit(req.session.user.id, "OPERATIONAL_SLA_UPDATED", "settings", null, {
     route: Object.fromEntries(values.map((v,i)=>[i+1,v])), returnMinutes, criticalOverMinutes
   });
-  io.emit("settings:changed");
+  emitRealtime("settings:changed");
   res.json({ sla: await getOperationalSlaSettings() });
 }));
 
@@ -10357,7 +10486,7 @@ app.put("/api/admin/settings/alerts", auth, adminOnly, asyncRoute(async (req, re
     attention, delayed, critical
   });
 
-  io.emit("settings:changed");
+  emitRealtime("settings:changed");
   res.json({ alerts: { attention, delayed, critical } });
 }));
 
@@ -10570,11 +10699,80 @@ app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-io.on("connection", socket => {
-  socket.emit("server:time", { now: new Date().toISOString() });
+io.use(async (socket, next) => {
+  try {
+    const sessionUser = socket.request.session?.user;
+    if (!sessionUser?.id) {
+      const error = new Error("Sessão necessária.");
+      error.data = { code: "SOCKET_AUTH_REQUIRED" };
+      return next(error);
+    }
+
+    const account = await currentUser(sessionUser.id);
+    const validRole = account && ["admin", "courier"].includes(account.role);
+    const courierApproved = account?.role !== "courier" || account.approval_status === "APPROVED";
+
+    if (!account || !account.active || !validRole || !courierApproved) {
+      if (socket.request.session) {
+        await new Promise(resolve => socket.request.session.destroy(() => resolve()));
+      }
+      const error = new Error("Sessão inválida.");
+      error.data = { code: "SOCKET_AUTH_REQUIRED" };
+      return next(error);
+    }
+
+    socket.data.user = {
+      id: Number(account.id),
+      role: account.role,
+      username: account.username
+    };
+    next();
+  } catch (err) {
+    console.error("Socket authentication error:", err?.message || err);
+    const error = new Error("Sessão inválida.");
+    error.data = { code: "SOCKET_AUTH_REQUIRED" };
+    next(error);
+  }
 });
 
-setInterval(() => io.emit("server:time", { now: new Date().toISOString() }), 1000);
+io.on("connection", socket => {
+  const user = socket.data.user;
+  socket.join(user.role === "admin" ? SOCKET_ROOMS.admins : SOCKET_ROOMS.couriers);
+  socket.join(SOCKET_ROOMS.user(user.id));
+  socket.emit("server:time", { now: new Date().toISOString() });
+
+  const authTimer = setInterval(async () => {
+    if (!socket.connected) return;
+    try {
+      await new Promise((resolve, reject) => {
+        if (!socket.request.session?.reload) return reject(new Error("Sessão ausente."));
+        socket.request.session.reload(err => err ? reject(err) : resolve());
+      });
+
+      const sessionUser = socket.request.session?.user;
+      if (!sessionUser?.id || Number(sessionUser.id) !== Number(user.id)) {
+        socket.disconnect(true);
+        return;
+      }
+
+      const account = await currentUser(user.id);
+      const valid =
+        account &&
+        account.active &&
+        ["admin", "courier"].includes(account.role) &&
+        (account.role !== "courier" || account.approval_status === "APPROVED");
+
+      if (!valid) socket.disconnect(true);
+    } catch {
+      socket.disconnect(true);
+    }
+  }, 60 * 1000);
+  authTimer.unref?.();
+
+  socket.on("disconnect", () => clearInterval(authTimer));
+});
+
+setInterval(() => emitRealtime("server:time", { now: new Date().toISOString() }), 1000);
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
