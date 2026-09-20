@@ -35,7 +35,8 @@
     "selftest:waze-navigation": "node scripts/selftest-waze-navigation.js",
     "selftest:ifood-order-days": "node scripts/selftest-ifood-order-days.js",
     "selftest:platform-selection": "node scripts/selftest-platform-selection.js",
-    "selftest:socket-security": "node scripts/selftest-socket-security.js"
+    "selftest:socket-security": "node scripts/selftest-socket-security.js",
+    "selftest:dispatch-recovery": "node scripts/selftest-dispatch-recovery.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
