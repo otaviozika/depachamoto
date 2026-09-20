@@ -3282,8 +3282,7 @@ async function getCourierIfoodDeliveries(courierId) {
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
     WHERE d.courier_id=$1
-      AND (d.status='ON_ROAD' OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
-          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date)
+      AND d.departed_at >= NOW()-INTERVAL '48 hours'
       AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
       AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
     ORDER BY
@@ -3347,11 +3346,7 @@ async function getCourierAnotaAiDeliveries(courierId) {
     LEFT JOIN anotaai_delivery_confirmations c
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
     WHERE d.courier_id=$1
-      AND (
-        d.status='ON_ROAD'
-        OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
-           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
-      )
+      AND d.departed_at >= NOW()-INTERVAL '48 hours'
     ORDER BY
       CASE WHEN d.status='ON_ROAD' THEN 0 ELSE 1 END,
       d.departed_at DESC,
@@ -6106,7 +6101,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
     WHERE l.anotaai_order_id=$1
       AND d.courier_id=$2
-      AND d.departed_at >= NOW()-INTERVAL '24 hours'
+      AND d.departed_at >= NOW()-INTERVAL '48 hours'
     ORDER BY d.departed_at DESC,d.id DESC
     LIMIT 1
   `, [orderId, req.session.user.id])).rows[0];
@@ -6217,7 +6212,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
     WHERE l.ifood_order_id=$1
       AND d.courier_id=$2
-      AND d.departed_at >= NOW()-INTERVAL '24 hours'
+      AND d.departed_at >= NOW()-INTERVAL '48 hours'
     LIMIT 1
   `, [orderId, req.session.user.id])).rows[0];
 
