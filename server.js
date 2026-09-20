@@ -1619,11 +1619,32 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
   });
 }
 
+async function resetStaleAnotaAiDispatchJobs() {
+  const q = await pool.query(`
+    UPDATE anotaai_dispatch_links
+    SET anotaai_dispatch_status='FAILED',
+        processing_started_at=NULL,
+        next_attempt_at=NOW(),
+        last_error=COALESCE(last_error,'Processamento anterior interrompido; nova tentativa liberada.')
+    WHERE anotaai_dispatch_status='PROCESSING'
+      AND processing_started_at < NOW() - INTERVAL '3 minutes'
+    RETURNING anotaai_order_id,dispatch_id
+  `);
+
+  if (q.rowCount) {
+    console.warn(`Anota AI: ${q.rowCount} despacho(s) PROCESSING obsoleto(s) liberado(s) para nova tentativa.`);
+    emitRealtime("anotaai:changed", { change: "STALE_DISPATCH_RECOVERED", recovered: q.rowCount });
+  }
+  return q.rowCount;
+}
+
 async function runAnotaAiDispatchWorkerOnce() {
   if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
   anotaAiDispatchWorkerRunning = true;
 
   try {
+    await resetStaleAnotaAiDispatchJobs();
+
     const jobs = (await pool.query(`
       SELECT
         l.anotaai_order_id AS order_id,
