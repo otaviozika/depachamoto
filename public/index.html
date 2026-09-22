@@ -4746,7 +4746,7 @@ async function saveCourierProfile(e){
 const adminGroups={
   dashboard:{label:'Dashboard',defaultPage:'dashboard',tabs:[]},
   operations:{label:'Operação',defaultPage:'operations',tabs:[
-    ['operations','Agora'],['attendance','Presença'],['wallboard','Telão'],['history','Histórico'],['conflicts','Conflitos']
+    ['operations','Agora'],['attendance','Presença'],['history','Histórico'],['conflicts','Conflitos']
   ]},
   ifood:{label:'Integrações',defaultPage:'ifood',tabs:[['ifood','iFood'],['anotaai','Anota AI']]},
   management:{label:'Gestão',defaultPage:'management',tabs:[
@@ -4942,7 +4942,7 @@ document.addEventListener('visibilitychange',()=>{
   heartbeat({force:true});
 });
 setInterval(()=>{if(document.hidden)return;document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
-setInterval(()=>{if(!document.hidden&&me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,100,{visibleOnly:true})},15000);
+// Telão/KDS desativado: polling de /api/admin/wallboard removido para evitar alto consumo de bandwidth.
 setInterval(()=>{heartbeat();},60000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
