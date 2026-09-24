@@ -114,3 +114,18 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 #courierApp .courier-month-shift{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;color:#c8d4e2}
 #courierApp .courier-month-shift strong{color:#f5f7fb;white-space:nowrap}
 @media(max-width:440px){#courierApp .courier-month-controls{width:100%}#courierApp .courier-month-controls label{flex:1}#courierApp #courierPaymentMonth{width:100%;min-width:0}#courierApp .courier-month-day summary{grid-template-columns:59px 1fr auto;gap:5px}#courierApp .courier-month-day summary>strong{font-size:14px}}
+
+/* Courier month/year picker: equal-height arrows and responsive native month input. */
+#courierApp .courier-monthly-heading{display:block}
+#courierApp .courier-month-controls{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:end;gap:10px;width:100%;margin-top:18px}
+#courierApp .courier-month-picker{min-width:0;display:flex;flex-direction:column;gap:6px}
+#courierApp .courier-month-picker label{font-size:11px;letter-spacing:.12em;font-weight:800;color:#aebed1;line-height:1.3}
+#courierApp #courierPaymentMonth{box-sizing:border-box;display:block;width:100%;max-width:none;min-width:0;margin:0;height:48px;padding:0 12px;border:1px solid #43556a!important;border-radius:12px;font-size:16px;text-align:center;line-height:normal;background:#101c29!important;color:#f5f7fb!important}
+#courierApp #courierPaymentMonth::-webkit-calendar-picker-indicator{filter:invert(.9);opacity:.75;cursor:pointer}
+#courierApp .courier-month-controls .courier-month-arrow{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:44px;height:48px;min-width:44px;min-height:48px;padding:0;margin:0;border-radius:12px;font-size:25px;line-height:1}
+#courierApp .courier-month-controls .courier-month-arrow:disabled{opacity:.4;cursor:not-allowed}
+#courierApp .courier-shift-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.02em;border-radius:7px;padding:4px 8px}
+#courierApp .courier-shift-tag.lunch{background:#3a301f;color:#f5ca77}
+#courierApp .courier-shift-tag.dinner{background:#25384c;color:#bbd8ff}
+#courierApp .courier-shift-tag.legacy{background:#33383f;color:#c7d0dc}
+@media(max-width:440px){#courierApp .courier-month-controls{width:100%;gap:9px}#courierApp .courier-month-controls .courier-month-arrow{width:44px;min-width:44px}#courierApp #courierPaymentMonth{width:100%;min-width:0;font-size:16px}}
