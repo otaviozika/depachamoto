@@ -5431,7 +5431,7 @@ async function getCourierPaymentPeriodShifts(courier,startDate,endDate) {
       SELECT attendance_date AS payment_date,shift_code FROM courier_attendance WHERE courier_id=$1 AND attendance_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
       UNION SELECT payment_date,shift_code FROM deliveries
       UNION SELECT payment_date,shift_code FROM courier_payments WHERE courier_id=$1 AND payment_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
-    ) SELECT to_char(w.payment_date,'YYYY-MM-DD') summary_date,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,p.*
+    ) SELECT p.*,to_char(w.payment_date,'YYYY-MM-DD') summary_date,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count
       FROM worked w LEFT JOIN deliveries d ON d.payment_date=w.payment_date AND d.shift_code=w.shift_code
       LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code=w.shift_code ORDER BY w.payment_date,w.shift_code`,[courier.id,startDate,endDate,WORK_SHIFT_CUTOVER_DATE])).rows;
   const rules=(await pool.query(`SELECT id,to_char(effective_from,'YYYY-MM-DD') effective_from,per_delivery,base_mon_thu,base_fri_sun,lunch_mon_thu,lunch_fri_sun,dinner_mon_thu,dinner_fri_sun,rain_bonus,created_at
