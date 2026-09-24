@@ -12,7 +12,7 @@ const context=vm.createContext({$,Date,console,me:{role:'admin'},dashboard:{cour
   escapeHtml:v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
   kdsTimestamp:()=>null,kdsPrimaryText:()=>'',kdsSecondaryText:()=>'',kdsPreparationMarkup:()=>'',localTime:()=>'',
   message:(id,text)=>$(id).innerHTML=text,api:async(path,options)=>{sent={path,body:JSON.parse(options.body)};return {}},
-  loadAdmin:async()=>{},loadWallboard:async()=>{refreshes++},loadCourier:async()=>{}
+  loadAdmin:async()=>{},loadWallboard:async()=>{refreshes++},loadAnotaAiStatus:async()=>{},loadCourier:async()=>{}
 });
 function include(start,end){const at=html.indexOf(start);vm.runInContext(html.slice(at,html.indexOf(end,at)),context)}
 include('let routeOrderRecovery=','async function depart(e)');

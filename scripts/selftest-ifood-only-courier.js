@@ -10,20 +10,18 @@ const adminManual = server.match(/app\.post\("\/api\/admin\/dispatches\/manual"[
 const uiDepart = ui.match(/async function depart\(e\)\{[\s\S]*?\n\}/)?.[0] || '';
 
 const checks = {
-  version_290: /const VERSION = "3\.7\.0"/.test(server),
-  courier_non_ifood_backend_block: /COURIER_NON_IFOOD_ORDER_BLOCKED/.test(courierDepart),
-  courier_requires_ifood_code: /IFOOD_ORDER_REQUIRED/.test(courierDepart),
-  courier_all_orders_must_match: /ifoodInspection\.accepted\.length !== orders\.length/.test(courierDepart),
-  courier_offline_backend_block: /COURIER_OFFLINE_DEPARTURE_BLOCKED/.test(courierDepart) && /IFOOD_ONLINE_VALIDATION_REQUIRED/.test(courierDepart),
-  courier_lookup_not_manual: /found: false,[\s\S]{0,120}valid: false,[\s\S]{0,120}manual: false,[\s\S]{0,120}IFOOD_ORDER_REQUIRED/.test(server),
-  courier_ui_requires_validation: /allCourierOrdersIfoodValidated/.test(ui) && /Valide os pedidos iFood/.test(ui),
-  courier_ui_manual_block_copy: /Pedido manual é exclusivo do Admin/.test(ui),
-  courier_ui_no_new_offline_queue: !/async function depart\(e\)\{[\s\S]*?enqueueDeparture\(orders\)[\s\S]*?\n\}/.test(ui),
-  courier_ui_offline_block: /Conexão obrigatória: o pedido precisa ser validado no iFood/.test(uiDepart),
+  version: /const VERSION = "3\\.7\\.0"/.test(server),
+  courier_online_required: /COURIER_OFFLINE_DEPARTURE_BLOCKED/.test(courierDepart) && /IFOOD_ONLINE_VALIDATION_REQUIRED/.test(courierDepart),
+  courier_requires_external_platform: /resolveCourierOrderPlatforms\(orders, req\.body\)/.test(courierDepart) &&
+    /ifoodLinks\.length \+ anotaAiLinks\.length !== orders\.length/.test(courierDepart),
+  mandatory_choice_if_number_collides: /platformResolution\.ambiguities\.length/.test(courierDepart) && /ORDER_PLATFORM_REQUIRED/.test(courierDepart),
+  blocks_invalid_platform: /platformResolution\.errors\.length/.test(courierDepart) && /COURIER_PLATFORM_ORDER_BLOCKED/.test(courierDepart),
+  courier_ui_requires_platform_validation: ui.includes('allCourierOrdersPlatformValidated()') && ui.includes('escolha iFood ou Anota AI'),
+  courier_ui_cannot_dispatch_offline: ui.includes('Conexão obrigatória: o pedido precisa ser validado no iFood ou Anota AI'),
   admin_manual_still_admin_only: /auth, adminOnly/.test(adminManual),
-  admin_manual_still_allows_non_ifood: /inspectIfoodOrdersForDeparture\(orders\)/.test(adminManual) && !/accepted\.length !== orders\.length/.test(adminManual),
-  admin_manual_source: /source: "ADMIN"/.test(adminManual),
-  pwa_cache_290: /despachefull-v3\.7\.0-/.test(sw),
+  admin_manual_still_allows_manual: /inspectIfoodOrdersForDeparture\(orders\)/.test(adminManual) && !/ifoodInspection\.accepted\.length !== orders\.length/.test(adminManual),
+  admin_manual_requires_no_store_arrival: /PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE/.test(adminManual) && !/RETURN_CHECKIN_REQUIRED/.test(adminManual),
+  pwa_cache_current: /despachefull-v3\\.7\\.0-/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 

@@ -7306,7 +7306,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       details: { reason: "IFOOD_ONLINE_VALIDATION_REQUIRED" }
     });
     return res.status(409).json({
-      error: "Saída offline não é permitida para motoboy. Conecte-se à internet para validar os pedidos no iFood, ou peça ao administrador para registrar uma saída manual.",
+      error: "Saída offline não é permitida para motoboy. Conecte-se à internet para validar os pedidos no iFood ou Anota AI, ou peça ao administrador para registrar uma saída manual.",
       code: "IFOOD_ONLINE_VALIDATION_REQUIRED",
       server_now: new Date().toISOString()
     });
@@ -8341,8 +8341,8 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
 
   if (activeCourierDispatch) {
     return res.status(409).json({
-      error: "Este motoboy ainda não confirmou a chegada à loja. Confirme a chegada antes de registrar uma nova saída, inclusive pelo Admin.",
-      code: "RETURN_CHECKIN_REQUIRED",
+      error: "Este motoboy possui uma saída ativa. Confirme as entregas pendentes ou solicite liberação administrativa antes de registrar outra saída.",
+      code: "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE",
       active: activeCourierDispatch
     });
   }

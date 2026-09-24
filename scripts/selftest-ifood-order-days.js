@@ -33,7 +33,8 @@ class TestDate extends Date {
 }
 const fetched = [];
 const context = vm.createContext({ pool, console, Date: TestDate, process: { env: { IFOOD_MERCHANT_ID: 'shop' } },
-  io: { emit() {} }, auditBestEffort: async () => {},
+  io: { emit() {} }, emitRealtime:()=>{}, auditBestEffort: async () => {},
+  inspectAnotaAiOrdersForAdminAllocation:async()=>({accepted:[],blocked:[],matched:[]}),
   normalizeIfoodLifecycleStatus: v => String(v || '').toUpperCase(),
   getOperationalSlaSettings: async () => ({ route: {1:25,2:30,3:35,4:40,5:45}, returnMinutes:15 }),
   getCourierAttendance: async () => ({ checked_out_at: null }), getSPDate: async () => today,
@@ -55,6 +56,7 @@ function include(start, end) {
 include('function canonicalIfoodOrderStatus', 'async function refreshIfoodOrderClassificationForDeparture');
 include('function orderDateSP', 'async function ifoodOrderAlreadyStored');
 include('function normalizeOrders', 'const orderArraySql');
+include('function normalizeOrderPlatform', 'async function inspectAnotaAiOrdersForDeparture');
 include('async function inspectOrders', 'async function notificationEnabled');
 include('async function createDispatchTransaction', 'async function checkTimeNotifications');
 include('function operationalRouteSlaMinutes', 'function operationalTiming');

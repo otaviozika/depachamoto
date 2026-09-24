@@ -22,7 +22,7 @@ const checks = {
     server.includes("TAKEOUT/DINE_IN continuam preservados no histórico/iFood"),
   deliveryDispatchProtection:
     server.includes("DELIVERY_NOT_MERCHANT") &&
-    server.includes("Todos os pedidos da saída precisam estar vinculados ao iFood"),
+    server.includes("Todos os pedidos precisam estar identificados no iFood ou no Anota AI"),
   fifoPreserved:
     wallboardEndpoint.includes("ORDER BY COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC,o.order_id ASC"),
   threeWallboardColumns:

@@ -1937,7 +1937,7 @@ async function flushOfflineQueue(){
           break;
         }
         if((err.code==='RETURN_CHECKIN_REQUIRED'||err.code==='PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE')){
-          alert('A saída pendente impede novos despaches. Confirme as entregas ou solicite liberação administrativa.');
+          alert('A saída pendente impede novos despachos. Confirme as entregas ou solicite liberação administrativa.');
           break;
         }
         if(err.code==='ORDER_ALREADY_ACTIVE'){

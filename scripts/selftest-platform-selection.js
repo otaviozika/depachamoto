@@ -32,7 +32,7 @@ const checks = {
   ifood_code_flow_preserved: html.includes('/verify-delivery'),
   anota_no_code_flow_preserved: html.includes('/confirm-delivery'),
   pwa_cache_refreshed: html.includes("serviceWorker.register('/service-worker.js')") &&
-    sw.includes('admin-anota-allocation-v1')
+    sw.includes('despachefull-v3.7.0-')
 };
 
 for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `FAIL: ${name}`);
