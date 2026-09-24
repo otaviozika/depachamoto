@@ -5985,8 +5985,16 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     ORDER BY d.id DESC LIMIT 30
   `, [req.session.user.id])).rows;
 
+  const lastFinished = (await pool.query(`
+    SELECT id,released_at,return_source
+    FROM dispatches
+    WHERE courier_id=$1 AND status='RELEASED' AND released_at IS NOT NULL
+    ORDER BY released_at DESC,id DESC LIMIT 1
+  `,[req.session.user.id])).rows[0] || null;
+
   res.json({
     active,
+    last_finished: lastFinished,
     stats,
     recent,
     attendance: {
