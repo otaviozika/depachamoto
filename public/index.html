@@ -3176,7 +3176,10 @@ async function loadCourier({related=true}={}){
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
-    $('activeDispatch').innerHTML='';
+    const last=d.last_finished;
+    const waiting=last?.released_at?Math.max(0,Math.floor((serverNowMs()-Date.parse(last.released_at))/60000)):null;
+    const adminReleased=last?.return_source==='ADMIN_PENDING_DELIVERIES_OVERRIDE';
+    $('activeDispatch').innerHTML=last?`<section class="hero courier-route-card" style="background:#10231c;border:1px solid #287d54;border-radius:18px"><div class="courier-route-kicker">MINHA OPERAÇÃO</div><h2>Nova saída autorizada</h2><p>${adminReleased?'Liberado pelo administrador. Entregas anteriores pendentes continuam disponíveis para confirmação.':'Todas as entregas da última saída foram resolvidas.'}</p><div class="courier-route-clock"><span>${adminReleased?'Tempo desde a liberação administrativa':'Aguardando próxima saída'}</span><strong class="big">${waiting===null?'—':Math.floor(waiting/60)+'h '+String(waiting%60).padStart(2,'0')+'min'}</strong></div></section>`:'';
     $('currentDepartureNote')?.remove();
   }
 
