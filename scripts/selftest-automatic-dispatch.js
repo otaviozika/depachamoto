@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const server=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
 const ui=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const check=(name,ok)=>{assert.ok(ok,name);console.log('PASS '+name)};
-check('server has automatic completion on all resolved',/if \(!progress\?\.all_orders_resolved\) return null;[\s\S]{0,250}completeDispatchReturn/.test(server));
+check('server has automatic completion on all resolved',/if \(!progress\?\.all_orders_resolved\) return null;[\s\S]{0,1800}return completeDispatchReturn/.test(server));
 check('auto closure rechecks under row lock',/SELECT \* FROM dispatches[\s\S]{0,160}FOR UPDATE[\s\S]{0,650}getDispatchProgressMap\(\[dispatchId\], client\)/.test(server));
 check('pending route blocks new departure',/PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE/.test(server));
 check('advisory lock serializes courier departures',/pg_advisory_xact_lock/.test(server));
