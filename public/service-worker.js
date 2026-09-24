@@ -1,5 +1,5 @@
-const CACHE = "despachefull-v3.7.0-auto-dispatch-v1";
-const STATIC = ["/", "/login-desktop.css", "/login-garage-desktop.webp", "/login-city-desk-scene-v2.png", "/login-bike-scene.png", "/login-omen-27-real.webp", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
+const CACHE = "despachefull-v3.7.0-courier-dark-v1";
+const STATIC = ["/", "/courier-dark.css", "/login-desktop.css", "/login-garage-desktop.webp", "/login-city-desk-scene-v2.png", "/login-bike-scene.png", "/login-omen-27-real.webp", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC)));
