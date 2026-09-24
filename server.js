@@ -6008,7 +6008,7 @@ app.post("/api/courier/dispatches/:id/release-request", auth, courierOnly, async
   const active=(await pool.query("SELECT id,courier_id FROM dispatches WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'",[req.params.id,req.session.user.id])).rows[0];
   if(!active)return res.status(404).json({error:"Saída ativa não encontrada."});
   await auditBestEffort(req.session.user.id,"COURIER_RELEASE_REQUESTED","dispatch",active.id,{reason});
-  await createNotification({type:"COURIER_RELEASE_REQUEST",severity:"warning",title:"Motoboy solicita liberação",message:"Motoboy #"+active.courier_id+" solicita liberação da saída #"+active.id+": "+reason});
+  await createNotification({type:"COURIER_RELEASE_REQUEST",severity:"warning",title:"Motoboy solicita liberação",message:"Motoboy #"+active.courier_id+" solicita liberação da saída #"+active.id+": "+reason,courierId:active.courier_id,dispatchId:active.id});
   emitRealtime("dispatch:changed",{courier_id:active.courier_id,dispatch_id:active.id,change:"RELEASE_REQUESTED"});
   res.json({ok:true,message:"Solicitação registrada."});
 }));
