@@ -17,4 +17,11 @@ jobs:
       - run: node --check server.js
       - name: Testes de regressão e rotas
         run: |
-          for test in scripts/selftest-*.js; do node "$test"; done
+          failed=0
+          for test in scripts/selftest-*.js; do
+            echo "::group::$test"
+            node "$test" || failed=$((failed+1))
+            echo "::endgroup::"
+          done
+          echo "Failed test scripts: $failed"
+          test "$failed" -eq 0
