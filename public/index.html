@@ -1502,10 +1502,13 @@
       <section id="courierMonthlyCard" class="card courier-monthly-card" aria-label="Ganhos por dia do mês">
         <div class="courier-monthly-heading">
           <div><div class="courier-eyebrow">Extrato mensal</div><h2>Quanto fiz em cada dia</h2><p class="small muted">Almoço e janta separados. Dias sem registro aparecem com R$ 0,00.</p></div>
-          <div class="courier-month-controls">
-            <button type="button" class="btn outline" onclick="changeCourierPaymentMonth(-1)" aria-label="Mês anterior">‹</button>
-            <label for="courierPaymentMonth">Mês <input id="courierPaymentMonth" type="month" onchange="loadCourierPaymentMonth(this.value)"></label>
-            <button id="courierNextMonth" type="button" class="btn outline" onclick="changeCourierPaymentMonth(1)" aria-label="Próximo mês">›</button>
+          <div class="courier-month-controls" role="group" aria-label="Selecionar mês e ano">
+            <button type="button" class="btn outline courier-month-arrow" onclick="changeCourierPaymentMonth(-1)" aria-label="Mês anterior">‹</button>
+            <div class="courier-month-picker">
+              <label for="courierPaymentMonth">MÊS E ANO</label>
+              <input id="courierPaymentMonth" type="month" aria-label="Mês e ano do extrato" onchange="loadCourierPaymentMonth(this.value)">
+            </div>
+            <button id="courierNextMonth" type="button" class="btn outline courier-month-arrow" onclick="changeCourierPaymentMonth(1)" aria-label="Próximo mês">›</button>
           </div>
         </div>
         <div id="courierMonthTotal" class="courier-month-total">Carregando...</div>
@@ -2877,7 +2880,11 @@ async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthTo
     $('courierMonthDays').innerHTML=data.days.map(day=>{
       const weekday=new Intl.DateTimeFormat('pt-BR',{weekday:'short',timeZone:'UTC'}).format(new Date(day.date+'T12:00:00Z'));
       const dateLabel=day.date.slice(8)+'/'+day.date.slice(5,7);
-      const shifts=day.shifts.map(shift=>'<div class="courier-month-shift"><span>'+escapeHtml(shift.shift_label||'Turno')+' • '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>').join('');
+      const shifts=day.shifts.map(shift=>{
+        const code=String(shift.shift_code||'').toUpperCase();
+        const label=code==='LUNCH'||code==='ALMOCO'||code==='ALMOÇO'?'Almoço':code==='DINNER'||code==='JANTA'?'Janta':(shift.shift_label&&shift.shift_label!=='Legado'?shift.shift_label:'Legado — turno não identificado');
+        return '<div class="courier-month-shift"><span><b class="courier-shift-tag '+(label==='Almoço'?'lunch':label==='Janta'?'dinner':'legacy')+'">'+escapeHtml(label)+'</b> · '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>';
+      }).join('');
       return '<details class="courier-month-day'+(day.future?' future':'')+'"><summary><span class="courier-month-date"><b>'+dateLabel+'</b><small>'+weekday+'</small></span><span class="courier-month-count">'+(day.future?'Ainda não ocorreu':day.delivery_count+' entrega(s)')+'</span><strong>'+brl(day.total_amount)+'</strong></summary>'+(shifts?'<div class="courier-month-shifts">'+shifts+'</div>':'<div class="courier-month-shifts small muted">'+(day.future?'Dia futuro':'Sem entregas ou pagamento registrado')+'</div>')+'</details>';
     }).join('');
   }catch(err){
