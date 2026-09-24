@@ -8395,7 +8395,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       ifoodLinks: ifoodInspection.accepted
     });
   } catch (e) {
-    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+    if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
       return res.status(409).json({
         error: e.message,
         code: e.code,
@@ -8412,7 +8412,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       order_numbers: orders,
       order_count: orders.length,
       reason: reason || "Não informado",
-      checkin_gate_enforced: true
+      pending_delivery_gate_enforced: true
     });
 
     await createNotification({
