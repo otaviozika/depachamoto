@@ -1499,6 +1499,19 @@
         <div class="courier-earning-card"><span>Mês</span><strong id="myEarningsMonth">R$ 0,00</strong><small>Do dia 1 até hoje</small></div>
       </div>
 
+      <section id="courierMonthlyCard" class="card courier-monthly-card" aria-label="Ganhos por dia do mês">
+        <div class="courier-monthly-heading">
+          <div><div class="courier-eyebrow">Extrato mensal</div><h2>Quanto fiz em cada dia</h2><p class="small muted">Almoço e janta separados. Dias sem registro aparecem com R$ 0,00.</p></div>
+          <div class="courier-month-controls">
+            <button type="button" class="btn outline" onclick="changeCourierPaymentMonth(-1)" aria-label="Mês anterior">‹</button>
+            <label for="courierPaymentMonth">Mês <input id="courierPaymentMonth" type="month" onchange="loadCourierPaymentMonth(this.value)"></label>
+            <button id="courierNextMonth" type="button" class="btn outline" onclick="changeCourierPaymentMonth(1)" aria-label="Próximo mês">›</button>
+          </div>
+        </div>
+        <div id="courierMonthTotal" class="courier-month-total">Carregando...</div>
+        <div id="courierMonthDays" class="courier-month-days" aria-live="polite">Carregando os dias do mês...</div>
+      </section>
+
       <div class="courier-section-heading"><h2>Entregas realizadas</h2><p>Quantidade de pedidos em cada período.</p></div>
       <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
         <div class="card"><div class="label">Hoje</div><div id="statToday" class="metric">0</div></div>
@@ -2838,6 +2851,42 @@ async function savePaymentRule(){const payload={effective_from:$('paymentRuleEff
 async function savePaymentRow(key,confirmReopen=false,confirmReviewed=false){const current=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!current)return;const status=$(`payStatus-${key}`).value;if(current.status==='OPEN'&&status==='REVIEWED'&&!confirm(`Conferir o pagamento de ${current.shift_label}? Os valores serão congelados.`))return;if(current.status!=='PAID'&&status==='PAID'&&!confirm(`Marcar ${current.shift_label} como PAGO?`))return;if(current.status==='PAID'&&status!=='PAID'&&!confirmReopen){if(!confirm('Este turno já está PAGO. Deseja reabrir?'))return;confirmReopen=true}if(current.status==='REVIEWED'&&status==='OPEN'&&!confirmReviewed){if(!confirm('Este turno já foi CONFERIDO. Deseja reabrir para edição?'))return;confirmReviewed=true}
   const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
 function exportPayments(){const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';location.href='/api/admin/payments.csv?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:'')}
+let courierPaymentMonth='';
+function courierMonthToday(){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);
+}
+function changeCourierPaymentMonth(delta){
+  const current=courierPaymentMonth||courierMonthToday();
+  const [year,month]=current.split('-').map(Number);
+  const next=new Date(Date.UTC(year,month-1+delta,1)).toISOString().slice(0,7);
+  if(next>courierMonthToday())return;
+  loadCourierPaymentMonth(next);
+}
+async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthToday()){
+  if(!me||me.role!=='courier'||!$('courierMonthDays'))return;
+  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)||month>courierMonthToday())return;
+  courierPaymentMonth=month;
+  $('courierPaymentMonth').value=month;
+  $('courierPaymentMonth').max=courierMonthToday();
+  $('courierNextMonth').disabled=month>=courierMonthToday();
+  $('courierMonthDays').textContent='Carregando os dias do mês...';
+  try{
+    const data=await api('/api/courier/payment/month?month='+encodeURIComponent(month));
+    if(month!==courierPaymentMonth)return;
+    $('courierMonthTotal').textContent='Total do mês: '+brl(data.summary.total_amount)+' • '+data.summary.delivery_count+' entregas';
+    $('courierMonthDays').innerHTML=data.days.map(day=>{
+      const weekday=new Intl.DateTimeFormat('pt-BR',{weekday:'short',timeZone:'UTC'}).format(new Date(day.date+'T12:00:00Z'));
+      const dateLabel=day.date.slice(8)+'/'+day.date.slice(5,7);
+      const shifts=day.shifts.map(shift=>'<div class="courier-month-shift"><span>'+escapeHtml(shift.shift_label||'Turno')+' • '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>').join('');
+      return '<details class="courier-month-day'+(day.future?' future':'')+'"><summary><span class="courier-month-date"><b>'+dateLabel+'</b><small>'+weekday+'</small></span><span class="courier-month-count">'+(day.future?'Ainda não ocorreu':day.delivery_count+' entrega(s)')+'</span><strong>'+brl(day.total_amount)+'</strong></summary>'+(shifts?'<div class="courier-month-shifts">'+shifts+'</div>':'<div class="courier-month-shifts small muted">'+(day.future?'Dia futuro':'Sem entregas ou pagamento registrado')+'</div>')+'</details>';
+    }).join('');
+  }catch(err){
+    if(month!==courierPaymentMonth)return;
+    $('courierMonthTotal').textContent='Extrato indisponível';
+    $('courierMonthDays').textContent=err.message||'Não foi possível carregar os valores deste mês.';
+  }
+}
+
 async function loadMyPayment(){
   if(!me||me.role!=='courier'||!$('myPaymentCard'))return;
   try{
@@ -4542,6 +4591,7 @@ function activateCourierTab(section,button=null,scroll=true){
   if(section==='route')loadCourierDeliveries().catch(()=>{});
   if(section==='earnings'){
     loadMyPayment().catch(()=>{});
+    loadCourierPaymentMonth().catch(()=>{});
     loadMyPix().catch(()=>{});
   }
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});

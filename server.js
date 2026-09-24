@@ -6074,6 +6074,34 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,r
 }));
 
 
+app.get("/api/courier/payment/month", auth, courierOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.query.month||'');
+  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
+  const today=await getSPDate();
+  const start=month+'-01';
+  if(start>today.slice(0,7)+'-01')return res.status(400).json({error:'Selecione o mês atual ou um mês anterior.'});
+  const end=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);
+  const through=end<today?end:today;
+  const courier=(await pool.query("SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status FROM users WHERE id=$1 AND role='courier'",[req.session.user.id])).rows[0];
+  if(!courier)return res.status(404).json({error:'Motoboy não encontrado.'});
+  const shifts=await getCourierPaymentPeriodShifts(courier,start,through);
+  const grouped=new Map();
+  for(const shift of shifts){
+    const date=shift.payment_date;
+    if(!grouped.has(date))grouped.set(date,[]);
+    grouped.get(date).push({shift_code:shift.shift_code,shift_label:shift.shift_label,delivery_count:shift.delivery_count,total_amount:shift.total_amount,status:shift.status});
+  }
+  const days=[];
+  const count=Number(end.slice(-2));
+  for(let day=1;day<=count;day++){
+    const date=month+'-'+String(day).padStart(2,'0');
+    const items=grouped.get(date)||[];
+    days.push({date,future:date>today,delivery_count:items.reduce((n,x)=>n+Number(x.delivery_count||0),0),
+      total_amount:roundMoney(items.reduce((n,x)=>n+Number(x.total_amount||0),0)),shifts:items});
+  }
+  res.json({month,through,days,summary:summarizeCourierPaymentShifts(shifts),server_now:new Date().toISOString()});
+}));
+
 app.get("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
   const date = await getSPDate();
