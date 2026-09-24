@@ -2864,7 +2864,7 @@ function changeCourierPaymentMonth(delta){
 }
 async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthToday()){
   if(!me||me.role!=='courier'||!$('courierMonthDays'))return;
-  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)||month>courierMonthToday())return;
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month>courierMonthToday())return;
   courierPaymentMonth=month;
   $('courierPaymentMonth').value=month;
   $('courierPaymentMonth').max=courierMonthToday();
