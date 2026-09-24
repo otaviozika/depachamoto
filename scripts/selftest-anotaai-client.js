@@ -25,7 +25,7 @@ const fetchImpl = async (url, options = {}) => {
   if (entry.url.includes("/ping/list")) {
     listCount += 1;
     assert.equal(options.headers["x-page-id"], "page-123");
-    assert.match(options.headers["User-Agent"], /^DespacheFull\/3\.6\.1/);
+    assert.match(options.headers["User-Agent"], /^DespacheFull\/3\.7\.0/);
     if (listCount === 1) return new Response(JSON.stringify({ message: "expired" }), { status: 401 });
     return new Response(JSON.stringify({ success: true, info: { docs: [{ _id: "order-1", check: 1 }], count: 1, limit: 100, currentpage: 1 } }), { status: 200 });
   }
@@ -44,7 +44,7 @@ const fetchImpl = async (url, options = {}) => {
 const client = createAnotaAiClient({
   clientId: "client-id",
   clientSecret: "client-secret",
-  userAgent: "DespacheFull/3.6.1 (test; Node.js/22)",
+  userAgent: "DespacheFull/3.7.0 (test; Node.js/22)",
   fetchImpl
 });
 

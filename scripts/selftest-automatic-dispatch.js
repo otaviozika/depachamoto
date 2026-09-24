@@ -13,6 +13,7 @@ check('courier request requires owned active dispatch',/release-request[\s\S]{0,
 check('courier arrival endpoint retired',/ARRIVAL_CHECKIN_REMOVED/.test(server));
 check('courier return endpoint retired',/MANUAL_RETURN_REMOVED/.test(server));
 check('courier has release request UI',/Solicitar liberação ao admin/.test(ui));
+check('admin override cleans locks when all pending deliveries later resolve',/prior\?\.status === "RELEASED"[\s\S]{0,1050}DELETE FROM active_order_locks/.test(server));
 check('courier has no arrive button',!/onclick="arriveAtStore\(/.test(ui));
 check('admin has release action',/Liberar nova saída/.test(ui));
 console.log('New dispatch flow static regression checks passed');
