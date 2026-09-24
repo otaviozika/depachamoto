@@ -45,7 +45,7 @@ function element(id){
   if(!elements.has(id)){
     const classes=new Set(id==='registerForm'?['hidden']:[]);
     elements.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,focused:false,
-      focus(){this.focused=true},classList:{add:v=>classes.add(v),remove:v=>classes.delete(v),contains:v=>classes.has(v),toggle(v,on){if(on??!classes.has(v))classes.add(v);else classes.delete(v)}}});
+      focus(){this.focused=true},querySelector(selector){return selector==='button[type="submit"]'?element('loginSubmit'):null},classList:{add:v=>classes.add(v),remove:v=>classes.delete(v),contains:v=>classes.has(v),toggle(v,on){if(on??!classes.has(v))classes.add(v);else classes.delete(v)}}});
   }
   return elements.get(id);
 }

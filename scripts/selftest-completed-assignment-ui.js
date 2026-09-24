@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 // Exercise production form/card functions with a minimal DOM. No production APIs.
 const nodes=new Map();
-const $=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',style:{},classList:{toggle(){}},reset(){},required:false,readOnly:false});return nodes.get(id)};
+const $=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',style:{},classList:{toggle(){},add(){},remove(){},contains(){return false}},reset(){},required:false,readOnly:false});return nodes.get(id)};
 let sent,refreshes=0,fullscreenExits=0;
 const row={order_id:'complete-uuid',display_id:'4415',status:'CONCLUDED',delivered_by:'MERCHANT'};
 const context=vm.createContext({$,Date,console,me:{role:'admin'},dashboard:{couriers:[{id:2,name:'Motoboy teste'}]},wallboardData:{orders:[row]},

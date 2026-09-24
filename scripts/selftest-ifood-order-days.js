@@ -100,7 +100,7 @@ await test('atualização tardia e trava antiga não bloqueiam o número de hoje
 });
 await test('mesmo dia bloqueia saída duplicada; rollback preserva histórico', async () => {
   const result = await inspect('1234'); assert.equal(result.blocked[0].code,'IFOOD_ORDER_ALREADY_LINKED');
-  assert.equal((await context.inspectOrders(['#1234'])).active.length,1);
+  assert.equal((await context.inspectOrders(['#1234'],[{order_number:'#1234',order_date:today}])).active.length,1);
   await add('same-day-1234','1234');
   await assert.rejects(create(5,[{order_id:'same-day-1234',order_number:'#1234'}]), e=>e.code==='23505');
   assert.equal((await query('SELECT * FROM dispatches WHERE courier_id=5')).rows.length,0);
@@ -166,7 +166,7 @@ await test('duas tentativas simultâneas têm um único vínculo e job', async (
   assert.equal((await query("SELECT * FROM ifood_dispatch_jobs WHERE ifood_order_id='race'")).rows.length,1);
 });
 await test('inicialização recompõe travas por dia e pode repetir sem duplicá-las', async () => {
-  const start=source.indexOf('INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date)\nSELECT');
+  const start=source.indexOf('INSERT INTO active_order_locks(order_number,dispatch_id,courier_id,order_date,platform)\nSELECT');
   const sql=source.slice(start,source.indexOf('`);',start));
   await db.exec(sql); const before=(await query('SELECT COUNT(*)::int AS n FROM active_order_locks')).rows[0].n;
   await db.exec(sql); assert.equal((await query('SELECT COUNT(*)::int AS n FROM active_order_locks')).rows[0].n,before);
