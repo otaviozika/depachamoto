@@ -22,7 +22,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.2";
+const VERSION = "3.7.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -10336,14 +10336,8 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
   });
 }));
 
-app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(async (req, res) => {
-  const dispatch = await markDispatchReturning(req.params.id, {
-    actorUserId: req.session.user.id,
-    source: "ADMIN_MANUAL",
-    reason: String(req.body?.reason || "ADMIN_STARTED_RETURN").slice(0,200)
-  });
-  if (!dispatch) return res.status(404).json({ error: "Saída ativa em rota não encontrada." });
-  res.json({ dispatch, server_now: new Date().toISOString() });
+app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ code:"MANUAL_RETURN_REMOVED", error:"O retorno manual foi removido. Todas as entregas precisam ser confirmadas ou liberadas pelo administrador." });
 }));
 
 app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {

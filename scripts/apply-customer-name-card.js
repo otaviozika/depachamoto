@@ -63,7 +63,7 @@ if (!html.includes('delivery-customer-name') || !html.includes('x?.customer_name
 fs.writeFileSync(indexPath, html);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.6.1-customer-name-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-customer-name-v1";');
 fs.writeFileSync(swPath, sw);
 
 console.log('Nome do cliente adicionado ao card da entrega sem alterar os demais elementos.');
