@@ -7482,7 +7482,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       anotaAiLinks
     });
   } catch (e) {
-    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+    if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
       return res.status(409).json({
         error: e.message,
         code: e.code,
@@ -7523,7 +7523,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       departed_at: result.dispatch.departed_at,
       source: "COURIER",
       platform_selections: platformResolution.selections,
-      checkin_gate_enforced: true
+      pending_delivery_gate_enforced: true
     });
   }
 
