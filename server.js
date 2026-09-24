@@ -4951,6 +4951,27 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
   const progressMap = await getDispatchProgressMap([dispatchId]);
   const progress = progressMap.get(Number(dispatchId));
   if (!progress?.all_orders_resolved) return null;
+  const prior = (await pool.query(
+    "SELECT status,return_source FROM dispatches WHERE id=$1",
+    [dispatchId]
+  )).rows[0];
+  if (prior?.status === "RELEASED" && prior.return_source === "ADMIN_PENDING_DELIVERIES_OVERRIDE") {
+    // A delayed confirmation must clear the locks retained by the override.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM dispatches WHERE id=$1 FOR UPDATE", [dispatchId]);
+      const fresh = (await getDispatchProgressMap([dispatchId], client)).get(Number(dispatchId));
+      if (fresh?.all_orders_resolved) {
+        await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally { client.release(); }
+    return null;
+  }
   return completeDispatchReturn({
     dispatchId,
     actorUserId,
