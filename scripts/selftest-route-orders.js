@@ -96,7 +96,7 @@ await test('concorrência: mesmo UUID gera somente um vínculo',async()=>{
 await test('limite da rota e bloqueio de segunda saída',async()=>{
   await add('l');await create(2,['l'],{append:true});await add('m');
   await assert.rejects(create(2,['m'],{append:true}),/máximo 5/);
-  await assert.rejects(create(2,['m']),/saída em andamento/);
+  await assert.rejects(create(2,['m']),/entregas pendentes/);
 });
 await test('rota retornando, rota inexistente e mudança de status bloqueiam',async()=>{
   await query("UPDATE dispatches SET operational_stage='RETURNING' WHERE courier_id=3");
