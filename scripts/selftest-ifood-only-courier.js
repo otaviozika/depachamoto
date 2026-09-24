@@ -10,7 +10,7 @@ const adminManual = server.match(/app\.post\("\/api\/admin\/dispatches\/manual"[
 const uiDepart = ui.match(/async function depart\(e\)\{[\s\S]*?\n\}/)?.[0] || '';
 
 const checks = {
-  version: /const VERSION = "3\\.7\\.0"/.test(server),
+  version: server.includes('const VERSION = "3.7.0";'),
   courier_online_required: /COURIER_OFFLINE_DEPARTURE_BLOCKED/.test(courierDepart) && /IFOOD_ONLINE_VALIDATION_REQUIRED/.test(courierDepart),
   courier_requires_external_platform: /resolveCourierOrderPlatforms\(orders, req\.body\)/.test(courierDepart) &&
     /ifoodLinks\.length \+ anotaAiLinks\.length !== orders\.length/.test(courierDepart),
@@ -21,7 +21,7 @@ const checks = {
   admin_manual_still_admin_only: /auth, adminOnly/.test(adminManual),
   admin_manual_still_allows_manual: /inspectIfoodOrdersForDeparture\(orders\)/.test(adminManual) && !/ifoodInspection\.accepted\.length !== orders\.length/.test(adminManual),
   admin_manual_requires_no_store_arrival: /PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE/.test(adminManual) && !/RETURN_CHECKIN_REQUIRED/.test(adminManual),
-  pwa_cache_current: /despachefull-v3\\.7\\.0-/.test(sw),
+  pwa_cache_current: sw.includes('despachefull-v3.7.0-'),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 
