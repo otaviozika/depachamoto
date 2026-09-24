@@ -2883,6 +2883,15 @@ async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthTo
       const shifts=day.shifts.map(shift=>{
         const code=String(shift.shift_code||'').toUpperCase();
         const label=code==='LUNCH'||code==='ALMOCO'||code==='ALMOÇO'?'Almoço':code==='DINNER'||code==='JANTA'?'Janta':(shift.shift_label&&shift.shift_label!=='Legado'?shift.shift_label:'Legado — turno não identificado');
+        if(!code){
+          const breakdown=Array.isArray(shift.legacy_breakdown)?shift.legacy_breakdown:[];
+          const byCode=new Map(breakdown.map(item=>[String(item.shift_code),Number(item.delivery_count||0)]));
+          const legacyParts=[['LUNCH','Almoço'],['DINNER','Janta'],['UNKNOWN','Horário não identificado']]
+            .filter(([key])=>byCode.get(key)>0)
+            .map(([key,title])=>'<div class="courier-month-legacy-row"><span><b class="courier-shift-tag '+(key==='LUNCH'?'lunch':key==='DINNER'?'dinner':'legacy')+'">'+title+'</b> · '+byCode.get(key)+' entregas</span></div>').join('');
+          return '<div class="courier-month-legacy"><div class="courier-month-shift"><span><b class="courier-shift-tag legacy">Legado</b> · '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>'
+            +(legacyParts?'<div class="courier-month-legacy-detail">'+legacyParts+'<small>Valor legado registrado por dia; sem divisão financeira por turno.</small></div>':'')+'</div>';
+        }
         return '<div class="courier-month-shift"><span><b class="courier-shift-tag '+(label==='Almoço'?'lunch':label==='Janta'?'dinner':'legacy')+'">'+escapeHtml(label)+'</b> · '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>';
       }).join('');
       return '<details class="courier-month-day'+(day.future?' future':'')+'"><summary><span class="courier-month-date"><b>'+dateLabel+'</b><small>'+weekday+'</small></span><span class="courier-month-count">'+(day.future?'Ainda não ocorreu':day.delivery_count+' entrega(s)')+'</span><strong>'+brl(day.total_amount)+'</strong></summary>'+(shifts?'<div class="courier-month-shifts">'+shifts+'</div>':'<div class="courier-month-shifts small muted">'+(day.future?'Dia futuro':'Sem entregas ou pagamento registrado')+'</div>')+'</details>';
