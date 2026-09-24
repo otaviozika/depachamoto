@@ -6076,7 +6076,7 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,r
 
 app.get("/api/courier/payment/month", auth, courierOnly, asyncRoute(async (req,res)=>{
   const month=String(req.query.month||'');
-  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
   const today=await getSPDate();
   const start=month+'-01';
   if(start>today.slice(0,7)+'-01')return res.status(400).json({error:'Selecione o mês atual ou um mês anterior.'});
