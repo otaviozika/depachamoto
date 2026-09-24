@@ -196,7 +196,7 @@ css = css.trimEnd() + '\n\n' + toggleCss + '\n';
 fs.writeFileSync(cssPath, css);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.6.1-password-toggle-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-password-toggle-v1";');
 fs.writeFileSync(swPath, sw);
 
 console.log('Botoes de mostrar/ocultar senha padronizados.');

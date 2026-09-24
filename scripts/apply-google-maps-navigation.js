@@ -158,7 +158,7 @@ if (!html.includes('buildGoogleMapsUrl(destination)') || !html.includes('Ir no G
 fs.writeFileSync(indexPath, html);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.6.1-google-maps-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-google-maps-v1";');
 if (!sw.includes('"/google-maps-icon.svg"')) {
   if (sw.includes('"/waze-icon.png"')) {
     sw = sw.replace('"/waze-icon.png"', '"/waze-icon.png", "/google-maps-icon.svg"');

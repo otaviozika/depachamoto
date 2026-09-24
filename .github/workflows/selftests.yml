@@ -17,4 +17,32 @@ jobs:
       - run: node --check server.js
       - name: Testes de regressão e rotas
         run: |
-          for test in scripts/selftest-*.js; do node "$test"; done
+          failed=0
+          for test in scripts/selftest-*.js; do
+            echo "::group::$test"
+            node "$test" || failed=$((failed+1))
+            echo "::endgroup::"
+          done
+          echo "Failed test scripts: $failed"
+          test "$failed" -eq 0
+
+  dispatch-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - name: Check production prestart transformations
+        run: |
+          npm run prestart
+          node --check server.js
+      - name: Dispatch and integration regression
+        run: |
+          node scripts/selftest-automatic-dispatch.js
+          node scripts/selftest-dispatch-recovery.js
+          node scripts/selftest-socket-security.js
+          node scripts/selftest-anotaai-integration.js
+          node scripts/selftest-delivery-details.js

@@ -5,7 +5,7 @@ const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "
 const sw = fs.readFileSync(new URL("../public/service-worker.js", import.meta.url), "utf8");
 
 const checks = {
-  version: server.includes('const VERSION = "3.6.1";'),
+  version: server.includes('const VERSION = "3.7.0";'),
   destinationExtractor: server.includes("function buildIfoodDeliveryDestination(payload)"),
   coordinatePriority: server.includes('source: "coordinates"') && server.includes("coordinates.latitude"),
   addressFallback: server.includes('source: "address"') && server.includes("formattedAddress"),
@@ -21,7 +21,7 @@ const checks = {
 };
 
 const failed = Object.entries(checks).filter(([, ok]) => !ok);
-console.log(JSON.stringify({ result: failed.length ? "FAIL" : "PASS", version: "3.6.1", checks }, null, 2));
+console.log(JSON.stringify({ result: failed.length ? "FAIL" : "PASS", version: "3.7.0", checks }, null, 2));
 if (failed.length) process.exit(1);
 
 

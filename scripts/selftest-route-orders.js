@@ -21,7 +21,7 @@ const pool={query,connect:async()=>{
   return {query,release};
 }};
 const context=vm.createContext({pool,console,Date,process,Set,Map,
-  io:{emit(){}},
+  io:{emit(){}},emitRealtime:()=>{},
   getCurrentOperationalShift:d=>({operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
   resolveDispatchShift:({departedAt,existingOperationalDate,existingShiftCode})=>existingShiftCode?({operational_date:existingOperationalDate,shift_code:existingShiftCode,shift_label:existingShiftCode==='LUNCH'?'Almoço':'Janta'}):({operational_date:new Date(departedAt).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
   shiftLabel:s=>s==='LUNCH'?'Almoço':'Janta',
@@ -41,7 +41,7 @@ include('async function createDispatchTransaction','async function checkTimeNoti
 include('function operationalRouteSlaMinutes','function operationalTiming');
 include('async function getCourierDeliveryCount','async function buildPaymentRow');
 include('async function getDispatchProgressMap','function decorateOperationalDispatches');
-include('async function markDispatchReturning','async function maybeAutoMarkDispatchReturning');
+include('async function markDispatchReturning','async function getSPDate()');
 await query("INSERT INTO users(id,name,username,password_hash,role) VALUES(1,'Admin','admin','test','admin'),(2,'A','a','test','courier'),(3,'B','b','test','courier'),(4,'C','c','test','courier')");
 const add=async(id,status='CONFIRMED',type='DELIVERY',by='MERCHANT',merchant='shop')=>query(`INSERT INTO ifood_orders(order_id,display_id,merchant_id,status,order_type,delivered_by,order_created_at) VALUES($1,$1,$5,$2,$3,$4,NOW())`,[id,status,type,by,merchant]);
 const link=id=>({order_id:id,order_number:'#'+id});
@@ -96,7 +96,7 @@ await test('concorrência: mesmo UUID gera somente um vínculo',async()=>{
 await test('limite da rota e bloqueio de segunda saída',async()=>{
   await add('l');await create(2,['l'],{append:true});await add('m');
   await assert.rejects(create(2,['m'],{append:true}),/máximo 5/);
-  await assert.rejects(create(2,['m']),/saída em andamento/);
+  await assert.rejects(create(2,['m']),/entregas pendentes/);
 });
 await test('rota retornando, rota inexistente e mudança de status bloqueiam',async()=>{
   await query("UPDATE dispatches SET operational_stage='RETURNING' WHERE courier_id=3");
@@ -122,10 +122,12 @@ await test('outra loja e falha da consulta iFood bloqueiam',async()=>{
   context.fetchIfoodOrderDetails=async()=>{throw Error('iFood indisponível')};
   await assert.rejects(context.inspectIfoodOrdersForDeparture(['#m']),/indisponível/);
 });
-await test('retorno revalida pedidos depois de adquirir a trava da rota',async()=>{
-  assert.equal(await context.markDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'}),null);
-  await assert.rejects(context.markDispatchReturning(first.id,{source:'COURIER_MANUAL'}),/entregas pendentes/);
+await test('encerramento automático só após confirmar todos os pedidos',async()=>{
+  assert.equal(await context.maybeAutoMarkDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'}),null);
   await query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id IN (SELECT ifood_order_id FROM ifood_dispatch_links WHERE dispatch_id=$1)",[first.id]);
-  assert.equal((await context.markDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'})).operational_stage,'RETURNING');
+  const finished=await context.maybeAutoMarkDispatchReturning(first.id,{source:'AUTO_IFOOD_CONCLUDED'});
+  assert.equal(finished.status,'RELEASED');
+  assert.equal(finished.operational_stage,'COMPLETED');
+  assert.equal((await query('SELECT COUNT(*)::int AS n FROM active_order_locks WHERE dispatch_id=$1',[first.id])).rows[0].n,0);
 });
 await db.close();console.log(JSON.stringify({result:'PASS',tests:count}));

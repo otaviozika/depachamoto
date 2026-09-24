@@ -22,7 +22,7 @@ const PgSession = connectPg(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = "3.6.2";
+const VERSION = "3.7.0";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -4465,12 +4465,8 @@ async function createDispatchTransaction({
     `, [courierId]);
 
     if (activeDispatch.rowCount && !append && !recovery) {
-      const err = new Error(
-        operationalStage(activeDispatch.rows[0].operational_stage) === "RETURNING"
-          ? "Você ainda está retornando. Confirme sua chegada à loja antes de registrar outra saída."
-          : "Você ainda possui uma saída em andamento. Finalize as entregas, inicie o retorno e confirme sua chegada à loja antes de registrar outra saída."
-      );
-      err.code = "RETURN_CHECKIN_REQUIRED";
+      const err = new Error("Você possui entregas pendentes. Confirme todas as entregas ou solicite liberação ao administrador para iniciar uma nova saída.");
+      err.code = "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE";
       err.status = 409;
       err.active = activeDispatch.rows[0];
       throw err;
@@ -4955,9 +4951,31 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
   const progressMap = await getDispatchProgressMap([dispatchId]);
   const progress = progressMap.get(Number(dispatchId));
   if (!progress?.all_orders_resolved) return null;
-  return markDispatchReturning(dispatchId, {
+  const prior = (await pool.query(
+    "SELECT status,return_source FROM dispatches WHERE id=$1",
+    [dispatchId]
+  )).rows[0];
+  if (prior?.status === "RELEASED" && prior.return_source === "ADMIN_PENDING_DELIVERIES_OVERRIDE") {
+    // A delayed confirmation must clear the locks retained by the override.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM dispatches WHERE id=$1 FOR UPDATE", [dispatchId]);
+      const fresh = (await getDispatchProgressMap([dispatchId], client)).get(Number(dispatchId));
+      if (fresh?.all_orders_resolved) {
+        await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally { client.release(); }
+    return null;
+  }
+  return completeDispatchReturn({
+    dispatchId,
     actorUserId,
-    source,
+    source: "AUTO_ALL_DELIVERIES_RESOLVED",
     reason: "ALL_TRACKABLE_ORDERS_RESOLVED"
   });
 }
@@ -4982,28 +5000,39 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
       return null;
     }
 
+    const administrativeOverride = source === "ADMIN_PENDING_DELIVERIES_OVERRIDE";
+    const progress = (await getDispatchProgressMap([dispatchId], client)).get(Number(dispatchId));
+    // Recheck under the dispatch row lock: another request may have appended a
+    // pending order after the initial confirmation event.
+    if (!administrativeOverride && !progress?.all_orders_resolved) {
+      await client.query("ROLLBACK");
+      return null;
+    }
     const q = await client.query(`
       UPDATE dispatches
       SET status='RELEASED',
-          operational_stage='COMPLETED',
-          returning_at=CASE WHEN operational_stage='RETURNING' THEN returning_at ELSE returning_at END,
-          returned_at=NOW(),
-          returned_by=$2,
+          operational_stage=$5,
+          returned_at=CASE WHEN $6::boolean THEN NULL ELSE NOW() END,
+          returned_by=CASE WHEN $6::boolean THEN NULL ELSE $2::integer END,
           released_at=NOW(),
           released_by=$2,
-          return_source=COALESCE(return_source,$3),
-          return_reason=COALESCE(return_reason,$4),
-          arrival_source=$3,
-          arrival_reason=$4,
-          closed_reason=COALESCE(closed_reason,$4)
+          return_source=$3,
+          return_reason=$4,
+          arrival_source=CASE WHEN $6::boolean THEN NULL ELSE $3 END,
+          arrival_reason=CASE WHEN $6::boolean THEN NULL ELSE $4 END,
+          closed_reason=$4
       WHERE id=$1 AND status='ON_ROAD'
       RETURNING *
-    `, [dispatchId, actorUserId, source, reason]);
-
-    await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+    `, [dispatchId, actorUserId, source, reason,
+        "COMPLETED", administrativeOverride]);
+    // Preserve order locks when the admin releases an unresolved delivery.
+    // An administrative exception must not make that order dispatchable again.
+    if (!administrativeOverride) {
+      await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+    }
     await client.query("COMMIT");
-    await auditBestEffort(actorUserId, "DISPATCH_RETURN_COMPLETED", "dispatch", dispatchId, { source, reason });
-    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: "COMPLETED" });
+    await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
+    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
     await client.query("ROLLBACK");
@@ -5977,8 +6006,16 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     ORDER BY d.id DESC LIMIT 30
   `, [req.session.user.id])).rows;
 
+  const lastFinished = (await pool.query(`
+    SELECT id,released_at,return_source
+    FROM dispatches
+    WHERE courier_id=$1 AND status='RELEASED' AND released_at IS NOT NULL
+    ORDER BY released_at DESC,id DESC LIMIT 1
+  `,[req.session.user.id])).rows[0] || null;
+
   res.json({
     active,
+    last_finished: lastFinished,
     stats,
     recent,
     attendance: {
@@ -6001,48 +6038,22 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
 
 
 
-app.post("/api/courier/dispatches/:id/start-return", auth, courierOnly, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const owned = (await pool.query(`
-    SELECT id,operational_stage FROM dispatches
-    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
-  `, [req.params.id, req.session.user.id])).rows[0];
-  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
-
-  if (operationalStage(owned.operational_stage) === "RETURNING") {
-    return res.json({ ok: true, already_returning: true, server_now: new Date().toISOString() });
-  }
-
-  const dispatch = await markDispatchReturning(req.params.id, {
-    actorUserId: req.session.user.id,
-    source: "COURIER_MANUAL",
-    reason: "COURIER_CONFIRMED_ALL_DELIVERED"
-  });
-  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+app.post("/api/courier/dispatches/:id/start-return", auth, courierOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ error: "Não é mais necessário iniciar retorno. Confirme todas as entregas para finalizar a saída automaticamente.", code: "MANUAL_RETURN_REMOVED" });
 }));
 
-app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const owned = (await pool.query(`
-    SELECT id,operational_stage FROM dispatches
-    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
-  `, [req.params.id, req.session.user.id])).rows[0];
-  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
-  if (operationalStage(owned.operational_stage) !== "RETURNING") {
-    return res.status(409).json({
-      error: "Primeiro confirme que terminou as entregas e iniciou o retorno.",
-      code: "RETURN_NOT_STARTED"
-    });
-  }
-
-  const dispatch = await completeDispatchReturn({
-    dispatchId: req.params.id,
-    courierId: req.session.user.id,
-    actorUserId: req.session.user.id,
-    source: "COURIER_ARRIVAL",
-    reason: "COURIER_CONFIRMED_ARRIVAL"
-  });
-  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+app.post("/api/courier/dispatches/:id/release-request", auth, courierOnly, asyncRoute(async (req,res) => {
+  const reason=String(req.body?.reason||"").trim().slice(0,200);
+  if(reason.length<4)return res.status(400).json({error:"Informe o motivo (mínimo 4 caracteres)."});
+  const active=(await pool.query("SELECT id,courier_id FROM dispatches WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'",[req.params.id,req.session.user.id])).rows[0];
+  if(!active)return res.status(404).json({error:"Saída ativa não encontrada."});
+  await auditBestEffort(req.session.user.id,"COURIER_RELEASE_REQUESTED","dispatch",active.id,{reason});
+  await createNotification({type:"COURIER_RELEASE_REQUEST",severity:"warning",title:"Motoboy solicita liberação",message:"Motoboy #"+active.courier_id+" solicita liberação da saída #"+active.id+": "+reason,courierId:active.courier_id,dispatchId:active.id});
+  emitRealtime("dispatch:changed",{courier_id:active.courier_id,dispatch_id:active.id,change:"RELEASE_REQUESTED"});
+  res.json({ok:true,message:"Solicitação registrada."});
+}));
+app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ error: "A chegada à loja não é mais necessária. A saída é finalizada automaticamente quando todas as entregas forem confirmadas.", code: "ARRIVAL_CHECKIN_REMOVED" });
 }));
 
 app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,res)=>{
@@ -7295,7 +7306,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       details: { reason: "IFOOD_ONLINE_VALIDATION_REQUIRED" }
     });
     return res.status(409).json({
-      error: "Saída offline não é permitida para motoboy. Conecte-se à internet para validar os pedidos no iFood, ou peça ao administrador para registrar uma saída manual.",
+      error: "Saída offline não é permitida para motoboy. Conecte-se à internet para validar os pedidos no iFood ou Anota AI, ou peça ao administrador para registrar uma saída manual.",
       code: "IFOOD_ONLINE_VALIDATION_REQUIRED",
       server_now: new Date().toISOString()
     });
@@ -7471,7 +7482,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       anotaAiLinks
     });
   } catch (e) {
-    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+    if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
       return res.status(409).json({
         error: e.message,
         code: e.code,
@@ -7512,7 +7523,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       departed_at: result.dispatch.departed_at,
       source: "COURIER",
       platform_selections: platformResolution.selections,
-      checkin_gate_enforced: true
+      pending_delivery_gate_enforced: true
     });
   }
 
@@ -8330,8 +8341,8 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
 
   if (activeCourierDispatch) {
     return res.status(409).json({
-      error: "Este motoboy ainda não confirmou a chegada à loja. Confirme a chegada antes de registrar uma nova saída, inclusive pelo Admin.",
-      code: "RETURN_CHECKIN_REQUIRED",
+      error: "Este motoboy possui uma saída ativa. Confirme as entregas pendentes ou solicite liberação administrativa antes de registrar outra saída.",
+      code: "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE",
       active: activeCourierDispatch
     });
   }
@@ -8384,7 +8395,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       ifoodLinks: ifoodInspection.accepted
     });
   } catch (e) {
-    if (e.code === "RETURN_CHECKIN_REQUIRED") {
+    if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
       return res.status(409).json({
         error: e.message,
         code: e.code,
@@ -8401,7 +8412,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       order_numbers: orders,
       order_count: orders.length,
       reason: reason || "Não informado",
-      checkin_gate_enforced: true
+      pending_delivery_gate_enforced: true
     });
 
     await createNotification({
@@ -10325,29 +10336,23 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
   });
 }));
 
-app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(async (req, res) => {
-  const dispatch = await markDispatchReturning(req.params.id, {
-    actorUserId: req.session.user.id,
-    source: "ADMIN_MANUAL",
-    reason: String(req.body?.reason || "ADMIN_STARTED_RETURN").slice(0,200)
-  });
-  if (!dispatch) return res.status(404).json({ error: "Saída ativa em rota não encontrada." });
-  res.json({ dispatch, server_now: new Date().toISOString() });
+app.post("/api/admin/dispatches/:id/start-return", auth, adminOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ code:"MANUAL_RETURN_REMOVED", error:"O retorno manual foi removido. Todas as entregas precisam ser confirmadas ou liberadas pelo administrador." });
 }));
 
 app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async (req, res) => {
   const reason = String(req.body?.reason || "").trim().slice(0,200);
   if (reason.length < 4) {
     return res.status(400).json({
-      error: "Informe o motivo da confirmação manual de chegada (mínimo 4 caracteres).",
-      code: "ADMIN_ARRIVAL_REASON_REQUIRED"
+      error: "Informe o motivo da liberação administrativa (mínimo 4 caracteres).",
+      code: "ADMIN_RELEASE_REASON_REQUIRED"
     });
   }
 
   const dispatch = await completeDispatchReturn({
     dispatchId: req.params.id,
     actorUserId: req.session.user.id,
-    source: "ADMIN_ARRIVAL_OVERRIDE",
+    source: "ADMIN_PENDING_DELIVERIES_OVERRIDE",
     reason
   });
   if (!dispatch) return res.status(404).json({ error: "Saída ativa não encontrada." });

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 // Exercise production form/card functions with a minimal DOM. No production APIs.
 const nodes=new Map();
-const $=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',style:{},classList:{toggle(){}},reset(){},required:false,readOnly:false});return nodes.get(id)};
+const $=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',style:{},classList:{toggle(){},add(){},remove(){},contains(){return false}},reset(){},required:false,readOnly:false});return nodes.get(id)};
 let sent,refreshes=0,fullscreenExits=0;
 const row={order_id:'complete-uuid',display_id:'4415',status:'CONCLUDED',delivered_by:'MERCHANT'};
 const context=vm.createContext({$,Date,console,me:{role:'admin'},dashboard:{couriers:[{id:2,name:'Motoboy teste'}]},wallboardData:{orders:[row]},
@@ -12,7 +12,7 @@ const context=vm.createContext({$,Date,console,me:{role:'admin'},dashboard:{cour
   escapeHtml:v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
   kdsTimestamp:()=>null,kdsPrimaryText:()=>'',kdsSecondaryText:()=>'',kdsPreparationMarkup:()=>'',localTime:()=>'',
   message:(id,text)=>$(id).innerHTML=text,api:async(path,options)=>{sent={path,body:JSON.parse(options.body)};return {}},
-  loadAdmin:async()=>{},loadWallboard:async()=>{refreshes++},loadCourier:async()=>{}
+  loadAdmin:async()=>{},loadWallboard:async()=>{refreshes++},loadAnotaAiStatus:async()=>{},loadCourier:async()=>{}
 });
 function include(start,end){const at=html.indexOf(start);vm.runInContext(html.slice(at,html.indexOf(end,at)),context)}
 include('let routeOrderRecovery=','async function depart(e)');

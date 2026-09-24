@@ -6,24 +6,24 @@ const ui = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'ut
 const sw = fs.readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8');
 
 const checks = {
-  version_290: /const VERSION = "3\.6\.1"/.test(server),
+  version_290: /const VERSION = "3\.7\.0"/.test(server),
   stage_column: /operational_stage TEXT NOT NULL DEFAULT 'EN_ROUTE'/.test(server),
   returning_timestamp: /returning_at TIMESTAMPTZ/.test(server),
   returned_timestamp: /returned_at TIMESTAMPTZ/.test(server),
   sla_snapshots: /route_sla_minutes INTEGER/.test(server) && /return_sla_minutes INTEGER/.test(server),
   dynamic_sla_defaults: /route_sla_1_minutes','25'/.test(server) && /route_sla_5_minutes','45'/.test(server),
   return_sla_default: /return_sla_minutes','15'/.test(server),
-  courier_start_return: /\/api\/courier\/dispatches\/:id\/start-return/.test(server),
-  courier_arrive: /\/api\/courier\/dispatches\/:id\/arrive/.test(server),
+  courier_start_return: server.includes('MANUAL_RETURN_REMOVED'),
+  courier_arrive: server.includes('ARRIVAL_CHECKIN_REMOVED'),
   admin_start_return: /\/api\/admin\/dispatches\/:id\/start-return/.test(server),
   auto_ifood_return: /maybeAutoMarkDispatchReturning\(row\.dispatch_id/.test(server),
-  locks_released_on_arrival: /DELETE FROM active_order_locks WHERE dispatch_id=\$1/.test(server),
+  locks_released_on_resolution: /DELETE FROM active_order_locks WHERE dispatch_id=\$1/.test(server),
   exception_panel: /id="operationalExceptions"/.test(ui),
-  courier_arrival_button: /Cheguei na loja/.test(ui),
-  courier_return_button: /Todos entregues — iniciar retorno/.test(ui),
+  courier_arrival_button: !ui.includes('onclick="arriveAtStore('),
+  courier_return_button: !ui.includes('onclick="startMyReturn('),
   sla_admin_fields: /id="slaRoute1"/.test(ui) && /id="slaRoute5"/.test(ui) && /id="slaReturn"/.test(ui),
   returning_ui: /RETORNANDO/.test(ui),
-  pwa_cache_290: /despachefull-v3\.6\.1-/.test(sw),
+  pwa_cache_290: /despachefull-v3\.7\.0-/.test(sw),
   only_admin_courier: !/role=['"]operator['"]|role IN \([^)]*operator/i.test(server)
 };
 

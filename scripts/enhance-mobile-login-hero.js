@@ -45,7 +45,7 @@ await sharp(heroPath, { failOn: 'error' })
 fs.renameSync(tempPath, heroPath);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.6.1-mobile-auth-exact-hq-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-mobile-auth-exact-hq-v1";');
 fs.writeFileSync(swPath, sw);
 
 const finalSize = fs.statSync(heroPath).size;

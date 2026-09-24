@@ -41,7 +41,7 @@ if (!html.includes('id="passwordRecoveryModal"')) {
 fs.writeFileSync(indexPath, html);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.6.1-password-recovery-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-password-recovery-v1";');
 if (!sw.includes('"/password-recovery.js"')) sw = sw.replace('const STATIC = [', 'const STATIC = ["/password-recovery.js","/password-recovery.css",');
 fs.writeFileSync(swPath, sw);
 console.log('Frontend de recuperação de senha conectado.');

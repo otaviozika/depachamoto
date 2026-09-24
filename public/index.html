@@ -8,7 +8,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
-<title>DespacheFull 3.6.1</title>
+<title>DespacheFull 3.7.0</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
@@ -222,7 +222,7 @@
 #adminApp .admin-mobile-nav button{font-size:11px;font-weight:700;padding:6px 4px;min-width:0}
 @media(max-width:720px){#adminApp .admin-subnav{margin:-2px 0 14px;border-radius:10px}#adminApp .admin-subnav button{padding:8px 11px;font-size:12px}}
 
-/* v3.6.1 — interface administrativa sóbria */
+/* v3.7.0 — interface administrativa sóbria */
 #adminApp{--admin-red:#e11d2e;--admin-red-soft:rgba(225,29,46,.10);--admin-surface:#0a0e13;--admin-surface-2:#0d1218;--admin-border:#252b33;--admin-white:#f3f4f6;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #adminApp .admin-side{width:240px;background:#070a0e;border-right:1px solid #20252c;padding:18px 12px 14px}
 #adminApp .main{margin-left:240px;background:#070a0e}
@@ -352,7 +352,7 @@
 #manualDispatchModal .btn.outline,#courierModal .btn.outline,#courierProfileModal .btn.outline,.admin-account-box .btn.outline,.admin-dark-modal .btn.outline{background:#0b1015;border-color:#303741;color:#cdd2d8}
 #manualDispatchModal .btn.primary,#courierModal .btn.primary,#courierProfileModal .btn.primary,.admin-dark-modal .btn.primary{background:#c91529;border-color:#d91b30;color:#fff}
 
-/* v3.6.1 — layout responsivo para notebooks, tablets e celulares */
+/* v3.7.0 — layout responsivo para notebooks, tablets e celulares */
 #adminApp{--admin-sidebar-width:clamp(184px,13vw,208px)}
 #adminApp .admin-side{width:var(--admin-sidebar-width);padding:14px 10px 12px}
 #adminApp .main{margin-left:var(--admin-sidebar-width);min-width:0}
@@ -880,7 +880,7 @@
         <div class="dashboard-footer">
           <span><i class="footer-dot"></i> Integração iFood</span>
           <span>Atualização em tempo real ↻</span>
-          <span>Versão 3.6.1</span>
+          <span>Versão 3.7.0</span>
           <span class="footer-safe">◇ Sistema seguro</span>
         </div>
       </section>
@@ -1936,8 +1936,8 @@ async function flushOfflineQueue(){
           }
           break;
         }
-        if(err.code==='RETURN_CHECKIN_REQUIRED'){
-          alert('A saída offline não pôde ser sincronizada porque existe uma saída sem check-in de chegada. Confirme “Cheguei na loja” antes de sincronizar outra saída.');
+        if((err.code==='RETURN_CHECKIN_REQUIRED'||err.code==='PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE')){
+          alert('A saída pendente impede novos despachos. Confirme as entregas ou solicite liberação administrativa.');
           break;
         }
         if(err.code==='ORDER_ALREADY_ACTIVE'){
@@ -2014,7 +2014,7 @@ function updateCourierDepartureEligibility(){
   btn.disabled=!!me?.mustChangePassword||attendanceLocked||shiftLocked||checkinLocked||offline||legacyQueue||!valid;
   if(shiftLocked)btn.textContent='Expediente encerrado pelo Admin';
   else if(attendanceLocked)btn.textContent='Confirme presença pelo QR';
-  else if(checkinLocked)btn.textContent='Confirme sua chegada para nova saída';
+  else if(checkinLocked)btn.textContent='Confirme as entregas pendentes';
   else if(offline)btn.textContent='🔒 Conexão necessária para validar pedido';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
   else if(!valid)btn.textContent='🔒 Valide os pedidos';
@@ -2557,8 +2557,7 @@ function dispatchProgressText(x){
   return `${total} pedido(s) • manual`;
 }
 function dispatchActionHtml(x){
-  if(x.operational_stage==='RETURNING')return `<button class="btn success" onclick="releaseDispatch(${x.id})">✓ Chegou</button>`;
-  return `<button class="btn outline" onclick="adminStartReturn(${x.id})">↩ Iniciar retorno</button>`;
+  return `<button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar nova saída</button>`;
 }
 function renderRoad(){
   const a=dashboard.active||[];
@@ -2734,10 +2733,9 @@ async function verifyCourierPix(id){
 }
 async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/approve',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
-async function adminStartReturn(id){if(!confirm('Confirmar que este motoboy terminou as entregas e iniciou o retorno para a loja?'))return;try{await api('/api/admin/dispatches/'+id+'/start-return',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_RETURN_START'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
 async function releaseDispatch(id){
-  if(!confirm('Confirmar manualmente que o motoboy chegou à loja e está disponível novamente?'))return;
-  const reason=prompt('Motivo obrigatório da confirmação manual de chegada:', 'Chegada confirmada presencialmente pelo administrador');
+  if(!confirm('Autorizar uma nova saída mesmo com entrega pendente? A entrega NÃO será marcada como confirmada.'))return;
+  const reason=prompt('Motivo obrigatório da liberação:', '');
   if(reason===null)return;
   if(reason.trim().length<4)return alert('Informe um motivo com pelo menos 4 caracteres.');
   try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST',body:JSON.stringify({reason:reason.trim()})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}
@@ -3159,29 +3157,28 @@ async function loadCourier({related=true}={}){
 
   if(d.active){
     const x=d.active;
-    const returning=x.operational_stage==='RETURNING';
-    const stageStart=returning?(x.returning_at||x.departed_at):x.departed_at;
-    const action=returning
-      ? `<button class="btn primary courier-route-action" onclick="arriveAtStore(${x.id})">✓ Cheguei na loja</button>`
-      : `<button class="btn outline courier-route-action" onclick="startMyReturn(${x.id})">↩ Todos entregues — iniciar retorno</button>`;
-    $('activeDispatch').innerHTML=`<section class="hero courier-route-card ${returning?'return-hero':''}">
-      <div class="courier-route-kicker">Rota ativa</div>
-      <div class="courier-route-title-row"><h2>${returning?'🔵 Retornando para a loja':'🟠 Em rota'}</h2><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div>
+    const total=Number(x.total_orders||x.order_numbers?.length||1);
+    const resolved=Number(x.resolved_orders||0);
+    const pending=Math.max(0,total-resolved);
+    $('activeDispatch').innerHTML=`<section class="hero courier-route-card" style="background:#172434;border:1px solid #34465a;border-radius:18px">
+      <div class="courier-route-kicker">DESPACHEFULL • MINHA OPERAÇÃO</div>
+      <div class="courier-route-title-row"><h2>Saída #${escapeHtml(x.dispatch_code||String(x.id))}</h2><span class="stage-badge EN_ROUTE">${pending?'ENTREGAS PENDENTES':'EM ROTA'}</span></div>
       <div class="courier-route-orders">${ordersHtml(x)}</div>
-      <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div>
-      <div class="courier-route-clock"><span>${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></span><strong class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</strong><small>${returning?'Tempo de retorno':'Tempo de rota'} • meta <b>${x.sla_minutes} min</b> • total fora ${x.total_elapsed_minutes} min</small></div>
-      ${action}
-      ${!returning?'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>':''}
+      <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${resolved} de ${total} pedidos resolvidos</span></div>
+      <div class="courier-route-clock"><span>Saída às <b>${localTime(x.departed_at)}</b></span><strong class="big live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</strong><small>Tempo de entrega • encerramento automático após a última confirmação</small></div>
+      <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" onclick="requestAdminRelease(${x.id})">Solicitar liberação ao admin</button></div>
+      <button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>
     </section>`;
     if(!$('currentDepartureNote')){
-      const note=document.createElement('div');
-      note.id='currentDepartureNote';
-      note.className='current-active-note';
-      note.innerHTML='<b>Nova saída bloqueada:</b> para manter o tempo operacional exato, use <b>Adicionar pedido à rota atual</b> para incluir um pedido esquecido. Para iniciar outra saída, confirme <b>Cheguei na loja</b>.';
+      const note=document.createElement('div');note.id='currentDepartureNote';note.className='current-active-note';
+      note.innerHTML='<b>Nova saída bloqueada:</b> confirme todas as entregas ou solicite liberação ao administrador.';
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
-    $('activeDispatch').innerHTML='';
+    const last=d.last_finished;
+    const waiting=last?.released_at?Math.max(0,Math.floor((serverNowMs()-Date.parse(last.released_at))/60000)):null;
+    const adminReleased=last?.return_source==='ADMIN_PENDING_DELIVERIES_OVERRIDE';
+    $('activeDispatch').innerHTML=last?`<section class="hero courier-route-card" style="background:#10231c;border:1px solid #287d54;border-radius:18px"><div class="courier-route-kicker">MINHA OPERAÇÃO</div><h2>Nova saída autorizada</h2><p>${adminReleased?'Liberado pelo administrador. Entregas anteriores pendentes continuam disponíveis para confirmação.':'Todas as entregas da última saída foram resolvidas.'}</p><div class="courier-route-clock"><span>${adminReleased?'Tempo desde a liberação administrativa':'Aguardando próxima saída'}</span><strong class="big">${waiting===null?'—':Math.floor(waiting/60)+'h '+String(waiting%60).padStart(2,'0')+'min'}</strong></div></section>`:'';
     $('currentDepartureNote')?.remove();
   }
 
@@ -3194,22 +3191,15 @@ async function loadCourier({related=true}={}){
     loadCourierDeliveries();
   }
 }
-async function startMyReturn(id){
-  if(!confirm('Confirmar que você terminou todas as entregas desta saída e está retornando para a loja?'))return;
+async function requestAdminRelease(id){
+  const reason=prompt('Por que você não consegue confirmar as entregas pendentes? A liberação depende da autorização do administrador.');
+  if(reason===null)return;
+  if(reason.trim().length<4)return alert('Descreva o motivo com pelo menos 4 caracteres.');
   try{
-    await api('/api/courier/dispatches/'+id+'/start-return',{method:'POST'});
-    await loadCourier();
+    await api('/api/courier/dispatches/'+id+'/release-request',{method:'POST',body:JSON.stringify({reason:reason.trim()})});
+    alert('Solicitação registrada. Aguarde a liberação do administrador.');
   }catch(err){alert(err.message)}
 }
-async function arriveAtStore(id){
-  if(!confirm('Confirmar que você já chegou à loja? Isso encerra o tempo fora e deixa você disponível.'))return;
-  try{
-    await api('/api/courier/dispatches/'+id+'/arrive',{method:'POST'});
-    await loadCourier();
-    activateCourierTab('home',null,true);
-  }catch(err){alert(err.message)}
-}
-
 let routeOrderRecovery=false,routeOrderId=null,routeOrderSourcePlatform=null;
 function closeRouteOrderModal(){$('routeOrderModal').style.display='none'}
 function openRouteOrderModal(recovery){
@@ -3303,7 +3293,7 @@ async function depart(e){
     return message('departureMsg','Confirme sua presença pelo QR da loja antes de registrar uma saída.','err');
   }
   if(courierActiveDispatch){
-    return message('departureMsg','Nova saída bloqueada. Finalize a rota, inicie o retorno e confirme “Cheguei na loja” antes de levar outros pedidos.','err');
+    return message('departureMsg','Nova saída bloqueada. Confirme as entregas pendentes ou solicite a liberação do administrador.','err');
   }
   if(getOfflineQueue().length){
     return message('departureMsg','Existe uma saída antiga aguardando sincronização. Resolva essa pendência antes de registrar outra.','err');
@@ -3372,8 +3362,8 @@ async function depart(e){
         updateCourierDepartureEligibility();
         throw new Error(d.error||'Confirme sua presença pelo QR da loja antes de registrar uma saída.');
       }
-      if(r.status===409&&d.code==='RETURN_CHECKIN_REQUIRED'){
-        throw new Error(d.error||'Confirme sua chegada à loja antes de registrar outra saída.');
+      if(r.status===409&&(d.code==='RETURN_CHECKIN_REQUIRED'||d.code==='PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE')){
+        throw new Error(d.error||'Confirme as entregas pendentes ou solicite liberação administrativa antes de registrar outra saída.');
       }
       if(r.status===409&&d.code==='ORDER_ALREADY_ACTIVE'){
         const text=(d.conflicts||[]).map(x=>`${x.order_number} está com ${x.courier_name}`).join('\n');
@@ -3520,7 +3510,7 @@ async function submitManualDispatch(e){
   const courier=dashboard?.couriers?.find(x=>Number(x.id)===courierId);
   if(!courier?.present_today)return message('manualMsg',courier?.operational_status==='ENCERRADO'?'O expediente deste motoboy já foi encerrado. Nova saída bloqueada.':'Este motoboy ainda não confirmou presença hoje. Registre a presença antes da saída manual.','err');
   const active=dashboard?.active?.find(x=>Number(x.courier_id)===courierId);
-  if(active)return message('manualMsg','Nova saída bloqueada: confirme a chegada deste motoboy à loja antes de registrar outros pedidos.','err');
+  if(active)return message('manualMsg','Nova saída bloqueada: confirme as entregas pendentes ou libere o motoboy com justificativa.','err');
 
   const btn=$('manualSubmit');btn.disabled=true;
   const payload={

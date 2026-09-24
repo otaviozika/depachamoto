@@ -4,7 +4,7 @@ const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8
 const checks={
   fiveMainGroups:['dashboard','operations','ifood','management','system'].every(g=>html.includes(`data-admin-group="${g}"`)),
   noOldSidebarItems:!html.includes('data-page="road"')&&!html.includes('<span>Quem está na rua</span>')&&!html.includes('<span>Pedidos iFood</span>'),
-  operationsTabs:["['operations','Agora']","['attendance','Presença']","['wallboard','Telão']","['history','Histórico']","['conflicts','Conflitos']"].every(x=>html.includes(x)),
+  operationsTabs:["['operations','Agora']","['attendance','Presença']","['history','Histórico']","['conflicts','Conflitos']"].every(x=>html.includes(x)),
   integrationsTabs:["['ifood','iFood']","['anotaai','Anota AI']"].every(x=>html.includes(x)),
   managementTabs:["['management','Desempenho']","['report','Relatórios']","['payments','Financeiro']","['couriers','Motoboys']"].every(x=>html.includes(x)),
   systemTabs:["['alerts','Alertas']","['notifications','Notificações']","['security','Segurança']","['audit','Auditoria']"].every(x=>html.includes(x)),
@@ -14,4 +14,4 @@ const checks={
   mobileConsolidated:html.includes('class="mobile-nav admin-mobile-nav"')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`FAIL: ${name}`);
-console.log(JSON.stringify({result:'PASS',version:'3.6.1',checks},null,2));
+console.log(JSON.stringify({result:'PASS',version:'3.7.0',checks},null,2));
