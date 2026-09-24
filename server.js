@@ -4979,28 +4979,39 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
       return null;
     }
 
+    const administrativeOverride = source === "ADMIN_PENDING_DELIVERIES_OVERRIDE";
+    const progress = (await getDispatchProgressMap([dispatchId], client)).get(Number(dispatchId));
+    // Recheck under the dispatch row lock: another request may have appended a
+    // pending order after the initial confirmation event.
+    if (!administrativeOverride && !progress?.all_orders_resolved) {
+      await client.query("ROLLBACK");
+      return null;
+    }
     const q = await client.query(`
       UPDATE dispatches
       SET status='RELEASED',
-          operational_stage='COMPLETED',
-          returning_at=CASE WHEN operational_stage='RETURNING' THEN returning_at ELSE returning_at END,
-          returned_at=NOW(),
-          returned_by=$2,
+          operational_stage=$5,
+          returned_at=CASE WHEN $6::boolean THEN NULL ELSE NOW() END,
+          returned_by=CASE WHEN $6::boolean THEN NULL ELSE $2 END,
           released_at=NOW(),
           released_by=$2,
-          return_source=COALESCE(return_source,$3),
-          return_reason=COALESCE(return_reason,$4),
-          arrival_source=$3,
-          arrival_reason=$4,
-          closed_reason=COALESCE(closed_reason,$4)
+          return_source=$3,
+          return_reason=$4,
+          arrival_source=CASE WHEN $6::boolean THEN NULL ELSE $3 END,
+          arrival_reason=CASE WHEN $6::boolean THEN NULL ELSE $4 END,
+          closed_reason=$4
       WHERE id=$1 AND status='ON_ROAD'
       RETURNING *
-    `, [dispatchId, actorUserId, source, reason]);
-
-    await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+    `, [dispatchId, actorUserId, source, reason,
+        "COMPLETED", administrativeOverride]);
+    // Preserve order locks when the admin releases an unresolved delivery.
+    // An administrative exception must not make that order dispatchable again.
+    if (!administrativeOverride) {
+      await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+    }
     await client.query("COMMIT");
-    await auditBestEffort(actorUserId, "DISPATCH_RETURN_COMPLETED", "dispatch", dispatchId, { source, reason });
-    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: "COMPLETED" });
+    await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
+    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
     await client.query("ROLLBACK");
