@@ -6085,11 +6085,28 @@ app.get("/api/courier/payment/month", auth, courierOnly, asyncRoute(async (req,r
   const courier=(await pool.query("SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status FROM users WHERE id=$1 AND role='courier'",[req.session.user.id])).rows[0];
   if(!courier)return res.status(404).json({error:'Motoboy não encontrado.'});
   const shifts=await getCourierPaymentPeriodShifts(courier,start,through);
+  // Legacy payments are daily totals. Distinguish deliveries by actual local departure time,
+  // but never fabricate per-shift payment amounts for records without a shift code.
+  const legacyBreakdown=(await pool.query(`
+    SELECT to_char((d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date,'YYYY-MM-DD') payment_date,
+      CASE WHEN EXTRACT(HOUR FROM d.departed_at AT TIME ZONE 'America/Sao_Paulo') BETWEEN 10 AND 16 THEN 'LUNCH'
+           WHEN EXTRACT(HOUR FROM d.departed_at AT TIME ZONE 'America/Sao_Paulo') >= 17 THEN 'DINNER'
+           ELSE 'UNKNOWN' END shift_code,
+      COUNT(o.id)::int delivery_count
+    FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+    WHERE d.courier_id=$1 AND d.shift_code IS NULL
+      AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date
+    GROUP BY 1,2`,[courier.id,start,through])).rows;
+  const legacyByDate=new Map();
+  for(const item of legacyBreakdown){
+    if(!legacyByDate.has(item.payment_date))legacyByDate.set(item.payment_date,[]);
+    legacyByDate.get(item.payment_date).push({shift_code:item.shift_code,delivery_count:Number(item.delivery_count)});
+  }
   const grouped=new Map();
   for(const shift of shifts){
     const date=shift.payment_date;
     if(!grouped.has(date))grouped.set(date,[]);
-    grouped.get(date).push({shift_code:shift.shift_code,shift_label:shift.shift_label,delivery_count:shift.delivery_count,total_amount:shift.total_amount,status:shift.status});
+    grouped.get(date).push({shift_code:shift.shift_code,shift_label:shift.shift_label,delivery_count:shift.delivery_count,total_amount:shift.total_amount,status:shift.status,...(!shift.shift_code?{legacy_breakdown:legacyByDate.get(date)||[]}: {})});
   }
   const days=[];
   const count=Number(end.slice(-2));
