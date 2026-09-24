@@ -2853,7 +2853,7 @@ async function savePaymentRow(key,confirmReopen=false,confirmReviewed=false){con
 function exportPayments(){const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';location.href='/api/admin/payments.csv?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:'')}
 let courierPaymentMonth='';
 function courierMonthToday(){
-  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).formatToParts(new Date());return parts.find(p=>p.type==='year').value+'-'+parts.find(p=>p.type==='month').value;
 }
 function changeCourierPaymentMonth(delta){
   const current=courierPaymentMonth||courierMonthToday();
