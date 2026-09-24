@@ -4465,12 +4465,8 @@ async function createDispatchTransaction({
     `, [courierId]);
 
     if (activeDispatch.rowCount && !append && !recovery) {
-      const err = new Error(
-        operationalStage(activeDispatch.rows[0].operational_stage) === "RETURNING"
-          ? "Você ainda está retornando. Confirme sua chegada à loja antes de registrar outra saída."
-          : "Você ainda possui uma saída em andamento. Finalize as entregas, inicie o retorno e confirme sua chegada à loja antes de registrar outra saída."
-      );
-      err.code = "RETURN_CHECKIN_REQUIRED";
+      const err = new Error("Você possui entregas pendentes. Confirme todas as entregas ou solicite liberação ao administrador para iniciar uma nova saída.");
+      err.code = "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE";
       err.status = 409;
       err.active = activeDispatch.rows[0];
       throw err;
@@ -4955,9 +4951,10 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
   const progressMap = await getDispatchProgressMap([dispatchId]);
   const progress = progressMap.get(Number(dispatchId));
   if (!progress?.all_orders_resolved) return null;
-  return markDispatchReturning(dispatchId, {
+  return completeDispatchReturn({
+    dispatchId,
     actorUserId,
-    source,
+    source: "AUTO_ALL_DELIVERIES_RESOLVED",
     reason: "ALL_TRACKABLE_ORDERS_RESOLVED"
   });
 }
@@ -6001,48 +5998,22 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
 
 
 
-app.post("/api/courier/dispatches/:id/start-return", auth, courierOnly, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const owned = (await pool.query(`
-    SELECT id,operational_stage FROM dispatches
-    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
-  `, [req.params.id, req.session.user.id])).rows[0];
-  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
-
-  if (operationalStage(owned.operational_stage) === "RETURNING") {
-    return res.json({ ok: true, already_returning: true, server_now: new Date().toISOString() });
-  }
-
-  const dispatch = await markDispatchReturning(req.params.id, {
-    actorUserId: req.session.user.id,
-    source: "COURIER_MANUAL",
-    reason: "COURIER_CONFIRMED_ALL_DELIVERED"
-  });
-  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+app.post("/api/courier/dispatches/:id/start-return", auth, courierOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ error: "Não é mais necessário iniciar retorno. Confirme todas as entregas para finalizar a saída automaticamente.", code: "MANUAL_RETURN_REMOVED" });
 }));
 
-app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const owned = (await pool.query(`
-    SELECT id,operational_stage FROM dispatches
-    WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'
-  `, [req.params.id, req.session.user.id])).rows[0];
-  if (!owned) return res.status(404).json({ error: "Saída ativa não encontrada." });
-  if (operationalStage(owned.operational_stage) !== "RETURNING") {
-    return res.status(409).json({
-      error: "Primeiro confirme que terminou as entregas e iniciou o retorno.",
-      code: "RETURN_NOT_STARTED"
-    });
-  }
-
-  const dispatch = await completeDispatchReturn({
-    dispatchId: req.params.id,
-    courierId: req.session.user.id,
-    actorUserId: req.session.user.id,
-    source: "COURIER_ARRIVAL",
-    reason: "COURIER_CONFIRMED_ARRIVAL"
-  });
-  res.json({ ok: true, dispatch, server_now: new Date().toISOString() });
+app.post("/api/courier/dispatches/:id/release-request", auth, courierOnly, asyncRoute(async (req,res) => {
+  const reason=String(req.body?.reason||"").trim().slice(0,200);
+  if(reason.length<4)return res.status(400).json({error:"Informe o motivo (mínimo 4 caracteres)."});
+  const active=(await pool.query("SELECT id,courier_id FROM dispatches WHERE id=$1 AND courier_id=$2 AND status='ON_ROAD'",[req.params.id,req.session.user.id])).rows[0];
+  if(!active)return res.status(404).json({error:"Saída ativa não encontrada."});
+  await auditBestEffort(req.session.user.id,"COURIER_RELEASE_REQUESTED","dispatch",active.id,{reason});
+  await createNotification({type:"COURIER_RELEASE_REQUEST",severity:"warning",title:"Motoboy solicita liberação",message:"Motoboy #"+active.courier_id+" solicita liberação da saída #"+active.id+": "+reason});
+  emitRealtime("dispatch:changed",{courier_id:active.courier_id,dispatch_id:active.id,change:"RELEASE_REQUESTED"});
+  res.json({ok:true,message:"Solicitação registrada."});
+}));
+app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(async (req,res) => {
+  res.status(410).json({ error: "A chegada à loja não é mais necessária. A saída é finalizada automaticamente quando todas as entregas forem confirmadas.", code: "ARRIVAL_CHECKIN_REMOVED" });
 }));
 
 app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,res)=>{
@@ -10339,15 +10310,15 @@ app.post("/api/admin/dispatches/:id/release", auth, adminOnly, asyncRoute(async 
   const reason = String(req.body?.reason || "").trim().slice(0,200);
   if (reason.length < 4) {
     return res.status(400).json({
-      error: "Informe o motivo da confirmação manual de chegada (mínimo 4 caracteres).",
-      code: "ADMIN_ARRIVAL_REASON_REQUIRED"
+      error: "Informe o motivo da liberação administrativa (mínimo 4 caracteres).",
+      code: "ADMIN_RELEASE_REASON_REQUIRED"
     });
   }
 
   const dispatch = await completeDispatchReturn({
     dispatchId: req.params.id,
     actorUserId: req.session.user.id,
-    source: "ADMIN_ARRIVAL_OVERRIDE",
+    source: "ADMIN_PENDING_DELIVERIES_OVERRIDE",
     reason
   });
   if (!dispatch) return res.status(404).json({ error: "Saída ativa não encontrada." });
