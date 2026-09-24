@@ -7,7 +7,7 @@
 }
 body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 #courierApp .courier-topbar{background:#0b131c!important;border-bottom:1px solid #263343;box-shadow:none!important}
-#courierApp .brand-wordmark-header{filter:brightness(0) invert(1)}
+#courierApp .brand-wordmark-header{filter:none}
 #courierApp .courier-account-trigger{background:#172536;border:1px solid #34465b;color:#fff}
 #courierApp .courier-account-menu{background:#172331;border-color:#34465b;box-shadow:0 16px 32px rgba(0,0,0,.28);color:#f5f7fb}
 #courierApp .courier-account-identity{border-color:#34465b}
