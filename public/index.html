@@ -2557,8 +2557,7 @@ function dispatchProgressText(x){
   return `${total} pedido(s) • manual`;
 }
 function dispatchActionHtml(x){
-  if(x.operational_stage==='RETURNING')return `<button class="btn success" onclick="releaseDispatch(${x.id})">✓ Chegou</button>`;
-  return `<button class="btn outline" onclick="adminStartReturn(${x.id})">↩ Iniciar retorno</button>`;
+  return `<button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar nova saída</button>`;
 }
 function renderRoad(){
   const a=dashboard.active||[];
@@ -2736,8 +2735,8 @@ async function approveCourier(id){try{await api('/api/admin/couriers/'+id+'/appr
 async function rejectCourier(id){if(!confirm('Recusar este cadastro?'))return;try{await api('/api/admin/couriers/'+id+'/reject',{method:'POST'});await loadAdmin()}catch(err){alert(err.message)}}
 async function adminStartReturn(id){if(!confirm('Confirmar que este motoboy terminou as entregas e iniciou o retorno para a loja?'))return;try{await api('/api/admin/dispatches/'+id+'/start-return',{method:'POST',body:JSON.stringify({reason:'ADMIN_CONFIRMED_RETURN_START'})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}}
 async function releaseDispatch(id){
-  if(!confirm('Confirmar manualmente que o motoboy chegou à loja e está disponível novamente?'))return;
-  const reason=prompt('Motivo obrigatório da confirmação manual de chegada:', 'Chegada confirmada presencialmente pelo administrador');
+  if(!confirm('Autorizar uma nova saída mesmo com entrega pendente? A entrega NÃO será marcada como confirmada.'))return;
+  const reason=prompt('Motivo obrigatório da liberação:', '');
   if(reason===null)return;
   if(reason.trim().length<4)return alert('Informe um motivo com pelo menos 4 caracteres.');
   try{await api('/api/admin/dispatches/'+id+'/release',{method:'POST',body:JSON.stringify({reason:reason.trim()})});await loadAdmin();await loadOperations()}catch(err){alert(err.message)}
@@ -3159,25 +3158,21 @@ async function loadCourier({related=true}={}){
 
   if(d.active){
     const x=d.active;
-    const returning=x.operational_stage==='RETURNING';
-    const stageStart=returning?(x.returning_at||x.departed_at):x.departed_at;
-    const action=returning
-      ? `<button class="btn primary courier-route-action" onclick="arriveAtStore(${x.id})">✓ Cheguei na loja</button>`
-      : `<button class="btn outline courier-route-action" onclick="startMyReturn(${x.id})">↩ Todos entregues — iniciar retorno</button>`;
-    $('activeDispatch').innerHTML=`<section class="hero courier-route-card ${returning?'return-hero':''}">
-      <div class="courier-route-kicker">Rota ativa</div>
-      <div class="courier-route-title-row"><h2>${returning?'🔵 Retornando para a loja':'🟠 Em rota'}</h2><span class="stage-badge ${x.operational_stage}">${operationalStageLabel(x.operational_stage)}</span></div>
+    const total=Number(x.total_orders||x.order_numbers?.length||1);
+    const resolved=Number(x.resolved_orders||0);
+    const pending=Math.max(0,total-resolved);
+    $('activeDispatch').innerHTML=`<section class="hero courier-route-card" style="background:#172434;border:1px solid #34465a;border-radius:18px">
+      <div class="courier-route-kicker">DESPACHEFULL • MINHA OPERAÇÃO</div>
+      <div class="courier-route-title-row"><h2>Saída #${escapeHtml(x.dispatch_code||String(x.id))}</h2><span class="stage-badge EN_ROUTE">${pending?'ENTREGAS PENDENTES':'EM ROTA'}</span></div>
       <div class="courier-route-orders">${ordersHtml(x)}</div>
-      <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${escapeHtml(dispatchProgressText(x))}</span></div>
-      <div class="courier-route-clock"><span>${returning?'Retorno iniciado':'Saiu'} às <b>${localTime(stageStart)}</b></span><strong class="big live" data-start-ms="${Date.parse(stageStart)}">${elapsedFromMs(Date.parse(stageStart))}</strong><small>${returning?'Tempo de retorno':'Tempo de rota'} • meta <b>${x.sla_minutes} min</b> • total fora ${x.total_elapsed_minutes} min</small></div>
-      ${action}
-      ${!returning?'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>':''}
+      <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${resolved} de ${total} pedidos resolvidos</span></div>
+      <div class="courier-route-clock"><span>Saída às <b>${localTime(x.departed_at)}</b></span><strong class="big live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</strong><small>Tempo de entrega • encerramento automático após a última confirmação</small></div>
+      <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" onclick="requestAdminRelease(${x.id})">Solicitar liberação ao admin</button></div>
+      <button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>
     </section>`;
     if(!$('currentDepartureNote')){
-      const note=document.createElement('div');
-      note.id='currentDepartureNote';
-      note.className='current-active-note';
-      note.innerHTML='<b>Nova saída bloqueada:</b> para manter o tempo operacional exato, use <b>Adicionar pedido à rota atual</b> para incluir um pedido esquecido. Para iniciar outra saída, confirme <b>Cheguei na loja</b>.';
+      const note=document.createElement('div');note.id='currentDepartureNote';note.className='current-active-note';
+      note.innerHTML='<b>Nova saída bloqueada:</b> confirme todas as entregas ou solicite liberação ao administrador.';
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
@@ -3193,6 +3188,15 @@ async function loadCourier({related=true}={}){
     loadMyPix();
     loadCourierDeliveries();
   }
+}
+async function requestAdminRelease(id){
+  const reason=prompt('Por que você não consegue confirmar as entregas pendentes? A liberação depende da autorização do administrador.');
+  if(reason===null)return;
+  if(reason.trim().length<4)return alert('Descreva o motivo com pelo menos 4 caracteres.');
+  try{
+    await api('/api/courier/dispatches/'+id+'/release-request',{method:'POST',body:JSON.stringify({reason:reason.trim()})});
+    alert('Solicitação registrada. Aguarde a liberação do administrador.');
+  }catch(err){alert(err.message)}
 }
 async function startMyReturn(id){
   if(!confirm('Confirmar que você terminou todas as entregas desta saída e está retornando para a loja?'))return;
