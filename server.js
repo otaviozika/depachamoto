@@ -3153,6 +3153,42 @@ function buildIfoodDeliveryAddressParts(payload) {
   return street || number ? { street, number } : null;
 }
 
+function buildIfoodCustomerName(payload) {
+  const order = parseJsonPayload(payload);
+  const name = order?.customer?.name;
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+function buildIfoodDeliveryCardAddress(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+  const a = ifoodDeliveryAddress(order);
+  const street = firstText(a.streetName, a.street, a.address, a.route);
+  const number = firstText(a.streetNumber, a.number);
+  if (!street && !number) return null;
+  return { street, number, complement: firstText(a.complement),
+    neighborhood: firstText(a.neighborhood, a.district),
+    city: firstText(a.city, a.locality),
+    state: firstText(a.state, a.stateCode, a.region) };
+}
+
+function buildAnotaAiDeliveryCardAddress(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+  const raw = order?.delivery?.deliveryAddress || order?.delivery?.address ||
+    order?.deliveryAddress || order?.delivery_address || order?.address ||
+    order?.customer?.address;
+  if (!raw || typeof raw !== 'object') return null;
+  const text = (...values) => values.find(v => typeof v === 'string' && v.trim())?.trim() || '';
+  const street = text(raw.streetName, raw.street_name, raw.street, raw.route, raw.address);
+  const number = text(raw.streetNumber, raw.street_number, raw.number);
+  if (!street && !number) return null;
+  return { street, number, complement: text(raw.complement, raw.complemento),
+    neighborhood: text(raw.neighborhood, raw.district, raw.bairro),
+    city: text(raw.city, raw.locality, raw.cidade),
+    state: text(raw.state, raw.stateCode, raw.uf) };
+}
+
 function buildIfoodDeliveryDetails(payload) {
   const order = parseJsonPayload(payload);
   if (!order) return null;
@@ -3471,6 +3507,8 @@ async function getCourierIfoodDeliveries(courierId) {
       last_error: row.confirmation_last_error,
       customer_name: buildOrderCustomerName(row.payload),
       address_parts: buildIfoodDeliveryAddressParts(row.payload),
+      customer_name: buildIfoodCustomerName(row.payload),
+      delivery_address: buildIfoodDeliveryCardAddress(row.payload),
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
       payment: buildIfoodPaymentInfo(row.payload),
@@ -3498,7 +3536,7 @@ async function getCourierIfoodDeliveries(courierId) {
 async function getCourierAnotaAiDeliveries(courierId) {
   const rows = (await pool.query(`
     SELECT
-      a.order_id,a.display_id,a.status AS order_status,a.status_code,a.payload,a.customer_name,
+      a.order_id,a.display_id,a.status AS order_status,a.status_code,a.customer_name,a.payload,a.customer_name,
       l.dispatch_id,l.local_order_number,
       d.departed_at,d.status AS dispatch_status,
       c.confirmed_at
@@ -3526,6 +3564,8 @@ async function getCourierAnotaAiDeliveries(courierId) {
     const confirmed = Boolean(row.confirmed_at) || remoteFinished;
     const item = {
       platform: "anotaai",
+      customer_name: String(row.customer_name || normalizeAnotaAiOrder(parseJsonPayload(row.payload) || {}).customerName || "").trim(),
+      delivery_address: buildAnotaAiDeliveryCardAddress(row.payload),
       order_id: row.order_id,
       display_id: row.display_id || String(row.local_order_number || "").replace(/^#/, ""),
       local_order_number: row.local_order_number,
