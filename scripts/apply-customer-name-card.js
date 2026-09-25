@@ -8,6 +8,21 @@ const serverPath = path.join(root, 'server.js');
 const indexPath = path.join(root, 'public', 'index.html');
 const swPath = path.join(root, 'public', 'service-worker.js');
 
+// PR #31 already renders the customer's name in its own row. Avoid adding a
+// second name under the order number or rolling back the current PWA cache.
+const approvedHtml=fs.readFileSync(indexPath,'utf8');
+if(approvedHtml.includes('function courierDeliveryCustomerHtml(x){') &&
+   approvedHtml.includes('function courierDeliveryCopyButton(x){')) {
+  const backend=fs.readFileSync(serverPath,'utf8');
+  if(!backend.includes('customer_name: buildOrderCustomerName(row.payload),') ||
+     !backend.includes('address_parts: buildIfoodDeliveryAddressParts(row.payload),') ||
+     !backend.includes('customer_name: firstText(row.customer_name,buildOrderCustomerName(row.payload)),'))
+    throw new Error('Contrato do card de entrega aprovado nao encontrado.');
+  console.log('Card de entrega ja atualizado; ignorando patch legado de nome do cliente.');
+  process.exit(0);
+}
+
+
 let server = fs.readFileSync(serverPath, 'utf8');
 
 if (!server.includes('function buildIfoodCustomerName(payload) {')) {
