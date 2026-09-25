@@ -8,6 +8,23 @@ const serverPath = path.join(root, 'server.js');
 const indexPath = path.join(root, 'public', 'index.html');
 const swPath = path.join(root, 'public', 'service-worker.js');
 
+// The approved card is implemented in source; avoid injecting a second customer label.
+if (fs.readFileSync(indexPath, 'utf8').includes('<!-- APPROVED COURIER DELIVERY CARD V1 -->')) {
+  const backend = fs.readFileSync(serverPath, 'utf8');
+  if (!backend.includes('customer_name: buildOrderCustomerName(row.payload),') ||
+      !backend.includes('address_parts: buildIfoodDeliveryAddressParts(row.payload),') ||
+      !backend.includes('address_parts: buildAnotaAiDeliveryCardAddress(row.payload),')) {
+    throw new Error('Contrato do card aprovado não encontrado no backend.');
+  }
+  let worker = fs.readFileSync(swPath, 'utf8');
+  worker = worker.replace(/const CACHE = "[^"]+";/,
+    'const CACHE = "despachefull-v3.7.0-approved-delivery-card-v1";');
+  fs.writeFileSync(swPath, worker);
+  console.log('Card aprovado do motoboy disponível: cliente, endereço, complemento e navegação.');
+  process.exit(0);
+}
+
+
 let server = fs.readFileSync(serverPath, 'utf8');
 
 if (!server.includes('function buildIfoodCustomerName(payload) {')) {

@@ -222,3 +222,13 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
   /* Leave room to scroll the last order above the fixed bottom navigation. */
   #courierApp .content{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}
 }
+
+/* Approved courier card: order number + platform wordmark */
+#courierApp .delivery-orderline{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap}
+#courierApp .delivery-platform-logo{display:inline-flex;align-items:center;min-height:27px;padding-left:12px;border-left:1px solid #566275;font-size:18px;line-height:1;font-weight:950;white-space:nowrap;letter-spacing:-.04em}
+#courierApp .delivery-platform-logo.ifood{color:#ff3e59;font-style:italic}
+#courierApp .delivery-platform-logo.anotaai{color:#f3ad57;font-size:15px;font-style:normal;letter-spacing:0}
+#courierApp .delivery-card-finished-note{order:10;margin-top:9px;color:#aab9cb;font-size:11px}
+#courierApp .delivery-copy-button:active{background:#2b3e53}
+#courierApp .delivery-item-head .badge.green{box-shadow:none!important}
+@media(max-width:380px){#courierApp .delivery-orderline{gap:8px}#courierApp .delivery-platform-logo{padding-left:9px;font-size:15px}#courierApp .delivery-platform-logo.anotaai{font-size:12px}}

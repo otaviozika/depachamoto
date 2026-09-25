@@ -705,6 +705,7 @@
 </style>
 <link rel="stylesheet" href="/login-desktop.css">
 <link rel="stylesheet" href="/courier-dark.css?v=3">
+<!-- APPROVED COURIER DELIVERY CARD V1 -->
 </head>
 <body>
 <div id="loginScreen" class="login">
@@ -3171,8 +3172,8 @@ function courierDeliveryRow(x){
   return `<div class="delivery-item">
     <div class="delivery-item-head">
       <div>
-        <div class="delivery-order">${display}</div>
-        <div class="delivery-meta">${escapeHtml(platformLabel)} · Saída ${x.departed_at?localTime(x.departed_at):'—'}</div>
+        <div class="delivery-orderline"><span class="delivery-order">${display}</span><span class="delivery-platform-logo ${platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(platformLabel)}</span></div>
+        <div class="delivery-meta">Saída ${x.departed_at?localTime(x.departed_at):'—'}</div>
       </div>
       ${courierDeliveryBadge(x)}
     </div>
@@ -3181,8 +3182,9 @@ function courierDeliveryRow(x){
     ${courierDeliveryDetailsHtml(x)}
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
-    <div class="small">${escapeHtml(x.message||'')}</div>
+    ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
     <div class="delivery-actions">${courierDeliveryNavigationButtons(x)}${btn}</div>
+    ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
 
