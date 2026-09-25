@@ -108,7 +108,7 @@ assert.match(context.courierDeliveryRow(anota.completed[0]),/Ana Clara/);
 assert.match(css,/\.delivery-customer-row/);
 assert.match(css,/\.delivery-address-number/);
 assert.match(css,/padding-bottom:calc\(110px/);
-assert.match(sw,/courier-customer-v2/);
+assert.match(sw,/approved-delivery-card-v1/);
 for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)){
   if(script[1].trim())new vm.Script(script[1]);
 }
