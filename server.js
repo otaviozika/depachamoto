@@ -3131,6 +3131,28 @@ function ifoodDeliveryAddress(order) {
   );
 }
 
+function buildOrderCustomerName(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return "";
+  const customer = order.customer && typeof order.customer === "object" ? order.customer : {};
+  for (const value of [customer.name, customer.fullName, customer.full_name,
+    order.customerName, order.customer_name]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const first = typeof customer.firstName === "string" ? customer.firstName.trim() : "";
+  const last = typeof customer.lastName === "string" ? customer.lastName.trim() : "";
+  return [first,last].filter(Boolean).join(" ");
+}
+
+function buildIfoodDeliveryAddressParts(payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return null;
+  const address = ifoodDeliveryAddress(order);
+  const street = firstText(address.streetName,address.street,address.address,address.route);
+  const number = firstText(address.streetNumber,address.number);
+  return street || number ? { street, number } : null;
+}
+
 function buildIfoodDeliveryDetails(payload) {
   const order = parseJsonPayload(payload);
   if (!order) return null;
@@ -3447,6 +3469,8 @@ async function getCourierIfoodDeliveries(courierId) {
       verified_at: row.verified_at,
       concluded_at: row.concluded_at,
       last_error: row.confirmation_last_error,
+      customer_name: buildOrderCustomerName(row.payload),
+      address_parts: buildIfoodDeliveryAddressParts(row.payload),
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
       payment: buildIfoodPaymentInfo(row.payload),
@@ -3474,7 +3498,7 @@ async function getCourierIfoodDeliveries(courierId) {
 async function getCourierAnotaAiDeliveries(courierId) {
   const rows = (await pool.query(`
     SELECT
-      a.order_id,a.display_id,a.status AS order_status,a.status_code,a.payload,
+      a.order_id,a.display_id,a.status AS order_status,a.status_code,a.payload,a.customer_name,
       l.dispatch_id,l.local_order_number,
       d.departed_at,d.status AS dispatch_status,
       c.confirmed_at
@@ -3508,6 +3532,7 @@ async function getCourierAnotaAiDeliveries(courierId) {
       order_status: remoteStatus,
       dispatch_status: row.dispatch_status,
       departed_at: row.departed_at,
+      customer_name: firstText(row.customer_name,buildOrderCustomerName(row.payload)),
       confirmation_status: confirmed ? "CONCLUDED" : "PENDING",
       concluded_at: row.confirmed_at,
       state: confirmed ? "CONCLUDED" : (cancelled ? "CANCELLED" : "WAITING_CONFIRMATION"),
