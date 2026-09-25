@@ -11,8 +11,8 @@ const swPath = path.join(root, 'public', 'service-worker.js');
 // The approved card is implemented in source; avoid injecting a second customer label.
 if (fs.readFileSync(indexPath, 'utf8').includes('<!-- APPROVED COURIER DELIVERY CARD V1 -->')) {
   const backend = fs.readFileSync(serverPath, 'utf8');
-  if (!backend.includes('customer_name: buildIfoodCustomerName(row.payload),') ||
-      !backend.includes('address_parts: buildIfoodDeliveryCardAddress(row.payload),') ||
+  if (!backend.includes('customer_name: buildOrderCustomerName(row.payload),') ||
+      !backend.includes('address_parts: buildIfoodDeliveryAddressParts(row.payload),') ||
       !backend.includes('address_parts: buildAnotaAiDeliveryCardAddress(row.payload),')) {
     throw new Error('Contrato do card aprovado não encontrado no backend.');
   }
