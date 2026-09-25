@@ -46,3 +46,4 @@ jobs:
           node scripts/selftest-socket-security.js
           node scripts/selftest-anotaai-integration.js
           node scripts/selftest-delivery-details.js
+          node scripts/selftest-courier-customer-card.js
