@@ -3508,7 +3508,7 @@ async function getCourierIfoodDeliveries(courierId) {
       customer_name: buildOrderCustomerName(row.payload),
       address_parts: buildIfoodDeliveryAddressParts(row.payload),
       customer_name: buildIfoodCustomerName(row.payload),
-      delivery_address: buildIfoodDeliveryCardAddress(row.payload),
+      address_parts: buildIfoodDeliveryCardAddress(row.payload),
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
       payment: buildIfoodPaymentInfo(row.payload),
@@ -3565,7 +3565,7 @@ async function getCourierAnotaAiDeliveries(courierId) {
     const item = {
       platform: "anotaai",
       customer_name: String(row.customer_name || normalizeAnotaAiOrder(parseJsonPayload(row.payload) || {}).customerName || "").trim(),
-      delivery_address: buildAnotaAiDeliveryCardAddress(row.payload),
+      address_parts: buildAnotaAiDeliveryCardAddress(row.payload),
       order_id: row.order_id,
       display_id: row.display_id || String(row.local_order_number || "").replace(/^#/, ""),
       local_order_number: row.local_order_number,
@@ -3583,6 +3583,8 @@ async function getCourierAnotaAiDeliveries(courierId) {
         : (cancelled
           ? "Pedido cancelado no Anota AI."
           : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código."),
+      delivery_details: buildAnotaAiDeliveryCardAddress(row.payload)?.complement ?
+        { complement: buildAnotaAiDeliveryCardAddress(row.payload).complement } : null,
       payment: buildAnotaAiPaymentInfo(row.payload)
     };
 
