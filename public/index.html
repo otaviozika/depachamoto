@@ -3019,21 +3019,102 @@ function buildWazeUrl(destination){
   return `https://waze.com/ul?${params.toString()}`;
 }
 
+
+function buildGoogleMapsUrl(destination){
+  if(!destination)return '';
+  const lat=destination.latitude, lng=destination.longitude;
+  let target='';
+  if(lat!==null&&lat!==undefined&&lat!==''&&lng!==null&&lng!==undefined&&lng!==''){
+    const a=Number(lat),b=Number(lng);
+    if(Number.isFinite(a)&&Number.isFinite(b))target=a+','+b;
+  }
+  if(!target)target=String(destination.address||'').trim();
+  if(!target)return '';
+  const params=new URLSearchParams();
+  params.set('api','1');
+  params.set('destination',target);
+  params.set('travelmode','driving');
+  return 'https://www.google.com/maps/dir/?'+params.toString();
+}
+
+function courierDeliveryCustomerHtml(x){
+  const name=typeof x?.customer_name==='string'?x.customer_name.trim():'';
+  return '<div class="delivery-customer-row">'+
+    '<span class="delivery-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="7.5" r="4"/><path d="M4 21v-2.5a8 8 0 0 1 16 0V21"/></svg></span>'+
+    '<div class="delivery-info-copy"><span class="delivery-info-label">Cliente</span>'+
+    '<strong class="delivery-info-value">'+escapeHtml(name||'Não informado')+'</strong></div></div>';
+}
+
 function courierDeliveryAddressHtml(x){
-  const address=String(x?.navigation?.address||'').trim();
-  if(!address)return '';
-  return `<div class="delivery-address"><span class="delivery-address-pin">⌖</span><span>${escapeHtml(address)}</span></div>`;
+  const full=String(x?.navigation?.address||'').trim();
+  const street=String(x?.address_parts?.street||'').trim();
+  const number=String(x?.address_parts?.number||'').trim();
+  if(!full&&!street&&!number)return '';
+  return '<div class="delivery-address-row">'+
+    '<span class="delivery-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>'+
+    '<div class="delivery-info-copy"><span class="delivery-info-label">Endereço de entrega</span>'+
+    '<strong class="delivery-info-value delivery-address-street">'+escapeHtml(street||full||number)+'</strong></div>'+
+    (number?'<strong class="delivery-address-number" aria-label="Número '+escapeHtml(number)+'">'+escapeHtml(number)+'</strong>':'')+
+    '</div>';
 }
 
 function courierDeliveryDetailsHtml(x){
   const details=x?.delivery_details;
   if(!details)return '';
-  const rows=[['complement','Complemento'],['reference','Referência'],['observations','Observações de entrega']]
+  const complement=typeof details.complement==='string'?details.complement.trim():'';
+  const extra=[['reference','Referência'],['observations','Observações de entrega']]
     .map(([key,label])=>{
       const value=typeof details[key]==='string'?details[key].trim():'';
-      return value?`<div class="delivery-detail"><strong>${label}:</strong> ${escapeHtml(value)}</div>`:'';
+      return value?'<div class="delivery-detail"><strong>'+label+':</strong> '+escapeHtml(value)+'</div>':'';
     }).filter(Boolean);
-  return rows.length?`<div class="delivery-details">${rows.join('')}</div>`:'';
+  const complementHtml=complement?'<div class="delivery-complement-row">'+
+    '<span class="delivery-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1M3 21h18"/></svg></span>'+
+    '<div class="delivery-info-copy"><span class="delivery-info-label">Complemento:</span>'+
+    '<strong class="delivery-info-value">'+escapeHtml(complement)+'</strong></div></div>':'';
+  return complementHtml+(extra.length?'<div class="delivery-details">'+extra.join('')+'</div>':'');
+}
+
+function courierDeliveryCopyButton(x){
+  const full=String(x?.navigation?.address||'').trim();
+  const parts=[x?.address_parts?.street,x?.address_parts?.number].filter(Boolean).join(', ');
+  const address=full||parts;
+  if(!address)return '';
+  const complement=typeof x?.delivery_details?.complement==='string'?x.delivery_details.complement.trim():'';
+  const complete=address+(complement?', '+complement:'');
+  return '<button type="button" class="delivery-copy-button" data-address="'+escapeHtml(complete)+'" onclick="copyCourierAddress(this)">'+
+    '<span class="delivery-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span>'+
+    '<span class="delivery-copy-text">Copiar endereço completo</span>'+
+    '<span class="delivery-copy-icon" aria-hidden="true">⧉</span></button>';
+}
+
+async function copyCourierAddress(button){
+  const address=String(button?.dataset?.address||'').trim();
+  if(!address)return;
+  const label=button.querySelector('.delivery-copy-text');
+  try{
+    if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function'){
+      await navigator.clipboard.writeText(address);
+    }else{
+      const input=document.createElement('textarea');
+      input.value=address;
+      input.style.position='fixed';
+      input.style.opacity='0';
+      document.body.appendChild(input);
+      input.select();
+      const copied=document.execCommand('copy');
+      input.remove();
+      if(!copied)throw new Error('Não foi possível copiar');
+    }
+    if(label){
+      label.textContent='Endereço copiado!';
+      window.setTimeout(()=>{if(label.isConnected)label.textContent='Copiar endereço completo';},1800);
+    }
+  }catch(err){
+    if(label){
+      label.textContent='Não foi possível copiar';
+      window.setTimeout(()=>{if(label.isConnected)label.textContent='Copiar endereço completo';},2200);
+    }
+  }
 }
 
 function courierDeliveryWazeButton(x){
@@ -3061,6 +3142,21 @@ function courierDeliveryPaymentHtml(x){
   </div>`;
 }
 
+
+function courierDeliveryGoogleMapsButton(x){
+  const url=buildGoogleMapsUrl(x?.navigation);
+  if(!url)return '';
+  return '<a class="btn google-maps" href="'+escapeHtml(url)+'" target="_blank" rel="noopener">'+
+    '<span class="google-maps-mark"><img src="/google-maps-icon.svg" alt="" loading="lazy"></span> Ir no Google Maps</a>';
+}
+
+function courierDeliveryNavigationButtons(x){
+  const waze=courierDeliveryWazeButton(x);
+  const maps=courierDeliveryGoogleMapsButton(x);
+  if(!waze&&!maps)return '';
+  return '<div class="delivery-navigation">'+waze+maps+'</div>';
+}
+
 function courierDeliveryRow(x){
   const display='#'+escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
   const platform=String(x.platform||'ifood').toLowerCase();
@@ -3080,11 +3176,13 @@ function courierDeliveryRow(x){
       </div>
       ${courierDeliveryBadge(x)}
     </div>
+    ${courierDeliveryCustomerHtml(x)}
     ${courierDeliveryAddressHtml(x)}
     ${courierDeliveryDetailsHtml(x)}
+    ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     <div class="small">${escapeHtml(x.message||'')}</div>
-    <div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>
+    <div class="delivery-actions">${courierDeliveryNavigationButtons(x)}${btn}</div>
   </div>`;
 }
 
