@@ -109,6 +109,9 @@ assert.match(css,/\.delivery-customer-row/);
 assert.match(css,/\.delivery-address-number/);
 assert.match(css,/padding-bottom:calc\(110px/);
 assert.match(sw,/courier-customer-v2/);
+assert.doesNotMatch(html,/class="delivery-customer-name"/,'Customer name must appear only in the dedicated Cliente row');
+assert.equal((html.match(/function courierDeliveryCustomerHtml\(x\)\{/g)||[]).length,1);
+
 for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)){
   if(script[1].trim())new vm.Script(script[1]);
 }
