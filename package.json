@@ -14,6 +14,7 @@
     "selftest:brutal": "node scripts/selftest-brutal.js",
     "loadtest:brutal": "node scripts/loadtest-brutal.js",
     "selftest:payments": "node scripts/selftest-payments.js",
+    "selftest:payment-drive": "node scripts/selftest-payment-drive.js",
     "selftest:pix": "node scripts/selftest-pix.js",
     "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js",
     "selftest:wallboard": "node scripts/selftest-wallboard.js",

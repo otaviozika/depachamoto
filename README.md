@@ -15,6 +15,21 @@ O painel administrativo possui uma segunda integração em **iFood → Anota AI*
 
 `ANOTAAI_PAGE_ID` é um fallback opcional quando o token de vínculo não contém o ID da página. Nenhuma credencial ou chave da loja deve ser adicionada ao repositório.
 
+## Planilha mensal e Google Drive
+
+O Financeiro possui uma visão **Planilha mensal**. O administrador pode filtrar por mês, turno e motoboy, editar chuva, gorjeta, desconto, ajuste, forma de pagamento, status e observações, e salvar os fechamentos em lote. Registros conferidos ou pagos permanecem congelados até serem reabertos explicitamente.
+
+O banco do DespacheFull é a fonte oficial. O botão **Sincronizar mês** substitui a aba correspondente no Google Planilhas por uma cópia dos valores já salvos no aplicativo; alterações feitas diretamente no Drive não retornam ao sistema.
+
+Para ativar no Render:
+
+1. Crie uma conta de serviço no Google Cloud e habilite a Google Sheets API.
+2. Crie uma planilha e compartilhe-a como **Editor** com o e-mail da conta de serviço.
+3. Configure `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` e `GOOGLE_SHEETS_SPREADSHEET_ID` no Render. `GOOGLE_SHEETS_TAB_PREFIX` é opcional.
+4. Reinicie o serviço e confirme que o Financeiro mostra **Conectado** antes da primeira sincronização.
+
+As credenciais da conta de serviço devem existir somente no ambiente do Render, nunca no repositório.
+
 ## Rotas e recuperação de pedidos
 
 - O motoboy escolhe a quantidade (1–5), preenche exatamente os campos escolhidos e valida todos no iFood antes da saída.

@@ -16,6 +16,7 @@ import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operatio
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
+import { googleSheetsConfig, googleSheetsCredentialsConfigured, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets } from "./lib/google-sheets.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -580,6 +581,29 @@ ON courier_payments(courier_id,payment_date DESC);
 
 CREATE INDEX IF NOT EXISTS courier_payments_status_idx
 ON courier_payments(status,payment_date DESC);
+
+CREATE TABLE IF NOT EXISTS payment_sheet_books (
+  month_key TEXT PRIMARY KEY,
+  lunch_spreadsheet_id TEXT NOT NULL,
+  dinner_spreadsheet_id TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS payment_sheet_day_closures (
+  payment_date DATE NOT NULL,
+  shift_code TEXT NOT NULL CHECK (shift_code IN ('LUNCH','DINNER')),
+  spreadsheet_id TEXT NOT NULL,
+  tab_title TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  synced_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY(payment_date,shift_code)
+);
+
+INSERT INTO payment_sheet_books(month_key,lunch_spreadsheet_id,dinner_spreadsheet_id)
+VALUES('2026-09','1b-MsqWwWmuS9oLwoRW6cgWXPfOPb7ty5ibS3Kp803Bs','1NN44Veo0k1vrj58bYae6jAXvLr-3wGwhrYBLUtEXdzs')
+ON CONFLICT(month_key) DO NOTHING;
 
 -- v3.8: financeiro por motoboy + data + turno.
 ALTER TABLE payment_rate_rules ADD COLUMN IF NOT EXISTS lunch_mon_thu NUMERIC(12,2);
@@ -5314,6 +5338,30 @@ async function requireCourierAttendance(courierId, at = new Date()) {
 function validDate(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 }
+
+function validMonth(v) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(v || ""));
+}
+
+function extractGoogleSpreadsheetId(value) {
+  const raw=String(value||'').trim();
+  const fromUrl=raw.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+  const id=fromUrl||(/^[a-zA-Z0-9_-]{20,}$/.test(raw)?raw:'');
+  if(!id)throw Object.assign(new Error('Informe um link válido do Google Planilhas.'),{status:400,code:'PAYMENT_SHEET_URL_INVALID'});
+  return id;
+}
+
+function googleSpreadsheetUrl(id) {
+  return id?`https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`:null;
+}
+
+function paymentMonthRange(month, today) {
+  if (!validMonth(month)) throw Object.assign(new Error("Mês inválido. Use AAAA-MM."), { status:400, code:"PAYMENT_MONTH_INVALID" });
+  const start=`${month}-01`;
+  if (start > `${today.slice(0,7)}-01`) throw Object.assign(new Error("Selecione o mês atual ou um mês anterior."), { status:400, code:"PAYMENT_MONTH_FUTURE" });
+  const end=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);
+  return {start,end,through:end<today?end:today};
+}
 function csvCell(v) {
   const s = String(v ?? "");
   return `"${s.replaceAll('"', '""')}"`;
@@ -5522,6 +5570,42 @@ async function getPaymentRows(date,requestedShift=null){
     LEFT JOIN courier_payments p ON p.courier_id=w.courier_id AND p.payment_date=$1::date AND p.shift_code=w.shift_code WHERE u.role='courier' ORDER BY u.name,w.shift_code`,params)).rows;
   const out=[];for(const r of rows)out.push(await buildPaymentRow(r,r.payment_id?r:null,date,rule,Number(r.live_delivery_count||0),r.shift_code,true));
   return {rule,rows:out,shift_code:shift,shift_label:shift?shiftLabel(shift):'Todos os turnos'};
+}
+
+async function getAdminMonthlyPaymentRows(month) {
+  const today=await getSPDate();
+  const {start,end,through}=paymentMonthRange(month,today);
+  const couriers=(await pool.query(`
+    SELECT DISTINCT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,u.pix_status
+    FROM users u
+    WHERE u.role='courier' AND (
+      EXISTS (SELECT 1 FROM courier_attendance a WHERE a.courier_id=u.id AND a.attendance_date BETWEEN $1::date AND $2::date)
+      OR EXISTS (SELECT 1 FROM courier_payments p WHERE p.courier_id=u.id AND p.payment_date BETWEEN $1::date AND $2::date)
+      OR EXISTS (SELECT 1 FROM dispatches d WHERE d.courier_id=u.id AND (
+        d.operational_date BETWEEN $1::date AND $2::date
+        OR (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date
+      ))
+    )
+    ORDER BY u.name
+  `,[start,through])).rows;
+  const rows=[];
+  for(let index=0;index<couriers.length;index+=5){
+    const batch=await Promise.all(couriers.slice(index,index+5).map(courier=>getCourierPaymentPeriodShifts(courier,start,through)));
+    rows.push(...batch.flat());
+  }
+  rows.sort((a,b)=>String(a.payment_date).localeCompare(String(b.payment_date))||String(a.courier_name).localeCompare(String(b.courier_name),'pt-BR')||String(a.shift_code||'').localeCompare(String(b.shift_code||'')));
+  const summary=rows.reduce((acc,row)=>{
+    acc.deliveries+=Number(row.delivery_count||0);
+    acc.total=roundMoney(acc.total+Number(row.total_amount||0));
+    acc.courierIds.add(Number(row.courier_id));
+    acc.shifts+=1;
+    if(row.status==='PAID'){acc.paid=roundMoney(acc.paid+Number(row.total_amount||0));acc.paidCount+=1}
+    else acc.pending=roundMoney(acc.pending+Number(row.total_amount||0));
+    return acc;
+  },{courierIds:new Set(),shifts:0,deliveries:0,total:0,paid:0,pending:0,paidCount:0});
+  summary.couriers=summary.courierIds.size;
+  delete summary.courierIds;
+  return {month,start,end,through,rows,summary};
 }
 
 app.get("/api/public/config", asyncRoute(async (req, res) => {
@@ -9795,6 +9879,67 @@ app.get("/api/admin/payments", auth, adminOnly, asyncRoute(async (req,res)=>{
     {courier_ids:new Set(),shifts:0,deliveries:0,total:0,paid:0,pending:0,paid_count:0,reviewed_count:0});
   summary.couriers=summary.courier_ids.size;delete summary.courier_ids;
   res.json({date,shift_code,shift_label,day_group:isFriSun(date)?'SEX_DOM':'SEG_QUI',rule,formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',rows,summary,server_now:new Date().toISOString()});
+}));
+
+app.get("/api/admin/payments/month", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.query.month||'').trim();
+  const data=await getAdminMonthlyPaymentRows(month);
+  res.json({...data,formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
+}));
+
+app.get("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.query.month||'').trim();
+  if(!validMonth(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
+  const book=(await pool.query(`SELECT month_key,lunch_spreadsheet_id,dinner_spreadsheet_id,updated_at FROM payment_sheet_books WHERE month_key=$1`,[month])).rows[0]||null;
+  const closures=(await pool.query(`SELECT to_char(payment_date,'YYYY-MM-DD') payment_date,shift_code,tab_title,row_count,synced_at FROM payment_sheet_day_closures WHERE payment_date BETWEEN ($1||'-01')::date AND (($1||'-01')::date+INTERVAL '1 month'-INTERVAL '1 day')::date ORDER BY payment_date DESC,shift_code`,[month])).rows;
+  const config=googleSheetsConfig();
+  res.json({
+    month,
+    configured:googleSheetsCredentialsConfigured(),
+    service_account_email:config.clientEmail||null,
+    lunch_url:googleSpreadsheetUrl(book?.lunch_spreadsheet_id),
+    dinner_url:googleSpreadsheetUrl(book?.dinner_spreadsheet_id),
+    updated_at:book?.updated_at||null,
+    closures
+  });
+}));
+
+app.put("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.body?.month||'').trim();
+  if(!validMonth(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
+  const lunchId=extractGoogleSpreadsheetId(req.body?.lunch_url||req.body?.lunch_spreadsheet_id);
+  const dinnerId=extractGoogleSpreadsheetId(req.body?.dinner_url||req.body?.dinner_spreadsheet_id);
+  await pool.query(`INSERT INTO payment_sheet_books(month_key,lunch_spreadsheet_id,dinner_spreadsheet_id,updated_by,updated_at) VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(month_key) DO UPDATE SET lunch_spreadsheet_id=EXCLUDED.lunch_spreadsheet_id,dinner_spreadsheet_id=EXCLUDED.dinner_spreadsheet_id,updated_by=EXCLUDED.updated_by,updated_at=NOW()`,[month,lunchId,dinnerId,req.session.user.id]);
+  await audit(req.session.user.id,'PAYMENT_SHEETS_LINKED','payment_sheet_book',null,{month,lunch_spreadsheet_id:lunchId,dinner_spreadsheet_id:dinnerId});
+  res.json({month,lunch_url:googleSpreadsheetUrl(lunchId),dinner_url:googleSpreadsheetUrl(dinnerId),message:'Planilhas de almoço e janta vinculadas para este mês.'});
+}));
+
+app.post("/api/admin/payments/close-day", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const date=String(req.body?.date||'').trim(),shift=String(req.body?.shift_code||'').trim().toUpperCase();
+  if(!validDate(date))return res.status(400).json({error:'Data inválida.'});
+  if(!['LUNCH','DINNER'].includes(shift))return res.status(400).json({error:'Selecione Almoço ou Janta antes de fechar o dia.',code:'PAYMENT_SHIFT_REQUIRED'});
+  paymentShiftForRequest(date,shift);
+  const month=date.slice(0,7),book=(await pool.query(`SELECT lunch_spreadsheet_id,dinner_spreadsheet_id FROM payment_sheet_books WHERE month_key=$1`,[month])).rows[0];
+  if(!book)return res.status(409).json({error:'Vincule as planilhas de almoço e janta deste mês antes de fechar o dia.',code:'PAYMENT_SHEETS_NOT_LINKED'});
+  const spreadsheetId=shift==='LUNCH'?book.lunch_spreadsheet_id:book.dinner_spreadsheet_id;
+  const {rows}=await getPaymentRows(date,shift);
+  const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
+  await pool.query(`INSERT INTO payment_sheet_day_closures(payment_date,shift_code,spreadsheet_id,tab_title,row_count,synced_by,synced_at) VALUES($1::date,$2,$3,$4,$5,$6,NOW()) ON CONFLICT(payment_date,shift_code) DO UPDATE SET spreadsheet_id=EXCLUDED.spreadsheet_id,tab_title=EXCLUDED.tab_title,row_count=EXCLUDED.row_count,synced_by=EXCLUDED.synced_by,synced_at=NOW()`,[date,shift,spreadsheetId,result.tabTitle,result.rows,req.session.user.id]);
+  await audit(req.session.user.id,'PAYMENT_DAY_CLOSED','payment',null,{payment_date:date,shift_code:shift,rows:result.rows,spreadsheet_id:spreadsheetId,tab_title:result.tabTitle});
+  res.json({...result,message:`${shiftLabel(shift)} de ${date.split('-').reverse().join('/')} fechado e enviado para a aba ${result.tabTitle}.`});
+}));
+
+app.get("/api/admin/payments/drive/status", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const config=googleSheetsConfig();
+  res.json({configured:config.configured,spreadsheet_url:config.spreadsheetUrl,service_account_email:config.clientEmail||null,mode:'ONE_WAY_EXPORT'});
+}));
+
+app.post("/api/admin/payments/drive/sync", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.body?.month||'').trim();
+  const data=await getAdminMonthlyPaymentRows(month);
+  const result=await syncPaymentsToGoogleSheets({month,rows:data.rows});
+  await audit(req.session.user.id,'PAYMENT_DRIVE_SYNCED','payment',null,{month,rows:result.rows,tab_title:result.tabTitle});
+  res.json({...result,message:`${result.rows} fechamento(s) sincronizados com o Google Planilhas.`});
 }));
 
 app.get("/api/admin/payments/rules", auth, adminOnly, asyncRoute(async (req,res)=>{

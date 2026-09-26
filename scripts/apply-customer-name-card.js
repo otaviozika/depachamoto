@@ -18,7 +18,7 @@ if (fs.readFileSync(indexPath, 'utf8').includes('<!-- APPROVED COURIER DELIVERY 
   }
   let worker = fs.readFileSync(swPath, 'utf8');
   worker = worker.replace(/const CACHE = "[^"]+";/,
-    'const CACHE = "despachefull-v3.7.0-approved-delivery-card-v1";');
+    'const CACHE = "despachefull-v3.7.0-payment-sheet-v1";');
   fs.writeFileSync(swPath, worker);
   console.log('Card aprovado do motoboy disponível: cliente, endereço, complemento e navegação.');
   process.exit(0);
@@ -80,7 +80,7 @@ if (!html.includes('delivery-customer-name') || !html.includes('x?.customer_name
 fs.writeFileSync(indexPath, html);
 
 let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-customer-name-v1";');
+sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-payment-sheet-v1";');
 fs.writeFileSync(swPath, sw);
 
 console.log('Nome do cliente adicionado ao card da entrega sem alterar os demais elementos.');
