@@ -51,7 +51,8 @@
     "pg": "^8.16.3",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "compression": "^1.8.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
