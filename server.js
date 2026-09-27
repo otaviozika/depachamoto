@@ -11,6 +11,7 @@ import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
+import compression from "compression";
 import webpush from "web-push";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
@@ -55,6 +56,7 @@ const io = new Server(server);
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -1110,7 +1112,13 @@ async function seedAdmin() {
 }
 await seedAdmin();
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  maxAge: "1h",
+  setHeaders(res, filePath) {
+    if (/\.(?:html|webmanifest)$/i.test(filePath) || /service-worker\.js$/i.test(filePath)) res.setHeader("Cache-Control", "no-cache");
+    else if (/\.(?:png|jpe?g|webp|svg|ico)$/i.test(filePath)) res.setHeader("Cache-Control", "public, max-age=86400");
+  }
+}));
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -11041,7 +11049,8 @@ io.on("connection", socket => {
   socket.on("disconnect", () => clearInterval(authTimer));
 });
 
-setInterval(() => emitRealtime("server:time", { now: new Date().toISOString() }), 1000);
+// Client-side clocks run locally; periodic synchronization is sufficient.
+setInterval(() => emitRealtime("server:time", { now: new Date().toISOString() }), 60 * 1000);
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
