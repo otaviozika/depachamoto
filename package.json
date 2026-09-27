@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-mobile-login-hero.js && node scripts/enhance-mobile-login-hero.js && node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js",
+    "prestart": "node scripts/apply-mobile-login-hero.js && node scripts/enhance-mobile-login-hero.js && node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
@@ -51,7 +51,8 @@
     "pg": "^8.16.3",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "compression": "^1.8.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"

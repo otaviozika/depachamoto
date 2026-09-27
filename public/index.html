@@ -5257,16 +5257,16 @@ socket.on('disconnect',reason=>{
 socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',d=>{
   if(me?.role==='admin'){
-    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
     if($('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
   }else if(me?.role==='courier'&&eventIsForCurrentCourier(d)){
-    queueRealtimeRefresh('courier-dispatch',async()=>{await loadCourier({related:false});await loadCourierDeliveries()},350,{visibleOnly:true});
+    queueRealtimeRefresh('courier-dispatch',async()=>{await loadCourier({related:false});await loadCourierDeliveries()},900,{visibleOnly:true});
   }
 });
 socket.on('courier:changed',()=>{if(me?.role==='admin')queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true})});
 socket.on('attendance:changed',d=>{
   if(me?.role==='admin'){
-    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
     if($('attendance')?.classList.contains('active'))queueRealtimeRefresh('attendance',loadAttendance,400,{visibleOnly:true});
   }else if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id)){
     queueRealtimeRefresh('courier-attendance',()=>loadCourier({related:false}),300,{visibleOnly:true});
@@ -5279,7 +5279,7 @@ socket.on('payment:changed',d=>{
 });
 socket.on('pix:changed',d=>{
   if(me?.role==='admin'){
-    queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true});
+    queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
     if($('payments')?.classList.contains('active'))queueRealtimeRefresh('payments',loadPayments,500,{visibleOnly:true});
   }
   if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-pix',loadMyPix,400,{visibleOnly:true});

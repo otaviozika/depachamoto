@@ -23,7 +23,12 @@ jobs:
           node --check server.js
           node --check scripts/apply-late-shift-dispatch.js
           node --check scripts/apply-payment-longe.js
+          node --check public/service-worker.js
+          node --check scripts/selftest-bandwidth-stage1.js
       - name: Payment and shift regression tests
         run: |
           npm run selftest:payments
           npm run selftest:shift-control
+          node scripts/selftest-bandwidth-stage1.js
+          npm run selftest:delivery-confirmation
+          npm run selftest:socket-security
