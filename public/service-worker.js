@@ -23,7 +23,8 @@ self.addEventListener("fetch", event => {
   event.respondWith(caches.open(CACHE).then(async cache => {
     const cached = await cache.match(req);
     if (cached) {
-      event.waitUntil(fetch(req).then(response => {
+      // Images/icons are cache-first until the cache version changes. CSS/JS refresh in the background.
+      if (/\.(?:css|js)$/i.test(url.pathname)) event.waitUntil(fetch(req).then(response => {
         if (response.ok) return cache.put(req, response.clone());
       }).catch(() => {}));
       return cached;
