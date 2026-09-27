@@ -30,6 +30,7 @@ export function dispatchShiftAt(value=new Date()){
 }
 `;
  shift=shift.replace('export function getCurrentOperationalShift(now = new Date()) {',insertion+'\nexport function getCurrentOperationalShift(now = new Date()) {');
+ shift=shift.replace('const derived = operationalShiftAt(departedAt);','const derived = dispatchShiftAt(departedAt);');
  if(!shift.includes('export function dispatchShiftAt('))throw Error('Shift insertion failed');
  fs.writeFileSync(shiftFile,shift);
 }
