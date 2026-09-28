@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import http from "node:http";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
 const deploymentTarget = String(process.env.DEPLOYMENT_TARGET || "").trim();
@@ -55,6 +56,46 @@ const bootId = crypto.randomUUID();
 const eventLoop = monitorEventLoopDelay({ resolution: 20 });
 eventLoop.enable();
 
+function processSnapshot() {
+  const memory = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  return {
+    source: "back4app-homologation",
+    bootId,
+    timestamp: new Date().toISOString(),
+    pid: process.pid,
+    uptimeSeconds: Number(process.uptime().toFixed(2)),
+    rssMb: Number((memory.rss / 1048576).toFixed(2)),
+    heapUsedMb: Number((memory.heapUsed / 1048576).toFixed(2)),
+    heapTotalMb: Number((memory.heapTotal / 1048576).toFixed(2)),
+    externalMb: Number((memory.external / 1048576).toFixed(2)),
+    cpuUserMicros: cpu.user,
+    cpuSystemMicros: cpu.system,
+    eventLoopP95Ms: Number((eventLoop.percentile(95) / 1e6).toFixed(2)),
+    eventLoopMaxMs: Number((eventLoop.max / 1e6).toFixed(2)),
+    externalIntegrations: "forced-off"
+  };
+}
+
+// Expose process-only diagnostics on the isolated homologation container. This
+// path contains no configuration values and accepts no writes.
+const nativeServerEmit = http.Server.prototype.emit;
+http.Server.prototype.emit = function homologationServerEmit(event, ...args) {
+  if (event === "request") {
+    const [request, response] = args;
+    const pathname = new URL(request.url || "/", "http://localhost").pathname;
+    if (request.method === "GET" && pathname === "/api/homologation/metrics") {
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store"
+      });
+      response.end(JSON.stringify(processSnapshot()));
+      return true;
+    }
+  }
+  return nativeServerEmit.call(this, event, ...args);
+};
+
 let previousCpu = process.cpuUsage();
 let previousSample = process.hrtime.bigint();
 
@@ -79,18 +120,11 @@ const metricTimer = setInterval(() => {
   const now = process.hrtime.bigint();
   const elapsedMs = Number(now - previousSample) / 1e6;
   const cpu = process.cpuUsage(previousCpu);
-  const memory = process.memoryUsage();
   const cpuCores = elapsedMs > 0 ? (cpu.user + cpu.system) / 1000 / elapsedMs : 0;
 
   writeMetric("runtime", {
-    uptimeSeconds: Math.round(process.uptime()),
-    rssMb: Number((memory.rss / 1048576).toFixed(2)),
-    heapUsedMb: Number((memory.heapUsed / 1048576).toFixed(2)),
-    heapTotalMb: Number((memory.heapTotal / 1048576).toFixed(2)),
-    externalMb: Number((memory.external / 1048576).toFixed(2)),
+    ...processSnapshot(),
     cpuCores: Number(cpuCores.toFixed(4)),
-    eventLoopP95Ms: Number((eventLoop.percentile(95) / 1e6).toFixed(2)),
-    eventLoopMaxMs: Number((eventLoop.max / 1e6).toFixed(2))
   });
 
   previousCpu = process.cpuUsage();
