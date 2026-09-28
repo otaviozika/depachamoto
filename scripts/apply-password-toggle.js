@@ -180,4 +180,3 @@ sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-pa
 fs.writeFileSync(swPath, sw);
 
 console.log('Botoes de mostrar/ocultar senha padronizados.');
-
