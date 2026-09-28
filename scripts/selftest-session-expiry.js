@@ -19,7 +19,7 @@ const checks={
   startupNotice:html.includes('showSessionNotice();'),
   sessionBootMarkup:html.includes('id="sessionBoot"')&&html.includes('Carregando sua conta...'),
   loginHiddenUntilSessionCheck:html.includes('<div id="loginScreen" class="login hidden">'),
-  authenticatedBootHandoff:html.includes("$('sessionBoot')?.classList.add('hidden');")&&html.includes('me=d.user;\n    showApp();'),
+  authenticatedBootHandoff:html.includes("$('sessionBoot')?.classList.add('hidden');")&&/me=d\.user;\r?\n\s+showApp\(\);/.test(html),
   anonymousBootHandoff:html.includes("$('loginScreen').classList.remove('hidden');"),
   heartbeatStillActive:html.includes("setInterval(()=>{heartbeat();},60000)"),
   cacheBumped:sw.includes('despachefull-v3.7.0-')
