@@ -51,4 +51,3 @@ self.addEventListener("push", event => {
     tag: data.id ? `despachefull-${data.id}` : "despachefull-alert", renotify: true, data: { url: "/" }
   }));
 });
-
