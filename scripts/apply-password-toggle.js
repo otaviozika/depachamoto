@@ -159,28 +159,8 @@ ${CSS_START}
 .form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
 .form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
 
-/* Keep the login lock glyph stable even after type=password becomes type=text. */
-#loginScreen .form label:has(.password-field)::before{
-  left:19px!important;
-  top:14px!important;
-  width:11px!important;
-  height:14px!important;
-  border:1.6px solid #e7e9ec!important;
-  border-radius:8px 8px 0 0!important;
-  background:transparent!important;
-}
-#loginScreen .form label:has(.password-field)::after{
-  left:15px!important;
-  top:25px!important;
-  width:19px!important;
-  height:17px!important;
-  border:1.6px solid #e7e9ec!important;
-  border-radius:3px!important;
-  background:#111519!important;
-}
-
-/* Public auth screens have no visible label gap; modal forms keep their normal spacing. */
-#loginScreen .form .password-field{margin-top:0}
+/* Keep the toggle aligned with the labeled access fields. */
+#loginScreen .form .password-field{margin-top:7px}
 
 @media (max-width:900px){
   #loginScreen .form .password-toggle{
@@ -200,3 +180,4 @@ sw = sw.replace(/const CACHE = "[^"]+";/, 'const CACHE = "despachefull-v3.7.0-pa
 fs.writeFileSync(swPath, sw);
 
 console.log('Botoes de mostrar/ocultar senha padronizados.');
+
