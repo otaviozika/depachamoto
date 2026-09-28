@@ -12,6 +12,13 @@
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
+.session-boot{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:#080b10;color:#f4f6f8}
+.session-boot-card{display:grid;justify-items:center;gap:16px;text-align:center}
+.session-boot-logo{width:min(230px,68vw);height:auto}
+.session-boot-spinner{width:30px;height:30px;border:3px solid rgba(255,255,255,.16);border-top-color:#f22945;border-radius:50%;animation:session-boot-spin .8s linear infinite}
+.session-boot p{margin:0;color:#aeb8c3;font-size:13px;font-weight:650}
+@keyframes session-boot-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.session-boot-spinner{animation:none;border-color:#f22945}}
 .login{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#111827,#293548);padding:20px}.auth-box{width:min(450px,100%);background:#fff;border-radius:20px;padding:30px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.logo{font-size:25px;font-weight:900}.logo span{color:var(--primary)}.creator-signature{font-size:10px;font-weight:600;letter-spacing:2.2px;color:#94a3b8;margin-top:3px;margin-left:31px;line-height:1.2}.auth-box .creator-signature{margin-left:0;text-align:center;margin-bottom:14px}.side .creator-signature{margin-bottom:22px}
 .brand-logo-login{display:block;width:min(340px,92%);height:auto;margin:0 auto 12px}.brand-wordmark-sidebar{display:block;width:190px;max-width:100%;height:auto;margin:0 auto}.brand-wordmark-header{display:block;width:175px;max-width:38vw;height:auto;max-height:38px;object-fit:contain}.brand-wordmark-kds{display:block;width:215px;max-width:100%;height:auto;max-height:42px;object-fit:contain}
 .tabs{display:flex;background:#f3f4f6;padding:4px;border-radius:11px;margin:20px 0}.tabs button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;cursor:pointer}.tabs .on{background:#fff;font-weight:800;box-shadow:0 1px 5px #0001}
@@ -713,7 +720,14 @@
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 </head>
 <body>
-<div id="loginScreen" class="login">
+<div id="sessionBoot" class="session-boot" role="status" aria-live="polite">
+  <div class="session-boot-card">
+    <img class="session-boot-logo" src="/brand-wordmark-light.png" alt="DespacheFull">
+    <span class="session-boot-spinner" aria-hidden="true"></span>
+    <p>Carregando sua conta...</p>
+  </div>
+</div>
+<div id="loginScreen" class="login hidden">
   <section class="login-showcase" aria-hidden="true">
     <div class="login-photo"></div>
     <div class="login-showcase-top">
@@ -2421,6 +2435,7 @@ async function logout(){
 
 function showApp(){
   sessionRedirecting=false;
+  $('sessionBoot')?.classList.add('hidden');
   $('loginScreen').classList.add('hidden');
   ensureRealtimeConnected();
   if(me.role==='admin'){
@@ -5330,7 +5345,17 @@ captureAttendanceTokenFromUrl();
 updateConnectionState();
 showSessionNotice();
 loadPublicConfig();
-(async()=>{try{const d=await api('/api/me');me=d.user;showApp()}catch{}})();
+(async()=>{
+  try{
+    const d=await api('/api/me');
+    me=d.user;
+    showApp();
+  }catch(err){
+    $('sessionBoot')?.classList.add('hidden');
+    $('loginScreen').classList.remove('hidden');
+    if(err?.code==='NETWORK_ERROR')message('authMsg',err.message,'err');
+  }
+})();
 
 $('transferOrderForm')?.addEventListener('submit',submitTransferOrder);
 </script>

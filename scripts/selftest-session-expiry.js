@@ -17,6 +17,10 @@ const checks={
   passwordNotStored:!html.includes("sessionStorage.setItem('dm_session_password'")&&!html.includes("localStorage.setItem('dm_session_password'"),
   loginMessage:html.includes('Sua sessão expirou. Entre novamente para continuar.'),
   startupNotice:html.includes('showSessionNotice();'),
+  sessionBootMarkup:html.includes('id="sessionBoot"')&&html.includes('Carregando sua conta...'),
+  loginHiddenUntilSessionCheck:html.includes('<div id="loginScreen" class="login hidden">'),
+  authenticatedBootHandoff:html.includes("$('sessionBoot')?.classList.add('hidden');")&&html.includes('me=d.user;\n    showApp();'),
+  anonymousBootHandoff:html.includes("$('loginScreen').classList.remove('hidden');"),
   heartbeatStillActive:html.includes("setInterval(()=>{heartbeat();},60000)"),
   cacheBumped:sw.includes('despachefull-v3.7.0-')
 };
