@@ -147,3 +147,32 @@
 .form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
 #loginScreen .form .password-field{margin-top:7px}
 /* PASSWORD TOGGLE STYLES END */
+
+/* Match the approved composition: one card in desktop, a separate form card on mobile. */
+#loginScreen .auth-box:has(#loginForm:not(.hidden)) #registrationNotice{display:none}
+#loginScreen .desktop-auth-intro p{display:none}
+
+@media (min-width:901px){
+  #loginScreen.login{grid-template-columns:minmax(0,1.12fr) minmax(440px,.88fr);overflow-x:hidden}
+  #loginScreen .login-showcase{min-width:0}
+  #loginScreen .login-relief-shell{width:min(46vw,670px)}
+  #loginScreen .login-showcase-status{display:none}
+  #loginScreen .login-auth-panel{padding:clamp(24px,4vw,64px);overflow:visible}
+  #loginScreen .login-access-card{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:15px;width:min(430px,100%);padding:28px 30px 30px;border:1px solid rgba(169,174,183,.35);border-radius:17px;background:linear-gradient(145deg,rgba(31,35,41,.98),rgba(10,13,17,.99));box-shadow:0 30px 65px rgba(0,0,0,.52),0 0 38px rgba(225,7,39,.13),inset 0 1px 0 rgba(255,255,255,.07)}
+  #loginScreen .desktop-auth-heading img{width:185px}
+  #loginScreen .desktop-auth-intro h2{font-size:27px}
+  #loginScreen .auth-box{width:100%;max-width:none;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+  #loginScreen .auth-box::before,#loginScreen .auth-box::after{display:none}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)){max-width:none}
+}
+
+@media (min-width:901px) and (max-height:780px){
+  #loginScreen .login-access-card{gap:10px;padding:20px 26px 22px}
+  #loginScreen .desktop-auth-heading img{width:145px}
+  #loginScreen .desktop-auth-intro h2{font-size:24px}
+}
+
+@media (max-width:900px){
+  #loginScreen .login-access-card{display:contents}
+  #loginScreen .auth-box::before{background:linear-gradient(135deg,rgba(242,13,47,.8),rgba(255,255,255,.25) 65%,rgba(242,13,47,.3))}
+}

@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js",
+    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
