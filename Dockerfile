@@ -8,7 +8,10 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# The repository lock file currently lags behind package.json. Use npm install
+# inside this isolated image so npm resolves the declared production versions
+# without changing the repository or the production deployment.
+RUN npm install --omit=dev
 
 COPY . .
 
@@ -23,4 +26,3 @@ USER node
 EXPOSE 3000
 
 CMD ["node", "scripts/back4app-entrypoint.js"]
-
