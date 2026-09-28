@@ -10,6 +10,10 @@ const courierDepart = server.match(/app\.post\("\/api\/courier\/depart"[\s\S]*?\
 const adminManual = server.match(/app\.post\("\/api\/admin\/dispatches\/manual"[\s\S]*?\n\}\)\);/)?.[0] || '';
 const dashboard = server.match(/app\.get\("\/api\/admin\/dashboard"[\s\S]*?\n\}\)\);/)?.[0] || '';
 const dailyReport = server.match(/app\.get\("\/api\/admin\/reports\/daily"[\s\S]*?\n\}\)\);/)?.[0] || '';
+const qrExtractorSource = ui.match(/function extractAttendanceTokenFromQr\(raw\)\{[\s\S]*?\n\}/)?.[0] || '';
+const extractAttendanceTokenFromQr = qrExtractorSource
+  ? new Function('window', `${qrExtractorSource}; return extractAttendanceTokenFromQr;`)({ location: { href: 'https://depachamoto.onrender.com/' } })
+  : null;
 
 const checks = {
   version_300: /const VERSION = "3\.7\.0"/.test(server) && pkg.version === '3.7.0',
@@ -31,6 +35,15 @@ const checks = {
   ui_attendance_nav: /\['attendance','Presença'\]/.test(ui) && /Presença do dia/.test(ui),
   ui_dynamic_qr: /qrcodejs\/1\.0\.0\/qrcode\.min\.js/.test(ui) && /refreshAttendanceQr/.test(ui),
   ui_qr_login_survival: /ATTENDANCE_TOKEN_KEY/.test(ui) && /captureAttendanceTokenFromUrl/.test(ui) && /processPendingAttendanceToken/.test(ui),
+  ui_in_app_qr_button: /id="attendanceScannerBtn"/.test(ui) && /openAttendanceScanner/.test(ui),
+  ui_in_app_qr_camera: /id="scannerVideo"/.test(ui) && /getUserMedia/.test(ui) && /BarcodeDetector/.test(ui),
+  ui_in_app_qr_validation: /extractAttendanceTokenFromQr/.test(ui) && /submitAttendanceToken/.test(ui) && /Este não é um QR de presença/.test(ui),
+  ui_in_app_qr_extraction: !!extractAttendanceTokenFromQr
+    && extractAttendanceTokenFromQr('https://depachamoto.onrender.com/?attendance_token=abc.def') === 'abc.def'
+    && extractAttendanceTokenFromQr('https://depachamoto.onrender.com/?outro=abc.def') === ''
+    && extractAttendanceTokenFromQr('javascript:?attendance_token=abc.def') === '',
+  ui_in_app_qr_success_refresh: /confirmScannedAttendance/.test(ui) && /loadCourier\(\{related:false\}\)/.test(ui),
+  ui_in_app_qr_camera_cancel_safe: /scannerSessionId/.test(ui) && /stream\.getTracks\(\)\.forEach\(track=>track\.stop\(\)\)/.test(ui),
   ui_courier_attendance_lock: /Confirme presença pelo QR/.test(ui) && /courierAttendancePresent/.test(ui),
   ui_report_presence_columns: /Presença e operação por motoboy/.test(ui) && /rDispatchedOrders/.test(ui),
   cache_300: /despachefull-v3\.7\.0-/.test(sw),
