@@ -5,21 +5,16 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const css=fs.readFileSync(new URL('../public/login-desktop.css',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
-// Desktop declarations stay under their media boundary. The file may then
-// contain the independently scoped mobile composition added by the mobile hero.
+// The shared access styles are scoped to #loginScreen and each responsive
+// composition has an explicit breakpoint.
 const clean=css.replace(/\/\*[\s\S]*?\*\//g,'').trim();
-assert.ok(clean.startsWith('@media (min-width:901px){'));
-let depth=0;
-for(let i=clean.indexOf('{');i<clean.length;i++){
-  if(clean[i]==='{')depth++;
-  if(clean[i]==='}')depth--;
-  if(depth===0){
-    const remainder=clean.slice(i+1).trim();
-    assert.ok(!remainder||remainder.startsWith('@media (max-width:900px){'),'Styles after the desktop block must be mobile-scoped');
-    break;
-  }
-}
-assert.equal(depth,0);
+assert.match(clean,/@media \(min-width:901px\)\{/);
+assert.match(clean,/@media \(max-width:900px\)\{/);
+assert.match(css,/#loginScreen \.login-showcase-inner/);
+assert.match(css,/#loginScreen \.form label\{/);
+assert.match(css,/#loginScreen \.desktop-auth-intro\{display:block;order:1/);
+assert.doesNotMatch(html,/src="\/login-(?:bike-scene\.png|garage-desktop\.webp|mobile-hero\.webp)"/);
+assert.doesNotMatch(sw,/\/login-(?:bike-scene\.png|garage-desktop\.webp|mobile-hero\.webp)/);
 assert.doesNotMatch(clean,/display\s*:\s*(?!none\b)[\w-]+\s*!important/i,'Display rules must not defeat authentication visibility');
 for(const match of css.matchAll(/url\(['"]?(\/[^'"\)]+)['"]?\)/g)){
   assert.ok(fs.existsSync(new URL(`../public${match[1]}`,import.meta.url)),`Missing asset ${match[1]}`);
@@ -85,3 +80,4 @@ context.me={username:'desktop.fixture'};context.redirectExpiredSession();assert.
 context.setAuth('register');context.showSessionNotice();assert.equal(hidden('registerForm'),true);assert.equal(element('loginPass').value,'');assert.equal(element('loginPass').focused,true);assert.ok(element('authMsg').innerHTML.includes('Sua sessão expirou.'));assert.equal(saved.size,0);
 assert.ok(![...saved.keys()].some(k=>/password|senha/i.test(k)));
 console.log(JSON.stringify({result:'PASS',singleAuthForm:true,loginSuccessAndError:true,registerValidationAndApproval:true,registrationPolicy:true,expiredSessionReturn:true,desktopCssScoped:true}));
+
