@@ -517,6 +517,22 @@
 #courierApp .courier-home-direct h1 span{font-size:46px;font-variant-numeric:tabular-nums}
 #courierApp .attendance-checkin-banner{display:flex;align-items:flex-start;gap:11px;margin-bottom:14px;padding:14px 15px;line-height:1.4;font-size:13px;font-weight:650}
 #courierApp .courier-notice-icon{flex:0 0 auto;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.62);font-size:13px;font-weight:950}
+#courierApp .attendance-checkin-actions{display:grid;grid-template-columns:minmax(210px,auto) 1fr;align-items:center;gap:10px;margin:-2px 0 14px}
+#courierApp .attendance-scan-btn{min-height:50px;border-radius:13px;background:#111827;color:#fff;box-shadow:0 8px 18px rgba(15,23,42,.16)}
+#scannerModal{z-index:60;background:rgba(3,7,18,.82);backdrop-filter:blur(7px)}
+#scannerModal .scanner-modal-box{width:min(520px,100%);padding:20px;background:#0b1119;color:#f8fafc;border:1px solid #263244;box-shadow:0 28px 80px rgba(0,0,0,.55)}
+.scanner-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.scanner-title-row h2{margin:0;font-size:22px;color:#fff}.scanner-title-row p{margin:5px 0 0;color:#aeb9c8;line-height:1.4}
+.scanner-close-btn{flex:0 0 auto;width:42px;height:42px;padding:0;border-color:#38465a!important;background:#131c29!important;color:#fff!important;font-size:21px}
+.scanner-camera-shell{position:relative;overflow:hidden;margin-top:17px;aspect-ratio:4/3;border:1px solid #34445a;border-radius:16px;background:#020617}
+.scanner-camera-shell video{width:100%;height:100%;display:block;object-fit:cover}
+.scanner-viewfinder{position:absolute;inset:15%;border:3px solid #fbbf24;border-radius:18px;box-shadow:0 0 0 999px rgba(2,6,23,.34);pointer-events:none}
+.scanner-viewfinder:before,.scanner-viewfinder:after{content:"";position:absolute;width:34px;height:34px;border-color:#fff}
+.scanner-viewfinder:before{left:-3px;top:-3px;border-left:4px solid;border-top:4px solid;border-radius:15px 0 0}
+.scanner-viewfinder:after{right:-3px;bottom:-3px;border-right:4px solid;border-bottom:4px solid;border-radius:0 0 15px}
+.scanner-status{min-height:46px;margin-top:13px;padding:12px 13px;border-radius:11px;background:#182333;color:#dbe4ee;font-size:13px;line-height:1.4}
+.scanner-status.ok{background:#123524;color:#bbf7d0}.scanner-status.err{background:#3d1720;color:#fecdd3}
+.scanner-actions{display:flex;gap:9px;margin-top:12px}.scanner-actions .btn{flex:1;min-height:46px}
 #courierApp .card,#courierApp .section{border-color:#e1e6ec;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.055)}
 #courierApp .courier-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:7px}
 #courierApp .courier-card-heading h2{font-size:21px;margin:4px 0 0}
@@ -582,6 +598,8 @@
   #courierApp .courier-today{min-width:88px;padding:11px 9px}
   #courierApp .courier-today strong{font-size:30px}
   #courierApp .attendance-checkin-banner{padding:13px;margin-bottom:12px}
+  #courierApp .attendance-checkin-actions{grid-template-columns:1fr;margin-top:-1px}.attendance-checkin-actions .small{text-align:center}
+  #courierApp .attendance-scan-btn{width:100%;min-height:54px}
   #courierApp .card{padding:16px}
   #courierApp .courier-card-heading h2{font-size:20px}
   #courierApp #departureCard{padding:17px 15px}
@@ -613,6 +631,9 @@
   #deliveryConfirmModal .modal-box{padding:20px 16px}
   #deliveryConfirmModal .delivery-code-input{height:58px;font-size:26px!important}
   #deliveryConfirmModal #deliveryConfirmBtn{width:100%;min-height:54px}
+  #scannerModal{padding:0;align-items:end;overflow:hidden}
+  #scannerModal .scanner-modal-box{width:100%;max-height:100dvh;padding:18px 14px calc(17px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0;overflow-y:auto}
+  .scanner-camera-shell{max-height:58dvh}
 }
 
 @media(max-width:365px){
@@ -1491,6 +1512,10 @@
       <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
       <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
       <div id="attendanceCheckinStatus"></div>
+      <div id="attendanceCheckinActions" class="attendance-checkin-actions hidden">
+        <button id="attendanceScannerBtn" class="btn attendance-scan-btn" type="button" onclick="openAttendanceScanner()">📷 Ler QR de presença</button>
+        <span class="small muted">A câmera será aberta dentro do aplicativo.</span>
+      </div>
       <div id="departureCard" class="card">
         <div class="courier-card-heading">
           <div><div class="courier-eyebrow">Despachar pedidos</div><h2>Nova saída</h2></div>
@@ -1662,6 +1687,27 @@
       <button id="deliveryConfirmBtn" type="submit" class="btn success">✅ Confirmar entrega</button>
     </form>
     <div id="deliveryConfirmMsg"></div>
+  </div>
+</div>
+
+<div id="scannerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="scannerTitle" onclick="if(event.target===this)closeOrderScanner()">
+  <div class="modal-box scanner-modal-box">
+    <div class="scanner-title-row">
+      <div>
+        <h2 id="scannerTitle">Ler QR de presença</h2>
+        <p id="scannerHelp" class="small">Centralize o QR exibido na loja e mantenha o celular firme.</p>
+      </div>
+      <button class="btn outline scanner-close-btn" type="button" aria-label="Fechar câmera" onclick="closeOrderScanner()">×</button>
+    </div>
+    <div class="scanner-camera-shell">
+      <video id="scannerVideo" autoplay muted playsinline aria-label="Imagem da câmera"></video>
+      <div class="scanner-viewfinder" aria-hidden="true"></div>
+    </div>
+    <div id="scannerStatus" class="scanner-status" role="status" aria-live="polite">Preparando câmera...</div>
+    <div class="scanner-actions">
+      <button id="scannerTorchBtn" class="btn outline hidden" type="button" onclick="toggleScannerTorch()">🔦 Lanterna</button>
+      <button class="btn outline" type="button" onclick="closeOrderScanner()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -1873,6 +1919,17 @@ function renderAttendanceCheckinNotice(text,type='ok'){
   const icon=type==='ok'?'✓':type==='err'?'!':'i';
   $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}"><span class="courier-notice-icon" aria-hidden="true">${icon}</span><span>${escapeHtml(text)}</span></div>`:'';
 }
+function updateAttendanceScannerAction(){
+  const actions=$('attendanceCheckinActions');
+  if(!actions)return;
+  actions.classList.toggle('hidden',me?.role!=='courier'||courierAttendancePresent||courierShiftEnded);
+}
+async function submitAttendanceToken(token){
+  return api('/api/courier/attendance/checkin',{
+    method:'POST',
+    body:JSON.stringify({token})
+  });
+}
 async function processPendingAttendanceToken(){
   const token=getPendingAttendanceToken();
   if(!token||!me)return null;
@@ -1881,12 +1938,10 @@ async function processPendingAttendanceToken(){
     return null;
   }
   try{
-    const d=await api('/api/courier/attendance/checkin',{
-      method:'POST',
-      body:JSON.stringify({token})
-    });
+    const d=await submitAttendanceToken(token);
     clearPendingAttendanceToken();
     courierAttendancePresent=true;
+    updateAttendanceScannerAction();
     renderAttendanceCheckinNotice(d.message||'Presença confirmada.','ok');
     return d;
   }catch(err){
@@ -2198,7 +2253,10 @@ async function lookupOrderField(input){
 let scannerStream=null;
 let scannerDetector=null;
 let scannerTargetInput=null;
+let scannerMode='order';
 let scannerLoopActive=false;
+let scannerSubmitting=false;
+let scannerSessionId=0;
 let scannerTorchOn=false;
 let scannerLastRead='';
 let scannerLastReadAt=0;
@@ -2235,10 +2293,23 @@ function normalizeScannedOrder(raw){
   return value;
 }
 
-async function scannerFormats(){
+function extractAttendanceTokenFromQr(raw){
+  const value=String(raw||'').trim();
+  if(!value)return '';
+  try{
+    const url=new URL(value,window.location.href);
+    if(!['http:','https:'].includes(url.protocol))return '';
+    return String(url.searchParams.get('attendance_token')||'').trim();
+  }catch{
+    return '';
+  }
+}
+
+async function scannerFormats(mode=scannerMode){
   if(!('BarcodeDetector' in window))return [];
   try{
     const supported=await BarcodeDetector.getSupportedFormats();
+    if(mode==='attendance')return supported.includes('qr_code')?['qr_code']:[];
     const preferred=['qr_code','code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','data_matrix','codabar'];
     return preferred.filter(x=>supported.includes(x));
   }catch{
@@ -2247,35 +2318,73 @@ async function scannerFormats(){
 }
 
 async function openOrderScanner(btn){
+  closeOrderScanner({restoreFocus:false});
   const row=btn.closest('.order-row');
   scannerTargetInput=row?.querySelector('.order-input')||null;
   if(!scannerTargetInput)return;
 
+  scannerMode='order';
+  await openScannerCamera();
+}
+
+async function openAttendanceScanner(){
+  if(me?.role!=='courier')return;
+  if(courierAttendancePresent){
+    renderAttendanceCheckinNotice('Sua presença já está confirmada.','ok');
+    updateAttendanceScannerAction();
+    return;
+  }
+  if(courierShiftEnded){
+    renderAttendanceCheckinNotice('Seu expediente já foi encerrado pelo Admin.','warn');
+    updateAttendanceScannerAction();
+    return;
+  }
+
+  closeOrderScanner({restoreFocus:false});
+  scannerTargetInput=null;
+  scannerMode='attendance';
+  await openScannerCamera();
+}
+
+async function openScannerCamera(){
+  const sessionId=++scannerSessionId;
   $('scannerModal').style.display='grid';
+  $('scannerTitle').textContent=scannerMode==='attendance'?'Ler QR de presença':'Ler código do pedido';
+  $('scannerHelp').textContent=scannerMode==='attendance'
+    ?'Centralize o QR exibido na loja e mantenha o celular firme.'
+    :'Centralize o código do pedido e mantenha o celular firme.';
   scannerMessage('Preparando câmera...');
   $('scannerTorchBtn').classList.add('hidden');
   scannerLastRead='';
   scannerLastReadAt=0;
+  scannerSubmitting=false;
 
   if(!navigator.mediaDevices?.getUserMedia){
-    scannerMessage('Este aparelho não disponibiliza câmera pelo navegador. Digite o pedido manualmente.','err');
+    scannerMessage(scannerMode==='attendance'
+      ?'Este aparelho não disponibiliza a câmera dentro do aplicativo. Use a câmera normal do celular para ler o QR.'
+      :'Este aparelho não disponibiliza câmera pelo navegador. Digite o pedido manualmente.','err');
     return;
   }
 
   if(!('BarcodeDetector' in window)){
-    scannerMessage('O leitor automático não é compatível com este navegador. Você ainda pode digitar o pedido manualmente.','err');
+    scannerMessage(scannerMode==='attendance'
+      ?'O leitor interno não é compatível com este navegador. Use a câmera normal do celular para ler o QR.'
+      :'O leitor automático não é compatível com este navegador. Você ainda pode digitar o pedido manualmente.','err');
     return;
   }
 
   try{
-    const formats=await scannerFormats();
+    const formats=await scannerFormats(scannerMode);
+    if(sessionId!==scannerSessionId)return;
     if(!formats.length){
-      scannerMessage('Nenhum formato de código compatível foi encontrado neste navegador.','err');
+      scannerMessage(scannerMode==='attendance'
+        ?'Este navegador não oferece leitura interna de QR. Use a câmera normal do celular.'
+        :'Nenhum formato de código compatível foi encontrado neste navegador.','err');
       return;
     }
 
     scannerDetector=new BarcodeDetector({formats});
-    scannerStream=await navigator.mediaDevices.getUserMedia({
+    const stream=await navigator.mediaDevices.getUserMedia({
       video:{
         facingMode:{ideal:'environment'},
         width:{ideal:1280},
@@ -2283,6 +2392,11 @@ async function openOrderScanner(btn){
       },
       audio:false
     });
+    if(sessionId!==scannerSessionId){
+      stream.getTracks().forEach(track=>track.stop());
+      return;
+    }
+    scannerStream=stream;
 
     const video=$('scannerVideo');
     video.srcObject=scannerStream;
@@ -2295,21 +2409,53 @@ async function openOrderScanner(btn){
     }catch{}
 
     scannerLoopActive=true;
-    scannerMessage('Aponte a câmera para o código do pedido.');
+    scannerMessage(scannerMode==='attendance'
+      ?'Aponte a câmera para o QR de presença exibido na loja.'
+      :'Aponte a câmera para o código do pedido.');
     scanOrderFrame();
   }catch(err){
+    if(sessionId!==scannerSessionId)return;
     if(err?.name==='NotAllowedError'){
-      scannerMessage('Permissão da câmera negada. Libere a câmera para este site ou digite o pedido manualmente.','err');
+      scannerMessage('Permissão da câmera negada. Libere a câmera para este aplicativo e tente novamente.','err');
     }else if(err?.name==='NotFoundError'){
       scannerMessage('Nenhuma câmera foi encontrada neste aparelho.','err');
     }else{
-      scannerMessage('Não foi possível iniciar a câmera. Digite o pedido manualmente.','err');
+      scannerMessage('Não foi possível iniciar a câmera. Feche esta janela e tente novamente.','err');
     }
   }
 }
 
+async function confirmScannedAttendance(raw){
+  const token=extractAttendanceTokenFromQr(raw);
+  if(!token){
+    scannerMessage('Este não é um QR de presença do DespacheFull. Aponte para o QR exibido na loja.','err');
+    scannerLastRead='';
+    return;
+  }
+
+  scannerLoopActive=false;
+  scannerSubmitting=true;
+  scannerMessage('QR reconhecido. Confirmando sua presença...');
+  try{
+    const d=await submitAttendanceToken(token);
+    courierAttendancePresent=true;
+    updateAttendanceScannerAction();
+    updateCourierDepartureEligibility();
+    renderAttendanceCheckinNotice(d.message||'Presença confirmada.','ok');
+    scannerMessage('Presença confirmada com sucesso.','ok');
+    if(navigator.vibrate)navigator.vibrate([80,50,120]);
+    await loadCourier({related:false}).catch(()=>{});
+    setTimeout(()=>closeOrderScanner({restoreFocus:false}),700);
+  }catch(err){
+    scannerSubmitting=false;
+    scannerLastRead='';
+    scannerMessage(err.message||'Não foi possível confirmar a presença. Leia o QR atual novamente.','err');
+    scannerLoopActive=true;
+  }
+}
+
 async function scanOrderFrame(){
-  if(!scannerLoopActive||!scannerDetector)return;
+  if(!scannerLoopActive||scannerSubmitting||!scannerDetector)return;
   const video=$('scannerVideo');
 
   try{
@@ -2321,6 +2467,11 @@ async function scanOrderFrame(){
 
         // Exige a mesma leitura em sequência para reduzir leituras acidentais.
         if(raw&&raw===scannerLastRead&&(now-scannerLastReadAt)<1600){
+          if(scannerMode==='attendance'){
+            await confirmScannedAttendance(raw);
+            if(scannerLoopActive)setTimeout(scanOrderFrame,500);
+            return;
+          }
           const order=normalizeScannedOrder(raw);
           if(!order){
             scannerMessage('Código lido, mas o conteúdo não parece ser um número de pedido válido.','err');
@@ -2368,8 +2519,10 @@ async function toggleScannerTorch(){
   }
 }
 
-function closeOrderScanner(){
+function closeOrderScanner({restoreFocus=true}={}){
+  scannerSessionId++;
   scannerLoopActive=false;
+  scannerSubmitting=false;
   scannerDetector=null;
   scannerTorchOn=false;
   scannerLastRead='';
@@ -2387,11 +2540,11 @@ function closeOrderScanner(){
 
   const target=scannerTargetInput;
   scannerTargetInput=null;
-  if(target)setTimeout(()=>target.focus(),50);
+  if(target&&restoreFocus)setTimeout(()=>target.focus(),50);
 }
 
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden&&scannerLoopActive)closeOrderScanner();
+  if(document.hidden&&(scannerLoopActive||$('scannerModal')?.style.display==='grid'))closeOrderScanner();
 });
 
 async function login(e){
@@ -3546,6 +3699,7 @@ async function loadCourier({related=true}={}){
   }else{
     renderAttendanceCheckinNotice('Presença ainda não confirmada. Escaneie o QR exibido na loja. Nenhuma saída será liberada antes do check-in.','warn');
   }
+  updateAttendanceScannerAction();
 
   const checkinLocked=!!d.active||!courierAttendancePresent;
   document.querySelectorAll('.order-input').forEach(i=>i.disabled=checkinLocked);
