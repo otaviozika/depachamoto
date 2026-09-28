@@ -79,7 +79,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.DEPLOYMENT_TARGET === "back4app-homologation" ? "auto" : process.env.NODE_ENV === "production",
     maxAge: 1000 * 60 * 60 * 12
   }
 });
