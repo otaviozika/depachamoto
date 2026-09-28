@@ -6,6 +6,7 @@ const PASSWORD = String(process.env.LOADTEST_PASSWORD || "");
 const CLIENTS = Math.max(0, Number(process.env.CLIENTS || 10));
 const DURATION_SECONDS = Math.max(10, Number(process.env.DURATION_SECONDS || 1800));
 const HTTP_INTERVAL_MS = Math.max(500, Number(process.env.HTTP_INTERVAL_MS || 5000));
+const METRIC_INTERVAL_MS = Math.max(1000, Number(process.env.METRIC_INTERVAL_MS || 5000));
 const RECONNECT_EVERY_SECONDS = Math.max(0, Number(process.env.RECONNECT_EVERY_SECONDS || 300));
 const READ_ONLY_BURST = Math.max(0, Number(process.env.READ_ONLY_BURST || 0));
 const STAGE = String(process.env.STAGE || `clients-${CLIENTS}`);
@@ -30,6 +31,7 @@ const socketConnectLatencies = [];
 const reconnectLatencies = [];
 const statusCounts = {};
 const failures = [];
+const processSamples = [];
 const sockets = new Set();
 let httpRequests = 0;
 let serverErrors = 0;
@@ -218,6 +220,24 @@ async function httpWatcher() {
   }
 }
 
+async function metricWatcher() {
+  while (Date.now() < endsAt) {
+    try {
+      const response = await fetch(`${TARGET}/api/homologation/metrics`, {
+        headers: { "cache-control": "no-cache" }
+      });
+      if (!response.ok) {
+        failures.push(`metrics: HTTP ${response.status}`);
+      } else {
+        processSamples.push(await response.json());
+      }
+    } catch (error) {
+      failures.push(`metrics: ${error.message}`);
+    }
+    await sleep(Math.min(METRIC_INTERVAL_MS, Math.max(0, endsAt - Date.now())));
+  }
+}
+
 async function readOnlyBurst() {
   if (!READ_ONLY_BURST) return;
   await Promise.all(Array.from({ length: READ_ONLY_BURST }, async (_, index) => {
@@ -234,10 +254,24 @@ async function readOnlyBurst() {
 await readOnlyBurst();
 await Promise.all([
   httpWatcher(),
+  metricWatcher(),
   ...Array.from({ length: CLIENTS }, (_, index) => socketClient(index + 1))
 ]);
 
 for (const socket of sockets) socket.close(1000, "homologation-complete");
+
+const rssValues = processSamples.map(sample => Number(sample.rssMb)).filter(Number.isFinite);
+const bootIds = [...new Set(processSamples.map(sample => sample.bootId).filter(Boolean))];
+const firstProcessSample = processSamples[0];
+const lastProcessSample = processSamples.at(-1);
+let averageCpuCores = null;
+if (firstProcessSample && lastProcessSample && firstProcessSample !== lastProcessSample) {
+  const elapsedMs = Date.parse(lastProcessSample.timestamp) - Date.parse(firstProcessSample.timestamp);
+  const cpuMicros =
+    Number(lastProcessSample.cpuUserMicros) + Number(lastProcessSample.cpuSystemMicros) -
+    Number(firstProcessSample.cpuUserMicros) - Number(firstProcessSample.cpuSystemMicros);
+  if (elapsedMs > 0 && Number.isFinite(cpuMicros)) averageCpuCores = cpuMicros / 1000 / elapsedMs;
+}
 
 const report = {
   stage: STAGE,
@@ -266,6 +300,20 @@ const report = {
     reconnectP95Ms: rounded(percentile(reconnectLatencies, 0.95)),
     unexpectedDisconnects: socketUnexpectedDisconnects,
     eventsReceived: socketEvents
+  },
+  process: {
+    samples: processSamples.length,
+    bootIds,
+    restartCount: Math.max(0, bootIds.length - 1),
+    rssAverageMb: rounded(rssValues.length ? rssValues.reduce((sum, value) => sum + value, 0) / rssValues.length : null),
+    rssMaxMb: rounded(rssValues.length ? Math.max(...rssValues) : null),
+    rssStartMb: rounded(rssValues[0] ?? null),
+    rssEndMb: rounded(rssValues.at(-1) ?? null),
+    rssGrowthMb: rounded(rssValues.length ? rssValues.at(-1) - rssValues[0] : null),
+    averageCpuCores: rounded(averageCpuCores),
+    eventLoopP95MaxMs: rounded(processSamples.length ? Math.max(...processSamples.map(sample => Number(sample.eventLoopP95Ms) || 0)) : null),
+    eventLoopMaxMs: rounded(processSamples.length ? Math.max(...processSamples.map(sample => Number(sample.eventLoopMaxMs) || 0)) : null),
+    oomObserved: false
   },
   safety: {
     mode: "read-only",
