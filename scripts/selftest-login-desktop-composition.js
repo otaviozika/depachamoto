@@ -80,4 +80,3 @@ context.me={username:'desktop.fixture'};context.redirectExpiredSession();assert.
 context.setAuth('register');context.showSessionNotice();assert.equal(hidden('registerForm'),true);assert.equal(element('loginPass').value,'');assert.equal(element('loginPass').focused,true);assert.ok(element('authMsg').innerHTML.includes('Sua sessão expirou.'));assert.equal(saved.size,0);
 assert.ok(![...saved.keys()].some(k=>/password|senha/i.test(k)));
 console.log(JSON.stringify({result:'PASS',singleAuthForm:true,loginSuccessAndError:true,registerValidationAndApproval:true,registrationPolicy:true,expiredSessionReturn:true,desktopCssScoped:true}));
-
