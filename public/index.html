@@ -2254,12 +2254,16 @@ let scannerStream=null;
 let scannerDetector=null;
 let scannerTargetInput=null;
 let scannerMode='order';
+let scannerDecoderMode='native';
 let scannerLoopActive=false;
 let scannerSubmitting=false;
 let scannerSessionId=0;
 let scannerTorchOn=false;
 let scannerLastRead='';
 let scannerLastReadAt=0;
+let scannerQrCanvas=null;
+let scannerQrContext=null;
+let scannerJsQrLoadPromise=null;
 
 function scannerMessage(text,type=''){
   const el=$('scannerStatus');
@@ -2317,6 +2321,48 @@ async function scannerFormats(mode=scannerMode){
   }
 }
 
+function ensureJsQrDecoder(){
+  if(typeof window.jsQR==='function')return Promise.resolve();
+  if(scannerJsQrLoadPromise)return scannerJsQrLoadPromise;
+
+  scannerJsQrLoadPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='/vendor/jsQR.js';
+    script.async=true;
+    script.dataset.scannerDecoder='jsqr';
+    script.onload=()=>{
+      if(typeof window.jsQR==='function')resolve();
+      else reject(new Error('Leitor de QR indisponível.'));
+    };
+    script.onerror=()=>{
+      scannerJsQrLoadPromise=null;
+      script.remove();
+      reject(new Error('Não foi possível carregar o leitor de QR.'));
+    };
+    document.head.appendChild(script);
+  });
+  return scannerJsQrLoadPromise;
+}
+
+function decodeQrWithJsQr(video){
+  if(typeof window.jsQR!=='function'||!video.videoWidth||!video.videoHeight)return '';
+  if(!scannerQrCanvas){
+    scannerQrCanvas=document.createElement('canvas');
+    scannerQrContext=scannerQrCanvas.getContext('2d',{willReadFrequently:true});
+  }
+  if(!scannerQrContext)return '';
+
+  const scale=Math.min(1,640/video.videoWidth);
+  const width=Math.max(1,Math.round(video.videoWidth*scale));
+  const height=Math.max(1,Math.round(video.videoHeight*scale));
+  if(scannerQrCanvas.width!==width)scannerQrCanvas.width=width;
+  if(scannerQrCanvas.height!==height)scannerQrCanvas.height=height;
+  scannerQrContext.drawImage(video,0,0,width,height);
+  const frame=scannerQrContext.getImageData(0,0,width,height);
+  const result=window.jsQR(frame.data,width,height,{inversionAttempts:'dontInvert'});
+  return String(result?.data||'').trim();
+}
+
 async function openOrderScanner(btn){
   closeOrderScanner({restoreFocus:false});
   const row=btn.closest('.order-row');
@@ -2358,6 +2404,7 @@ async function openScannerCamera(){
   scannerLastRead='';
   scannerLastReadAt=0;
   scannerSubmitting=false;
+  scannerDecoderMode='native';
 
   if(!navigator.mediaDevices?.getUserMedia){
     scannerMessage(scannerMode==='attendance'
@@ -2366,24 +2413,22 @@ async function openScannerCamera(){
     return;
   }
 
-  if(!('BarcodeDetector' in window)){
-    scannerMessage(scannerMode==='attendance'
-      ?'O leitor interno não é compatível com este navegador. Use a câmera normal do celular para ler o QR.'
-      :'O leitor automático não é compatível com este navegador. Você ainda pode digitar o pedido manualmente.','err');
-    return;
-  }
-
   try{
     const formats=await scannerFormats(scannerMode);
     if(sessionId!==scannerSessionId)return;
-    if(!formats.length){
-      scannerMessage(scannerMode==='attendance'
-        ?'Este navegador não oferece leitura interna de QR. Use a câmera normal do celular.'
-        :'Nenhum formato de código compatível foi encontrado neste navegador.','err');
+    if(formats.length){
+      scannerDetector=new BarcodeDetector({formats});
+    }else if(scannerMode==='attendance'){
+      scannerMessage('Preparando leitor de QR...');
+      await ensureJsQrDecoder();
+      if(sessionId!==scannerSessionId)return;
+      scannerDecoderMode='jsqr';
+      scannerDetector=null;
+    }else{
+      scannerMessage('O leitor automático não é compatível com este navegador. Digite o pedido manualmente.','err');
       return;
     }
 
-    scannerDetector=new BarcodeDetector({formats});
     const stream=await navigator.mediaDevices.getUserMedia({
       video:{
         facingMode:{ideal:'environment'},
@@ -2455,12 +2500,14 @@ async function confirmScannedAttendance(raw){
 }
 
 async function scanOrderFrame(){
-  if(!scannerLoopActive||scannerSubmitting||!scannerDetector)return;
+  if(!scannerLoopActive||scannerSubmitting||(scannerDecoderMode==='native'&&!scannerDetector))return;
   const video=$('scannerVideo');
 
   try{
     if(video.readyState>=2){
-      const codes=await scannerDetector.detect(video);
+      const codes=scannerDecoderMode==='jsqr'
+        ?(()=>{const rawValue=decodeQrWithJsQr(video);return rawValue?[{rawValue}]:[]})()
+        :await scannerDetector.detect(video);
       if(codes?.length){
         const raw=String(codes[0].rawValue||'').trim();
         const now=Date.now();
@@ -2503,7 +2550,7 @@ async function scanOrderFrame(){
     }
   }catch{}
 
-  if(scannerLoopActive)setTimeout(scanOrderFrame,140);
+  if(scannerLoopActive)setTimeout(scanOrderFrame,scannerDecoderMode==='jsqr'?220:140);
 }
 
 async function toggleScannerTorch(){
