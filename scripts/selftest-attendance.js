@@ -4,6 +4,7 @@ import assert from 'assert';
 const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const ui = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const sw = fs.readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8');
+const jsQr = fs.readFileSync(new URL('../public/vendor/jsQR.js', import.meta.url), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const courierDepart = server.match(/app\.post\("\/api\/courier\/depart"[\s\S]*?\n\}\)\);/)?.[0] || '';
@@ -37,6 +38,8 @@ const checks = {
   ui_qr_login_survival: /ATTENDANCE_TOKEN_KEY/.test(ui) && /captureAttendanceTokenFromUrl/.test(ui) && /processPendingAttendanceToken/.test(ui),
   ui_in_app_qr_button: /id="attendanceScannerBtn"/.test(ui) && /openAttendanceScanner/.test(ui),
   ui_in_app_qr_camera: /id="scannerVideo"/.test(ui) && /getUserMedia/.test(ui) && /BarcodeDetector/.test(ui),
+  ui_in_app_qr_fallback: /ensureJsQrDecoder/.test(ui) && /decodeQrWithJsQr/.test(ui) && /window\.jsQR/.test(ui),
+  ui_in_app_qr_fallback_vendored: jsQr.length > 200000 && /\/vendor\/jsQR\.js/.test(sw),
   ui_in_app_qr_validation: /extractAttendanceTokenFromQr/.test(ui) && /submitAttendanceToken/.test(ui) && /Este não é um QR de presença/.test(ui),
   ui_in_app_qr_extraction: !!extractAttendanceTokenFromQr
     && extractAttendanceTokenFromQr('https://depachamoto.onrender.com/?attendance_token=abc.def') === 'abc.def'
