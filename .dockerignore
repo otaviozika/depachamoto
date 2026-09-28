@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+npm-debug.log*
+*.zip
+*.log
+reports
+coverage
+full-staging-load-report.json
+endurance-staging-report.json
+
