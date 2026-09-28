@@ -10,9 +10,10 @@ const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),
 const clean=css.replace(/\/\*[\s\S]*?\*\//g,'').trim();
 assert.match(clean,/@media \(min-width:901px\)\{/);
 assert.match(clean,/@media \(max-width:900px\)\{/);
-assert.match(css,/#loginScreen \.login-showcase-inner/);
+assert.match(css,/#loginScreen \.login-relief-brand/);
 assert.match(css,/#loginScreen \.form label\{/);
-assert.match(css,/#loginScreen \.desktop-auth-intro\{display:block;order:1/);
+assert.match(css,/#loginScreen \.desktop-auth-intro/);
+assert.match(html,/class="login-relief-brand" src="\/brand-logo\.png"/);
 assert.doesNotMatch(html,/src="\/login-(?:bike-scene\.png|garage-desktop\.webp|mobile-hero\.webp)"/);
 assert.doesNotMatch(sw,/\/login-(?:bike-scene\.png|garage-desktop\.webp|mobile-hero\.webp)/);
 assert.doesNotMatch(clean,/display\s*:\s*(?!none\b)[\w-]+\s*!important/i,'Display rules must not defeat authentication visibility');
