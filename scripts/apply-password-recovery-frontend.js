@@ -16,7 +16,9 @@ function replace(anchor, value, label) {
 const eye = id => `<button type="button" class="password-toggle" data-password-target="${id}" aria-label="Mostrar senha" aria-pressed="false"><svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg></button>`;
 
 if (!html.includes('id="passwordRecoveryModal"')) {
-  replace('<link rel="stylesheet" href="/login-desktop.css">', '<link rel="stylesheet" href="/login-desktop.css">\n<link rel="stylesheet" href="/password-recovery.css">', 'stylesheet');
+  const loginStylesheet = html.match(/<link rel="stylesheet" href="\/login-desktop\.css(?:\?[^\"]*)?">/)?.[0];
+  if (!loginStylesheet) throw new Error('Password recovery frontend: login stylesheet not found');
+  replace(loginStylesheet, `${loginStylesheet}\n<link rel="stylesheet" href="/password-recovery.css">`, 'stylesheet');
   replace('<div class="login-help-row">Esqueceu a senha? Procure o administrador.</div>', '<button type="button" class="login-help-row password-recovery-link" onclick="openPasswordRecoveryModal()">Esqueci minha senha</button>', 'login link');
   replace(
     '<div class="admin-account-actions"><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordModal()">Alterar minha senha</button></div>',
