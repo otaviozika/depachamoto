@@ -1,206 +1,134 @@
-/* Desktop access screen. Authentication owns visibility through .hidden.
-   Never override .hidden with display !important in this stylesheet. */
+/* Professional access screen. Authentication owns visibility through .hidden. */
+
+#loginScreen{
+  --login-red:#e51d38;
+  --login-red-dark:#c8102e;
+  --login-ink:#101318;
+  --login-muted:#68717d;
+  --login-line:#dfe3e8;
+  --login-surface:#fff;
+  --login-canvas:#f3f5f7;
+  color:var(--login-ink);
+}
+
+#loginScreen *{box-sizing:border-box}
+#loginScreen button,#loginScreen input{font:inherit}
+#loginScreen .brand-logo-login,
+#loginScreen .auth-desktop-brand,
+#loginScreen .auth-box>h2,
+#loginScreen .auth-box>p.muted,
+#loginScreen .desktop-auth-note,
+#loginScreen .desktop-auth-heading svg{display:none}
+
+#loginScreen .auth-box{display:flex;flex-direction:column}
+#loginScreen .desktop-auth-intro{display:block;order:1;margin:0 0 30px}
+#loginScreen .desktop-auth-intro h2{margin:0;color:var(--login-ink);font-size:32px;font-weight:760;line-height:1.15;letter-spacing:-.035em}
+#loginScreen .desktop-auth-intro p{margin:9px 0 0;color:var(--login-muted);font-size:15px;line-height:1.5}
+#loginScreen #registrationNotice{order:2;margin:0 0 17px;padding:11px 13px;border:1px solid #e5e8ec;border-radius:10px;background:#f7f8fa;color:#59616c;font-size:12px;line-height:1.45}
+#loginScreen #authMsg{order:3}
+#loginScreen #registrationNotice:empty,#loginScreen #authMsg:empty{display:none}
+#loginScreen .msg{margin:0 0 17px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.45}
+#loginScreen .msg.err{border:1px solid #f1bac2;background:#fff1f3;color:#9f1730}
+#loginScreen .msg.ok{border:1px solid #b8dfc7;background:#effaf3;color:#22633a}
+
+#loginScreen .form{display:grid;order:4;gap:17px;width:100%}
+#loginScreen .form.hidden{display:none}
+#loginScreen .form label{display:block;margin:0;color:#353b44;font-size:13px;font-weight:680;line-height:1.25}
+#loginScreen .form input,#loginScreen .form select{display:block;width:100%;height:52px;margin-top:7px;padding:0 15px;border:1px solid #cfd4da;border-radius:10px;outline:none;background:#fff;color:#171a1f;font-size:15px;font-weight:450;box-shadow:0 1px 2px rgba(20,25,31,.025);transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}
+#loginScreen .form input::placeholder{color:#9299a3;opacity:1}
+#loginScreen .form input:hover{border-color:#aeb5bd}
+#loginScreen .form input:focus,#loginScreen .form select:focus{border-color:var(--login-red);background:#fff;box-shadow:0 0 0 4px rgba(229,29,56,.11)}
+#loginScreen .login-help-row{display:block;justify-self:end;margin:-5px 0 0;padding:0;border:0;background:transparent;color:var(--login-red-dark);font-size:13px;font-weight:650;line-height:1.4;cursor:pointer}
+#loginScreen .login-help-row:hover{text-decoration:underline}
+
+#loginScreen .btn.primary{width:100%;min-height:52px;margin:2px 0 0;padding:12px 20px;border:1px solid var(--login-red);border-radius:10px;background:linear-gradient(135deg,#eb2440,#d91632);color:#fff;box-shadow:0 9px 20px rgba(201,16,46,.18);font-size:15px;font-weight:750;cursor:pointer;transition:transform .12s ease,box-shadow .16s ease,background .16s ease}
+#loginScreen .btn.primary:hover{background:linear-gradient(135deg,#f12a47,#ce122e);box-shadow:0 11px 24px rgba(201,16,46,.24)}
+#loginScreen .btn.primary:active{transform:translateY(1px)}
+#loginScreen button:focus-visible{outline:3px solid rgba(229,29,56,.28);outline-offset:3px}
+#loginScreen button:disabled{opacity:.48;cursor:not-allowed}
+#loginScreen .form p.small.muted{margin:-3px 0 0;color:#767f8a;font-size:12px;line-height:1.5}
+
+#loginScreen .desktop-auth-divider{display:none}
+#loginScreen .tabs{order:5;width:100%;margin:25px 0 0;padding:20px 0 0;border:0;border-top:1px solid var(--login-line);background:transparent;text-align:center}
+#loginScreen .tabs::before{content:"Ainda não tem acesso?";margin-right:5px;color:#767f8a;font-size:13px}
+#loginScreen .tabs button{display:inline;padding:2px;border:0;background:transparent;color:var(--login-red-dark);font-size:13px;font-weight:730;cursor:pointer}
+#loginScreen .tabs button:hover{text-decoration:underline}
+#loginScreen .auth-box:has(#loginForm:not(.hidden)) #tabLogin,
+#loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabRegister{display:none}
+#loginScreen .auth-box:has(#registerForm:not(.hidden)) .tabs::before{content:"Já possui uma conta?"}
+#loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin{display:inline}
+#loginScreen .auth-box>.creator-signature{display:none}
+
 @media (min-width:901px){
-  #loginScreen.login{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr;place-items:center;width:100%;min-height:100svh;padding:32px 24px;overflow:clip;background:#101215;color:#f5f6f7}
-  #loginScreen .login-showcase{position:absolute;inset:0;z-index:-1;display:block;width:100%;height:100%;min-height:0;padding:0;border:0;overflow:hidden;background:#101215;pointer-events:none}
-  #loginScreen .login-photo{position:absolute;inset:0;z-index:0;opacity:1;filter:none;transform:none;background:#101215 url('/login-garage-desktop.webp') center bottom / cover no-repeat}
-  #loginScreen .login-showcase::before{display:none}
-  #loginScreen .login-showcase::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,rgba(0,0,0,.04),transparent 28% 72%,rgba(0,0,0,.07));pointer-events:none}
-  #loginScreen .login-showcase-top,#loginScreen .login-showcase-copy,#loginScreen .login-showcase-footer,#loginScreen .login-bike-scene,#loginScreen .dashboard-monitor,#loginScreen .monitor-desk-shadow,#loginScreen .login-photo-credit{display:none}
+  #loginScreen.login{position:relative;display:grid;grid-template-columns:minmax(460px,1.08fr) minmax(430px,.92fr);width:100%;min-height:100svh;overflow:auto;background:var(--login-canvas)}
+  #loginScreen .login-showcase{position:relative;display:flex;min-height:100svh;overflow:hidden;padding:clamp(48px,6vw,88px);background:radial-gradient(circle at 15% 15%,rgba(229,29,56,.19),transparent 33%),radial-gradient(circle at 88% 82%,rgba(229,29,56,.1),transparent 30%),linear-gradient(145deg,#11151b 0%,#090c10 72%);color:#fff;isolation:isolate}
+  #loginScreen .login-showcase::before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:linear-gradient(to bottom right,#000,transparent 78%)}
+  #loginScreen .login-showcase::after{content:"";position:absolute;right:-120px;bottom:-150px;width:430px;height:430px;border:1px solid rgba(229,29,56,.22);border-radius:50%;box-shadow:0 0 0 58px rgba(229,29,56,.035),0 0 0 118px rgba(229,29,56,.025)}
+  #loginScreen .login-showcase-inner{position:relative;z-index:1;display:flex;flex-direction:column;width:100%;max-width:680px}
+  #loginScreen .login-showcase-brand{display:block;width:clamp(215px,18vw,280px);height:auto}
+  #loginScreen .login-showcase-copy{margin:auto 0}
+  #loginScreen .login-showcase-kicker{display:block;margin:0 0 17px;color:#f04a60;font-size:12px;font-weight:820;letter-spacing:.17em}
+  #loginScreen .login-showcase-copy h1{max-width:650px;margin:0;color:#fff;font-size:clamp(42px,4.2vw,68px);font-weight:760;line-height:1.02;letter-spacing:-.055em}
+  #loginScreen .login-showcase-copy h1 em{color:#ef334a;font-style:normal}
+  #loginScreen .login-showcase-copy p{max-width:500px;margin:22px 0 0;color:#aeb6c0;font-size:17px;line-height:1.6}
+  #loginScreen .login-showcase-benefits{display:flex;flex-wrap:wrap;gap:10px 18px;margin:30px 0 0}
+  #loginScreen .login-showcase-benefits span{display:flex;align-items:center;gap:8px;color:#d5d9df;font-size:13px;font-weight:620}
+  #loginScreen .login-showcase-benefits span::before{content:"✓";display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:rgba(229,29,56,.14);color:#f04a60;font-size:11px}
+  #loginScreen .login-showcase-status{display:flex;align-items:center;gap:9px;color:#8f98a4;font-size:12px;font-weight:620}
+  #loginScreen .login-showcase-status i{width:8px;height:8px;border-radius:50%;background:#35b86b;box-shadow:0 0 0 5px rgba(53,184,107,.11)}
 
-  /* Normal flow centers the complete composition and permits scrolling on
-     short desktops instead of clipping fields above the viewport. */
-  #loginScreen .login-auth-panel{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;width:clamp(390px,30vw,490px);max-width:100%;min-width:0;min-height:0;margin:0 auto;padding:0;background:transparent}
-  #loginScreen .desktop-auth-heading{display:flex;flex-direction:column;align-items:center;gap:4px}
-  #loginScreen .desktop-auth-heading svg{display:block;width:200px;height:92px;overflow:hidden}
-  #loginScreen .desktop-auth-heading>img{display:block;width:300px;max-width:100%;height:auto}
-  #loginScreen .auth-box{display:flex;flex-direction:column;width:100%;max-width:none;margin:0;padding:30px 32px 22px;border:1px solid #6b4147;border-radius:18px;background:linear-gradient(135deg,rgba(18,20,23,.96),rgba(9,12,15,.97));color:#f5f6f7;box-shadow:0 22px 50px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.035)}
-  #loginScreen .brand-logo-login,#loginScreen .auth-desktop-brand,#loginScreen .auth-box>h2,#loginScreen .auth-box>p.muted,#loginScreen .desktop-auth-note{display:none}
-  #loginScreen .desktop-auth-intro{display:block;order:1;text-align:center;margin:0 0 24px}
-  #loginScreen .desktop-auth-intro h2{margin:0;color:#fff;font-size:28px;line-height:1.2;font-weight:750;letter-spacing:-.025em}
-  #loginScreen .desktop-auth-intro p{margin:9px 0 0;color:#a7abb1;font-size:14px;line-height:1.5}
-  #loginScreen #registrationNotice{display:none;order:2;margin:0 0 14px;color:#acb2bb;line-height:1.5;text-align:center;font-size:12px}
-  #loginScreen #registrationNotice:empty{display:none}
-  #loginScreen #authMsg{order:3}
-  #loginScreen #authMsg:empty{display:none}
-  #loginScreen .msg{margin:0 0 16px;padding:12px;border-radius:8px;font-size:13px;line-height:1.5}
-  #loginScreen .msg.err{background:#281015;color:#ffc2cb;border:1px solid #63303a}
-  #loginScreen .msg.ok{background:#102119;color:#b8edcd;border:1px solid #315740}
-
-  #loginScreen .form{display:grid;order:4;gap:15px}
-  #loginScreen .form label{position:relative;display:block;margin:0;font-size:0}
-  #loginScreen .form input{display:block;width:100%;height:54px;min-height:54px;margin:0;padding:0 16px 0 49px;border:1px solid #54585e;border-radius:10px;outline:none;background:linear-gradient(135deg,#14181c,#0e1114);color:#f5f6f7;font-size:15px;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
-  #loginScreen .form input::placeholder{color:#a9afb7;opacity:1}
-  #loginScreen .form input:hover{border-color:#858990}
-  #loginScreen .form input:focus{border-color:#f2364d;box-shadow:0 0 0 3px rgba(242,54,77,.18)}
-  #loginScreen .form label::before{content:"";position:absolute;left:19px;top:13px;width:11px;height:11px;border:1.6px solid #e0e3e7;border-radius:50%;pointer-events:none}
-  #loginScreen .form label::after{content:"";position:absolute;left:15px;top:28px;width:19px;height:12px;border:1.6px solid #e0e3e7;border-radius:10px 10px 2px 2px;pointer-events:none}
-  #loginScreen .form label:has(input[type="password"])::before{left:19px;top:13px;width:11px;height:14px;border-radius:8px 8px 0 0}
-  #loginScreen .form label:has(input[type="password"])::after{left:15px;top:23px;width:19px;height:18px;border-radius:3px;background:#111519}
-  #loginScreen .login-help-row{display:block;margin:-3px 0 0;text-align:right;color:#a1a7af;font-size:11px;line-height:1.45}
-  #loginScreen .btn.primary{position:relative;width:100%;min-height:54px;margin:0;padding:12px 42px;border:1px solid #f51a36;border-radius:10px;background:linear-gradient(105deg,#e70625,#f21830);color:#fff;box-shadow:0 8px 20px rgba(210,10,35,.12);font-size:17px;font-weight:700;cursor:pointer}
-  #loginScreen #loginForm .btn.primary::after{content:"→";position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:24px;font-weight:400}
-  #loginScreen .btn.primary:hover{background:#fc2440}
-  #loginScreen button:focus-visible{outline:3px solid #fff;outline-offset:4px}
-  #loginScreen button:disabled{opacity:.45;cursor:not-allowed}
-  #loginScreen .form p.small.muted{margin:0;color:#a4abb4;line-height:1.5;font-size:12px}
-  #loginScreen .desktop-auth-divider{order:5;display:flex;align-items:center;gap:16px;margin:22px 0;color:#9b9fa6;font-size:12px;line-height:1;text-transform:lowercase}
-  #loginScreen .desktop-auth-divider::before,#loginScreen .desktop-auth-divider::after{content:"";flex:1;height:1px;background:#30353b}
-  #loginScreen .tabs{order:6;display:block;width:100%;margin:0;padding:0;border:0;background:transparent}
-  #loginScreen .tabs button{width:100%;min-height:52px;padding:12px;border:1px solid #7a7e84;border-radius:10px;background:transparent;color:#f5f6f7;font-size:14px;font-weight:500;box-shadow:none}
-  #loginScreen #tabLogin{display:none}
-  #loginScreen #tabRegister{display:flex;align-items:center;justify-content:center;gap:12px;font-size:0}
-  #loginScreen #tabRegister::before{content:"+";font-size:26px;line-height:1;font-weight:300}
-  #loginScreen #tabRegister::after{content:"Criar nova conta";font-size:14px}
-  #loginScreen .tabs button:hover{background:rgba(255,255,255,.05);border-color:#b7bbc1}
-  #loginScreen .auth-box>.creator-signature{display:block;order:7;margin:20px 0 0;text-align:center;color:#969ba2;font-size:11px;font-weight:400;letter-spacing:0;line-height:1.4}
-
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #registrationNotice{display:block}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #registrationNotice:empty{display:none}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .desktop-auth-divider,#loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabRegister{display:none}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .tabs{margin-top:18px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin{display:flex;align-items:center;justify-content:center;gap:10px;font-size:0}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::before{content:"←";font-size:20px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::after{content:"Voltar para entrar";font-size:14px}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading svg{width:150px;height:69px}
-  #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading>img{width:240px}
-
-  @media (max-height:820px){
-    #loginScreen.login{padding-block:24px}
-    #loginScreen .login-auth-panel{width:410px;gap:18px}
-    #loginScreen .desktop-auth-heading svg{width:160px;height:74px}
-    #loginScreen .desktop-auth-heading>img{width:250px}
-    #loginScreen .auth-box{padding:24px 28px 19px}
-    #loginScreen .desktop-auth-intro{margin-bottom:18px}
-    #loginScreen .desktop-auth-intro h2{font-size:25px}
-    #loginScreen .desktop-auth-intro p{font-size:12px;margin-top:7px}
-    #loginScreen .form{gap:12px}
-    #loginScreen .form input{min-height:50px;height:50px}
-    #loginScreen .btn.primary{min-height:50px;font-size:16px}
-    #loginScreen .desktop-auth-divider{margin:18px 0}
-    #loginScreen .tabs button{min-height:48px}
-    #loginScreen .auth-box>.creator-signature{margin-top:16px}
-    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)){gap:14px}
-    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading svg{display:none}
-    #loginScreen .login-auth-panel:has(#registerForm:not(.hidden)) .desktop-auth-heading>img{width:220px}
-  }
-  /* Cover at ultrawide widths would crop away the full-height motorcycle. */
-  @media (min-aspect-ratio:21/9){
-    #loginScreen .login-photo{background-size:auto 108%;background-color:#111417}
-    #loginScreen .login-showcase::after{background:linear-gradient(90deg,#111417 0%,transparent 22% 78%,#111417 100%)}
-  }
-  @media (min-width:2560px) and (min-height:1200px){
-    #loginScreen .login-auth-panel{width:560px;gap:32px}
-    #loginScreen .desktop-auth-heading svg{width:260px;height:120px}
-    #loginScreen .desktop-auth-heading>img{width:370px}
-    #loginScreen .auth-box{padding:40px 44px 30px}
-    #loginScreen .desktop-auth-intro h2{font-size:34px}
-    #loginScreen .desktop-auth-intro p{font-size:16px}
-    #loginScreen .form{gap:20px}
-    #loginScreen .form input{height:60px;font-size:17px}
-    #loginScreen .btn.primary,#loginScreen .tabs button{min-height:60px}
-  }
+  #loginScreen .login-auth-panel{display:flex;align-items:center;justify-content:center;min-width:0;padding:clamp(36px,6vw,88px);background:var(--login-canvas)}
+  #loginScreen .desktop-auth-heading{display:none}
+  #loginScreen .auth-box{width:100%;max-width:430px;margin:0;padding:0;background:transparent;color:var(--login-ink)}
+  #loginScreen .auth-box:has(#registerForm:not(.hidden)){max-width:460px}
 }
 
-/* Premium mobile access screen — 2026-09-15.
-   Uses the real DespacheFull dashboard preview + existing motorcycle asset.
-   Authentication logic and desktop layout stay untouched. */
 @media (max-width:900px){
-  html,body{background:#050607}
-  body:has(#loginScreen:not(.hidden)){background:#050607;color:#f7f8fa}
-  #loginScreen.login{display:block;width:100%;min-height:100dvh;margin:0;padding:0 0 max(22px,env(safe-area-inset-bottom));overflow-x:hidden;background:#050607;color:#f7f8fa}
+  html,body{background:#0d1014}
+  body:has(#loginScreen:not(.hidden)){background:#0d1014;color:var(--login-ink)}
+  #loginScreen.login{display:block;width:100%;min-height:100dvh;overflow-x:hidden;background:var(--login-canvas)}
+  #loginScreen .login-showcase{position:relative;display:block;height:176px;min-height:176px;padding:max(34px,env(safe-area-inset-top)) 24px 0;overflow:hidden;background:radial-gradient(circle at 15% 5%,rgba(229,29,56,.22),transparent 38%),linear-gradient(145deg,#141920,#090c10);color:#fff}
+  #loginScreen .login-showcase::after{content:"";position:absolute;right:-82px;top:-106px;width:260px;height:260px;border:1px solid rgba(229,29,56,.22);border-radius:50%;box-shadow:0 0 0 42px rgba(229,29,56,.035)}
+  #loginScreen .login-showcase-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
+  #loginScreen .login-showcase-brand{display:block;width:min(68vw,260px);height:auto}
+  #loginScreen .login-showcase-copy{margin-top:16px;text-align:center}
+  #loginScreen .login-showcase-kicker{display:block;color:#bdc3cb;font-size:10px;font-weight:760;letter-spacing:.18em}
+  #loginScreen .login-showcase-copy h1,#loginScreen .login-showcase-copy p,#loginScreen .login-showcase-benefits{display:none}
+  #loginScreen .login-showcase-status{display:none}
 
-  #loginScreen .login-showcase{position:relative;display:block;width:100%;height:clamp(330px,43dvh,455px);min-height:330px;padding-top:env(safe-area-inset-top);overflow:hidden;background:radial-gradient(circle at 18% 22%,rgba(200,19,41,.18),transparent 31%),radial-gradient(circle at 78% 18%,rgba(255,255,255,.06),transparent 34%),linear-gradient(180deg,#0a0c0f 0%,#080a0d 66%,#050607 100%);isolation:isolate}
-  #loginScreen .login-showcase::before{content:"";position:absolute;inset:0;z-index:5;display:block;background:linear-gradient(180deg,rgba(0,0,0,.06) 0%,rgba(0,0,0,.06) 48%,rgba(5,6,7,.6) 78%,#050607 100%);pointer-events:none}
-  #loginScreen .login-photo{display:none}
-  #loginScreen .login-showcase-top,#loginScreen .login-showcase-copy,#loginScreen .login-showcase-footer,#loginScreen .monitor-desk-shadow,#loginScreen .login-photo-credit{display:none}
-
-  #loginScreen .dashboard-monitor{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 12px);z-index:1;display:block;width:690px;height:auto;transform:translateX(-50%) scale(.56);transform-origin:top center;opacity:.54;filter:blur(.7px) brightness(.72) saturate(.78);pointer-events:none}
-  #loginScreen .dashboard-preview{position:relative;display:block;width:690px;max-width:none;margin:0;border:1px solid rgba(255,255,255,.14);border-radius:17px;background:#090d12;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:none}
-  #loginScreen .dashboard-preview-top{height:38px}
-  #loginScreen .dashboard-preview-body{min-height:238px}
-
-  #loginScreen .login-bike-scene{position:absolute;left:50%;bottom:-17px;z-index:3;display:block;width:min(128vw,575px);max-width:none;height:auto;transform:translateX(-53%);transform-origin:center bottom;filter:saturate(.94) contrast(1.04) brightness(.9) drop-shadow(0 18px 24px rgba(0,0,0,.52));pointer-events:none}
-
-  #loginScreen .login-auth-panel{position:relative;z-index:7;display:flex;flex-direction:column;align-items:center;width:100%;max-width:492px;margin:-8px auto 0;padding:0 16px;background:transparent}
-  #loginScreen .desktop-auth-heading{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;margin:0 0 20px;padding:0 8px}
-  #loginScreen .desktop-auth-heading svg{display:none}
-  #loginScreen .desktop-auth-heading>img{display:block;width:min(76vw,315px);max-width:100%;height:auto;filter:drop-shadow(0 6px 16px rgba(0,0,0,.35))}
-
-  #loginScreen .auth-box{display:flex;flex-direction:column;width:100%;max-width:460px;margin:0;padding:28px 20px 23px;border:1px solid rgba(255,255,255,.11);border-radius:26px;background:linear-gradient(145deg,rgba(25,26,29,.97),rgba(8,10,12,.985));color:#f5f6f8;box-shadow:0 24px 60px rgba(0,0,0,.44),inset 0 1px 0 rgba(255,255,255,.035);backdrop-filter:blur(16px)}
-  #loginScreen .brand-logo-login,#loginScreen .auth-desktop-brand,#loginScreen .desktop-auth-intro,#loginScreen .desktop-auth-note{display:none}
-  #loginScreen .auth-box>h2{display:block;order:1;margin:0;text-align:center;color:#fff;font-size:28px;line-height:1.15;font-weight:780;letter-spacing:-.035em}
-  #loginScreen .login-title-mobile{display:inline}
-  #loginScreen .login-title-desktop{display:none}
-  #loginScreen .auth-box>p.muted{display:block;order:2;margin:7px 0 25px;text-align:center;color:#9298a1;font-size:0;line-height:1.45}
-  #loginScreen .auth-box>p.muted::after{content:"Acesse sua conta para continuar";font-size:15px}
-
-  #loginScreen #registrationNotice{order:3;margin:0 0 14px;padding:0;color:#9ba3ad;text-align:center;font-size:12px;line-height:1.5}
-  #loginScreen #registrationNotice:empty{display:none}
-  #loginScreen #authMsg{order:4}
-  #loginScreen #authMsg:empty{display:none}
-  #loginScreen .msg{margin:0 0 15px;padding:11px 12px;border-radius:10px;font-size:12px;line-height:1.45}
-  #loginScreen .msg.err{background:#281015;color:#ffc2cb;border:1px solid #63303a}
-  #loginScreen .msg.ok{background:#102119;color:#b8edcd;border:1px solid #315740}
-
-  #loginScreen .form{display:grid;order:5;gap:14px;width:100%}
-  #loginScreen .form.hidden{display:none!important}
-  #loginScreen .form label{position:relative;display:block;margin:0;color:#aeb5bd;font-size:0;font-weight:700}
-  #loginScreen .form input,#loginScreen .form select{display:block;width:100%;height:58px;min-height:58px;margin:0;padding:0 47px;border:1px solid rgba(255,255,255,.16);border-radius:16px;outline:none;background:linear-gradient(135deg,#15191d,#0d1013);color:#f6f7f9;font-size:16px;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.025);appearance:none}
-  #loginScreen .form input::placeholder{color:#9da4ad;opacity:1}
-  #loginScreen .form input:focus,#loginScreen .form select:focus{border-color:#ef2c45;box-shadow:0 0 0 3px rgba(239,44,69,.13)}
-
-  #loginScreen .form label::before{content:"";position:absolute;left:19px;top:14px;width:11px;height:11px;border:1.6px solid #e7e9ec;border-radius:50%;pointer-events:none;z-index:2}
-  #loginScreen .form label::after{content:"";position:absolute;left:15px;top:29px;width:19px;height:12px;border:1.6px solid #e7e9ec;border-radius:10px 10px 3px 3px;pointer-events:none;z-index:2}
-  #loginScreen .form label:has(input[type="password"])::before{left:19px;top:14px;width:11px;height:14px;border-radius:8px 8px 0 0}
-  #loginScreen .form label:has(input[type="password"])::after{left:15px;top:25px;width:19px;height:17px;border-radius:3px;background:#111519}
-
-  #loginScreen .login-help-row{display:block;margin:-2px 0 1px;text-align:center;color:#ef334a;font-size:0;line-height:1.45}
-  #loginScreen .login-help-row::after{content:"Esqueci minha senha";font-size:14px}
-
-  #loginScreen .btn.primary{position:relative;width:100%;min-height:58px;margin:0;padding:12px 44px;border:1px solid #ff203d;border-radius:16px;background:linear-gradient(105deg,#f30d2e,#e31731);color:#fff;box-shadow:0 10px 24px rgba(221,15,42,.18);font-size:16px;font-weight:760;letter-spacing:.01em;cursor:pointer}
-  #loginScreen #loginForm .btn.primary::after{content:"→";position:absolute;right:21px;top:50%;transform:translateY(-52%);font-size:25px;font-weight:400}
-  #loginScreen .btn.primary:active{transform:scale(.986)}
-  #loginScreen .btn.primary:disabled,#loginScreen .tabs button:disabled{opacity:.46;cursor:not-allowed}
-  #loginScreen button:focus-visible{outline:3px solid rgba(255,255,255,.88);outline-offset:3px}
-  #loginScreen .form p.small.muted{margin:0;color:#8f969f;font-size:12px;line-height:1.5}
-
-  #loginScreen .desktop-auth-divider{display:none}
-  #loginScreen .tabs{display:block;order:6;width:100%;margin:22px 0 0;padding:0;border:0;border-radius:0;background:transparent}
-  #loginScreen .tabs::before{content:"Ainda não tem conta?";display:block;margin:0 0 15px;color:#747c86;text-align:center;font-size:13px;font-weight:500;line-height:1.2}
-  #loginScreen .tabs button{width:100%;min-height:56px;margin:0;padding:12px;border:1px solid rgba(245,31,58,.9);border-radius:16px;background:transparent;color:#ff3349;font-size:15px;font-weight:600;box-shadow:none}
-  #loginScreen .tabs button.on{background:transparent;color:#ff3349;box-shadow:none}
-  #loginScreen .auth-box:has(#loginForm:not(.hidden)) #tabLogin{display:none}
-  #loginScreen .auth-box:has(#loginForm:not(.hidden)) #tabRegister{display:flex;align-items:center;justify-content:center}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabRegister{display:none}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin{display:flex;align-items:center;justify-content:center;gap:9px;font-size:0}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::before{content:"←";font-size:19px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) #tabLogin::after{content:"Voltar para entrar";font-size:15px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .tabs::before{display:none}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .tabs{margin-top:18px}
-
-  #loginScreen .auth-box>.creator-signature{display:block;order:7;margin:22px 0 0;text-align:center;color:#626a74;font-size:10px;font-weight:500;letter-spacing:2px;line-height:1.3}
-
-  #loginScreen .auth-box:has(#registerForm:not(.hidden))>h2{font-size:26px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden))>h2 .login-title-mobile{font-size:0}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden))>h2 .login-title-mobile::after{content:"Criar sua conta";font-size:26px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden))>p.muted::after{content:"Solicite seu acesso ao DespacheFull"}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .form{gap:12px}
-  #loginScreen .auth-box:has(#registerForm:not(.hidden)) .form input{height:54px;min-height:54px}
-
-  @media (max-width:390px){
-    #loginScreen .login-showcase{height:320px;min-height:320px}
-    #loginScreen .dashboard-monitor{transform:translateX(-50%) scale(.51)}
-    #loginScreen .login-bike-scene{width:136vw;bottom:-12px}
-    #loginScreen .login-auth-panel{padding-inline:13px}
-    #loginScreen .auth-box{padding:25px 17px 21px;border-radius:22px}
-    #loginScreen .desktop-auth-heading>img{width:min(78vw,295px)}
-  }
-
-  @media (max-height:700px){
-    #loginScreen .login-showcase{height:290px;min-height:290px}
-    #loginScreen .login-bike-scene{width:min(118vw,520px);bottom:-18px}
-    #loginScreen .desktop-auth-heading{margin-bottom:15px}
-    #loginScreen .auth-box{padding-top:24px}
-  }
+  #loginScreen .login-auth-panel{position:relative;z-index:2;width:100%;margin:-34px auto 0;padding:0 16px max(28px,env(safe-area-inset-bottom));background:transparent}
+  #loginScreen .desktop-auth-heading{display:none}
+  #loginScreen .auth-box{display:flex;flex-direction:column;width:100%;max-width:500px;margin:0 auto;padding:28px 22px 23px;border:1px solid #e2e5e9;border-radius:20px;background:#fff;color:var(--login-ink);box-shadow:0 18px 44px rgba(17,22,28,.14)}
+  #loginScreen .desktop-auth-intro{margin-bottom:25px;text-align:center}
+  #loginScreen .desktop-auth-intro h2{font-size:27px}
+  #loginScreen .desktop-auth-intro p{margin-top:7px;font-size:14px}
+  #loginScreen .form{gap:15px}
+  #loginScreen .form input,#loginScreen .form select{height:53px;min-height:53px;font-size:16px}
+  #loginScreen .btn.primary{min-height:53px}
+  #loginScreen .login-help-row{font-size:13px}
+  #loginScreen .tabs{margin-top:22px;padding-top:19px}
+  #loginScreen .auth-box>.creator-signature{margin-top:20px}
 }
+
+@media (max-width:380px){
+  #loginScreen .login-showcase{height:160px;min-height:160px;padding-inline:18px}
+  #loginScreen .login-showcase-brand{width:min(72vw,245px)}
+  #loginScreen .login-auth-panel{margin-top:-29px;padding-inline:12px}
+  #loginScreen .auth-box{padding:24px 17px 21px;border-radius:17px}
+  #loginScreen .desktop-auth-intro h2{font-size:25px}
+}
+
+/* PASSWORD TOGGLE STYLES START */
+.form .password-field{position:relative;display:block;width:100%;margin-top:7px}
+.form .password-field>input{margin-top:0!important;padding-right:55px!important}
+.form .password-toggle{position:absolute;top:50%;right:7px;transform:translateY(-50%);z-index:12;display:flex;align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;padding:0;border:0;border-radius:9px;background:transparent;color:#747d88;cursor:pointer;transition:color .15s ease,background .15s ease,transform .1s ease;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.form .password-toggle svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.form .password-toggle:hover{color:#262c34;background:#f0f2f4}
+.form .password-toggle:active{transform:translateY(-50%) scale(.92)}
+.form .password-toggle:focus-visible{outline:2px solid #ef334a!important;outline-offset:2px!important}
+.form .password-eye-closed{display:none}
+.form .password-toggle[aria-pressed="true"]{color:#d91632}
+.form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
+.form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
+#loginScreen .form .password-field{margin-top:7px}
+/* PASSWORD TOGGLE STYLES END */
