@@ -6,4 +6,3 @@ if (next === current && !current.includes('const CACHE = "despachefull-v3.7.0-pr
 if (!next.includes('approved-delivery-card-v1') || !next.includes('url.pathname.startsWith("/api/")')) throw new Error("PWA cache safety contract failed");
 if (next !== current) fs.writeFileSync(path, next);
 console.log("Bandwidth cache version active");
-
