@@ -103,9 +103,6 @@ process.on("exit", code => writeMetric("exit", { code }));
 process.on("uncaughtExceptionMonitor", error => {
   writeMetric("uncaughtException", { message: error?.message || String(error) });
 });
-process.on("unhandledRejection", reason => {
-  writeMetric("unhandledRejection", { message: reason?.message || String(reason) });
-});
 
 await import("../server.js");
 
