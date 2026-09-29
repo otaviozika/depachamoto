@@ -20,7 +20,10 @@ const checks = [
   ["Google Sheets writes have staging guards", server.includes('assertExternalMutationAllowed("envio de fechamento ao Google Planilhas")') && server.includes('assertExternalMutationAllowed("sincronização com Google Planilhas")')],
   ["Public config exposes staging identity", server.includes("stagingSafeMode: STAGING_SAFE_MODE") && server.includes("environment: APP_ENV")],
   ["Health endpoint exposes external-mutation gate", server.includes("externalMutationsAllowed: !STAGING_SAFE_MODE")],
-  ["Staging environment is visually identified", html.includes('id="stagingBanner"') && html.includes("staging-mode") && html.includes("HOMOLOGAÇÃO SEGURA")]
+  ["Staging environment is visually identified", html.includes('id="stagingBanner"') && html.includes("staging-mode") && html.includes("HOMOLOGAÇÃO SEGURA")],
+  ["Operational clock override is restricted to staging or test", server.includes("OPERATIONAL_NOW_OVERRIDE") && server.includes("STAGING_SAFE_MODE || process.env.NODE_ENV === \"test\"")],
+  ["Production clock falls back to real time", /if \(!override \|\| !\(STAGING_SAFE_MODE \|\| process\.env\.NODE_ENV === "test"\)\) return new Date\(\)/.test(server)],
+  ["Dispatch creation uses the controlled runtime clock", server.includes("departedAt || runtimeNow().toISOString()")]
 ];
 
 let failed = 0;
