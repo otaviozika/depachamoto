@@ -10564,7 +10564,7 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
   const orderId = String(req.params.id || "").trim();
 
   const row = (await pool.query(`
-    SELECT o.order_id,o.display_id,o.delivered_by,l.dispatch_id,j.status AS job_status
+    SELECT o.order_id,o.display_id,o.delivered_by,l.dispatch_id,j.status AS job_status,j.attempts
     FROM ifood_orders o
     JOIN ifood_dispatch_links l ON l.ifood_order_id=o.order_id
     LEFT JOIN ifood_dispatch_jobs j ON j.ifood_order_id=o.order_id
@@ -10576,12 +10576,15 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
   if (String(row.delivered_by || "").toUpperCase() !== "MERCHANT") {
     return res.status(409).json({ error: "Pedido não é de entrega própria." });
   }
-  if (row.job_status === "PROCESSING") {
-    return res.status(409).json({ error: "Esse despacho já está sendo processado." });
+  if (row.job_status !== "FAILED") {
+    return res.status(409).json({
+      error: row.job_status === "SENT"
+        ? "Esse despacho já foi confirmado como enviado ao iFood."
+        : "O novo ciclo manual só é permitido após falha definitiva."
+    });
   }
 
-  await ensureIfoodDispatchJob(orderId);
-  await pool.query(`
+  const replay = (await pool.query(`
     UPDATE ifood_dispatch_jobs SET
       status='RETRY',
       attempts=0,
@@ -10591,7 +10594,13 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
       last_error=NULL,
       updated_at=NOW()
     WHERE ifood_order_id=$1
-  `, [orderId]);
+      AND status='FAILED'
+    RETURNING dispatch_id
+  `, [orderId])).rows[0];
+
+  if (!replay) {
+    return res.status(409).json({ error: "O estado desse despacho mudou. Atualize a tela antes de tentar novamente." });
+  }
 
   const result = await processIfoodDispatchByOrder(orderId);
 
@@ -11148,6 +11157,112 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     exceptions: exceptions.slice(0, 50),
     server_now: new Date().toISOString()
   });
+}));
+
+app.get("/api/admin/recovery-center", auth, adminOnly, asyncRoute(async (req, res) => {
+  const [ifoodQ, anotaQ] = await Promise.all([
+    pool.query(`
+      SELECT 'ifood'::text AS platform,j.ifood_order_id AS order_id,o.display_id,
+             j.dispatch_id,j.status,j.attempts,8::int AS max_attempts,
+             j.last_http_status,j.last_error,j.locked_at,j.next_attempt_at,j.updated_at,
+             d.trace_id,d.courier_id,u.name AS courier_name
+      FROM ifood_dispatch_jobs j
+      JOIN ifood_orders o ON o.order_id=j.ifood_order_id
+      LEFT JOIN dispatches d ON d.id=j.dispatch_id
+      LEFT JOIN users u ON u.id=d.courier_id
+      WHERE j.status='FAILED'
+         OR (j.status='PROCESSING' AND j.locked_at < NOW()-INTERVAL '3 minutes')
+      ORDER BY j.updated_at DESC
+      LIMIT 100
+    `),
+    pool.query(`
+      SELECT 'anotaai'::text AS platform,l.anotaai_order_id AS order_id,a.display_id,
+             l.dispatch_id,l.anotaai_dispatch_status AS status,l.attempts,
+             $1::int AS max_attempts,l.last_http_status,l.last_error,
+             l.processing_started_at AS locked_at,l.next_attempt_at,l.linked_at AS updated_at,
+             l.retry_cycle,d.trace_id,d.courier_id,u.name AS courier_name
+      FROM anotaai_dispatch_links l
+      JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+      LEFT JOIN dispatches d ON d.id=l.dispatch_id
+      LEFT JOIN users u ON u.id=d.courier_id
+      WHERE l.anotaai_dispatch_status='DEAD'
+         OR (l.anotaai_dispatch_status='PROCESSING' AND l.processing_started_at < NOW()-INTERVAL '3 minutes')
+      ORDER BY COALESCE(l.processing_started_at,l.linked_at) DESC
+      LIMIT 100
+    `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS])
+  ]);
+
+  const items = [...ifoodQ.rows, ...anotaQ.rows].map(row => {
+    const stale = row.status === "PROCESSING" && row.locked_at && (Date.now() - new Date(row.locked_at).getTime()) > 180000;
+    let allowed_actions = [];
+    if (row.platform === "ifood" && row.status === "FAILED") allowed_actions = ["RETRY_CYCLE"];
+    if (row.platform === "anotaai" && row.status === "DEAD") allowed_actions = ["RETRY_CYCLE"];
+    if (stale) allowed_actions = ["RECOVER_STALE"];
+    return {
+      ...row,
+      attempts: Number(row.attempts || 0),
+      max_attempts: Number(row.max_attempts || 8),
+      retry_cycle: row.retry_cycle == null ? null : Number(row.retry_cycle),
+      stale,
+      allowed_actions
+    };
+  }).sort((a,b) => new Date(b.updated_at || b.locked_at || 0) - new Date(a.updated_at || a.locked_at || 0));
+
+  res.json({
+    items,
+    count: items.length,
+    actionable_count: items.filter(x => x.allowed_actions.length).length,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/admin/recovery-center/:platform/:id/recover-stale", auth, adminOnly, asyncRoute(async (req, res) => {
+  const platform = String(req.params.platform || "").toLowerCase();
+  const orderId = String(req.params.id || "").trim();
+  if (!["ifood","anotaai"].includes(platform)) return res.status(400).json({ error: "Plataforma inválida." });
+
+  let recovered;
+  if (platform === "ifood") {
+    recovered = (await pool.query(`
+      UPDATE ifood_dispatch_jobs
+      SET status=CASE WHEN attempts >= $2 THEN 'FAILED' ELSE 'RETRY' END,
+          locked_at=NULL,next_attempt_at=NOW(),updated_at=NOW(),
+          last_error=COALESCE(last_error,'Recuperado manualmente de PROCESSING obsoleto.')
+      WHERE ifood_order_id=$1
+        AND status='PROCESSING'
+        AND locked_at < NOW()-INTERVAL '3 minutes'
+      RETURNING dispatch_id,status,attempts
+    `, [orderId, IFOOD_DISPATCH_MAX_ATTEMPTS])).rows[0];
+  } else {
+    recovered = (await pool.query(`
+      UPDATE anotaai_dispatch_links
+      SET anotaai_dispatch_status=CASE WHEN attempts >= $2 THEN 'DEAD' ELSE 'FAILED' END,
+          processing_started_at=NULL,next_attempt_at=NOW(),
+          last_error=COALESCE(last_error,'Recuperado manualmente de PROCESSING obsoleto.')
+      WHERE anotaai_order_id=$1
+        AND anotaai_dispatch_status='PROCESSING'
+        AND processing_started_at < NOW()-INTERVAL '3 minutes'
+      RETURNING dispatch_id,anotaai_dispatch_status AS status,attempts,retry_cycle
+    `, [orderId, ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows[0];
+  }
+
+  if (!recovered) return res.status(409).json({
+    error: "O job não está mais travado ou seu estado mudou. Atualize a Central de Recuperação."
+  });
+
+  await auditBestEffort(req.session.user.id, "RECOVERY_STALE_JOB", platform + "_order", null, {
+    order_id: orderId,dispatch_id: recovered.dispatch_id,status: recovered.status,attempts: Number(recovered.attempts || 0)
+  });
+  await operationalEventBestEffort({
+    traceId: await getDispatchTraceContext(recovered.dispatch_id),
+    eventName: platform + ".dispatch.admin_recovered_stale",
+    source: "recovery_center",platform,dispatchId: recovered.dispatch_id,
+    orderId,status: recovered.status,attempt: Number(recovered.attempts || 0),
+    message: "Administrador recuperou job PROCESSING obsoleto."
+  });
+
+  emitRealtime(platform + ":changed", { change: "RECOVERY_STALE_JOB", dispatch_id: recovered.dispatch_id, order_id: orderId });
+  res.json({ ok:true,platform,order_id:orderId,status:recovered.status,message:"Job travado recuperado com segurança." });
 }));
 
 app.get("/api/admin/trace", auth, adminOnly, asyncRoute(async (req, res) => {
