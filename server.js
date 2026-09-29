@@ -284,7 +284,7 @@ ADD COLUMN IF NOT EXISTS operational_date DATE;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS shift_code TEXT;
 
-DO $
+DO $dispatch$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -295,13 +295,13 @@ BEGIN
       ADD CONSTRAINT dispatches_shift_code_check
       CHECK (shift_code IS NULL OR shift_code IN ('LUNCH','DINNER'));
   END IF;
-END $;
+END $dispatch$;
 
 CREATE INDEX IF NOT EXISTS dispatches_operational_shift_idx
 ON dispatches(operational_date,shift_code,courier_id);
 
 CREATE OR REPLACE FUNCTION freeze_dispatch_operational_shift()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $dispatch_shift$
 DECLARE
   local_ts timestamp;
   dow int;
@@ -341,7 +341,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$;
+$dispatch_shift$;
 
 DROP TRIGGER IF EXISTS dispatches_freeze_operational_shift_trg ON dispatches;
 CREATE TRIGGER dispatches_freeze_operational_shift_trg
