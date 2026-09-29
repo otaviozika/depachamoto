@@ -155,6 +155,21 @@ try {
     )
   );
 
+  // Presença é pré-requisito do fluxo atual. O gate usa o mesmo endpoint
+  // administrativo disponível em produção, mas em turno forçado de staging.
+  for (const courierId of userIds) {
+    const checkin = await call("/api/admin/attendance/checkin", adminCookie, {
+      method: "POST",
+      body: JSON.stringify({
+        courier_id: courierId,
+        reason: "Staging release gate"
+      })
+    });
+    if (!checkin.ok) {
+      throw new Error(`attendance ${courierId}: HTTP ${checkin.status} ${await checkin.text()}`);
+    }
+  }
+
   // Admin usa o sistema durante todo o pico.
   watcher = (async () => {
     while (running) {
@@ -191,6 +206,7 @@ try {
 
       const token = `${RUN}-${courierIndex + 1}-${n}`;
       const payload = {
+        order_count: orders.length,
         order_numbers: orders,
         confirm_recent_orders: true,
         client_token: token
@@ -225,12 +241,17 @@ try {
         else failures.push(`idempotent-replay:HTTP${replay.status}`);
       }
 
-      // v2.8: a próxima saída só é liberada após retorno + check-in na loja.
+      // O fluxo atual não usa mais retorno/chegada manual. Para permitir vários
+      // ciclos no mesmo teste, o admin encerra a saída pendente pelo mecanismo
+      // administrativo vigente.
       if (departure && n < DEPARTURES) {
-        const ret = await call(`/api/courier/dispatches/${departure.id}/start-return`, cookie, { method: "POST", body: "{}" });
-        if (!ret.ok) failures.push(`start-return-c${courierIndex + 1}-n${n}:HTTP${ret.status}`);
-        const arrived = await call(`/api/courier/dispatches/${departure.id}/arrive`, cookie, { method: "POST", body: "{}" });
-        if (!arrived.ok) failures.push(`arrive-c${courierIndex + 1}-n${n}:HTTP${arrived.status}`);
+        const released = await call(`/api/admin/dispatches/${departure.id}/release`, adminCookie, {
+          method: "POST",
+          body: JSON.stringify({ reason: "Staging gate: encerrar ciclo de teste" })
+        });
+        if (!released.ok) {
+          failures.push(`release-c${courierIndex + 1}-n${n}:HTTP${released.status}:${await released.text()}`);
+        }
       }
     }
   }));
@@ -291,13 +312,14 @@ try {
     WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
     ORDER BY courier_id
   `, [userIds])).rows;
-  const cookieByUser = new Map(userIds.map((id,i)=>[Number(id),courierCookies[i]]));
   for (const row of finalActives) {
-    const cookie = cookieByUser.get(Number(row.courier_id));
-    const ret = await call(`/api/courier/dispatches/${row.id}/start-return`, cookie, { method: "POST", body: "{}" });
-    if (!ret.ok) failures.push(`pre-race-return:${row.courier_id}:${ret.status}`);
-    const arrived = await call(`/api/courier/dispatches/${row.id}/arrive`, cookie, { method: "POST", body: "{}" });
-    if (!arrived.ok) failures.push(`pre-race-arrive:${row.courier_id}:${arrived.status}`);
+    const released = await call(`/api/admin/dispatches/${row.id}/release`, adminCookie, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Staging gate: preparar corrida de duplicidade" })
+    });
+    if (!released.ok) {
+      failures.push(`pre-race-release:${row.courier_id}:${released.status}:${await released.text()}`);
+    }
   }
 
   // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
@@ -309,6 +331,7 @@ try {
       call("/api/courier/depart", cookie, {
         method: "POST",
         body: JSON.stringify({
+          order_count: 1,
           order_numbers: [raceOrder],
           confirm_recent_orders: true,
           client_token: `${RUN}-race-${i + 1}`

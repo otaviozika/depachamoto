@@ -2,10 +2,12 @@ import fs from "fs";
 
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const shifts = fs.readFileSync(new URL("../lib/operational-shift.js", import.meta.url), "utf8");
 
 const checks = [
   ["Staging runtime identity exists", server.includes("const APP_ENV") && server.includes('APP_ENV === "staging"')],
   ["Staging safe mode is forced by APP_ENV", server.includes("const STAGING_SAFE_MODE") && server.includes('APP_ENV === "staging"')],
+  ["Forced staging shift is scoped to APP_ENV=staging", /getCurrentOperationalShift\(now = new Date\(\)\)[\s\S]{0,320}APP_ENV[\s\S]{0,320}staging[\s\S]{0,320}STAGING_FORCE_SHIFT/.test(shifts)],
   ["iFood auto sync is disabled in staging", /function ifoodAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["iFood dispatch is disabled in staging", /function ifoodDispatchEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["Anota AI auto sync is disabled in staging", /function anotaAiAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
