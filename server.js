@@ -1610,6 +1610,7 @@ async function syncAnotaAiOnce({ reason = "manual" } = {}) {
 }
 
 let anotaAiDispatchWorkerRunning = false;
+const ANOTAAI_DISPATCH_MAX_ATTEMPTS = 8;
 
 function anotaAiDispatchBackoffSeconds(attempts) {
   const n = Math.max(1, Number(attempts) || 1);
@@ -1750,24 +1751,59 @@ async function runAnotaAiDispatchWorkerOnce() {
         }
 
         const backoff = anotaAiDispatchBackoffSeconds(attempts);
+        const retryAllowed = attempts < ANOTAAI_DISPATCH_MAX_ATTEMPTS;
+        const nextStatus = retryAllowed ? "FAILED" : "DEAD";
+        const errorText = anotaAiSafeError(error);
+
         await pool.query(`
           UPDATE anotaai_dispatch_links
-          SET anotaai_dispatch_status='FAILED',
+          SET anotaai_dispatch_status=$2,
               processing_started_at=NULL,
-              next_attempt_at=NOW()+($2::text || ' seconds')::interval,
-              last_http_status=$3,
-              last_error=$4
+              next_attempt_at=CASE
+                WHEN $2='FAILED' THEN NOW()+($3::text || ' seconds')::interval
+                ELSE NOW()
+              END,
+              last_http_status=$4,
+              last_error=$5
           WHERE anotaai_order_id=$1
         `, [
           job.order_id,
+          nextStatus,
           String(backoff),
           Number(error?.statusCode || 0) || null,
-          anotaAiSafeError(error)
+          errorText
         ]);
 
+        if (!retryAllowed) {
+          await createNotification({
+            type: "ANOTAAI_DISPATCH_FAILED",
+            severity: "error",
+            title: "Falha definitiva no despacho Anota AI",
+            message: `#${job.local_order_number} após ${attempts} tentativas`,
+            dispatchId: job.dispatch_id,
+            uniqueKey: `anotaai-dispatch-dead:${job.order_id}`
+          }).catch(() => {});
+
+          await auditBestEffort(null, "ANOTAAI_DISPATCH_DEAD", "dispatch", job.dispatch_id, {
+            anotaai_order_id: job.order_id,
+            order_number: job.local_order_number,
+            attempts,
+            last_http_status: Number(error?.statusCode || 0) || null,
+            error: errorText
+          });
+        }
+
+        emitRealtime("anotaai:changed", {
+          change: retryAllowed ? "ANOTAAI_DISPATCH_RETRY" : "ANOTAAI_DISPATCH_DEAD",
+          dispatch_id: job.dispatch_id,
+          order_id: job.order_id,
+          attempts,
+          next_attempt_seconds: retryAllowed ? backoff : null
+        });
+
         console.error(
-          `Anota AI finalize #${job.local_order_number} tentativa ${attempts}:`,
-          anotaAiSafeError(error)
+          `Anota AI finalize #${job.local_order_number} tentativa ${attempts}/${ANOTAAI_DISPATCH_MAX_ATTEMPTS}:`,
+          errorText
         );
       }
     }
@@ -9029,6 +9065,11 @@ app.get("/api/admin/anotaai/status", auth, adminOnly, asyncRoute(async (req, res
       a.order_id,a.page_id,a.display_id,a.status,a.status_code,a.sales_channel,a.order_type,
       a.customer_name,a.remote_created_at,a.remote_updated_at,a.updated_at,
       l.dispatch_id AS linked_dispatch_id,
+      l.anotaai_dispatch_status,
+      l.attempts AS dispatch_attempts,
+      l.last_error AS dispatch_last_error,
+      l.last_http_status AS dispatch_last_http_status,
+      l.next_attempt_at AS dispatch_next_attempt_at,
       d.courier_id AS linked_courier_id,
       u.name AS local_courier_name
     FROM anotaai_orders a
@@ -9124,6 +9165,70 @@ app.post("/api/admin/anotaai/sync-now", auth, adminOnly, asyncRoute(async (req, 
     errors: result.errors?.length || 0
   });
   res.json(result);
+}));
+
+app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncRoute(async (req, res) => {
+  const orderId = String(req.params.id || "").trim();
+  const row = (await pool.query(`
+    SELECT
+      a.order_id,a.display_id,
+      l.dispatch_id,l.anotaai_dispatch_status,l.attempts
+    FROM anotaai_orders a
+    JOIN anotaai_dispatch_links l ON l.anotaai_order_id=a.order_id
+    WHERE a.order_id=$1
+    LIMIT 1
+  `, [orderId])).rows[0];
+
+  if (!row) return res.status(404).json({ error: "Pedido/vínculo Anota AI não encontrado." });
+  if (row.anotaai_dispatch_status === "PROCESSING") {
+    return res.status(409).json({ error: "Esse despacho Anota AI já está sendo processado." });
+  }
+  if (row.anotaai_dispatch_status === "SENT") {
+    return res.status(409).json({ error: "Esse despacho já foi confirmado como enviado ao Anota AI." });
+  }
+
+  await pool.query(`
+    UPDATE anotaai_dispatch_links
+    SET anotaai_dispatch_status='FAILED',
+        attempts=0,
+        processing_started_at=NULL,
+        next_attempt_at=NOW(),
+        last_http_status=NULL,
+        last_error=NULL
+    WHERE anotaai_order_id=$1
+  `, [orderId]);
+
+  await auditBestEffort(
+    req.session.user.id,
+    "ANOTAAI_DISPATCH_RETRY_REQUESTED",
+    "anotaai_order",
+    null,
+    {
+      order_id: orderId,
+      display_id: row.display_id,
+      dispatch_id: row.dispatch_id,
+      previous_status: row.anotaai_dispatch_status,
+      previous_attempts: Number(row.attempts || 0)
+    }
+  );
+
+  emitRealtime("anotaai:changed", {
+    change: "ANOTAAI_DISPATCH_RETRY_REQUESTED",
+    dispatch_id: row.dispatch_id,
+    order_id: orderId
+  });
+
+  setImmediate(() => {
+    runAnotaAiDispatchWorkerOnce().catch(error => {
+      console.error("Anota AI dispatch after manual retry:", anotaAiSafeError(error));
+    });
+  });
+
+  res.status(202).json({
+    ok: true,
+    queued: true,
+    message: "Nova tentativa do despacho Anota AI foi enfileirada."
+  });
 }));
 
 app.get("/api/admin/ifood/status", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -9796,7 +9901,13 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
   await ensureIfoodDispatchJob(orderId);
   await pool.query(`
     UPDATE ifood_dispatch_jobs SET
-      status='RETRY',locked_at=NULL,next_attempt_at=NOW(),last_error=NULL,updated_at=NOW()
+      status='RETRY',
+      attempts=0,
+      locked_at=NULL,
+      next_attempt_at=NOW(),
+      last_http_status=NULL,
+      last_error=NULL,
+      updated_at=NOW()
     WHERE ifood_order_id=$1
   `, [orderId]);
 
