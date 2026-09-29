@@ -3141,7 +3141,7 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false, allowC
 
     let row = current[0] || selectionPool[0];
 
-    if (STAGING_SAFE_MODE) {
+    if (typeof STAGING_SAFE_MODE !== "undefined" && STAGING_SAFE_MODE) {
       const stagingFixture = row.is_test === true && row.payload?.staging_fixture === true;
       if (!stagingFixture) {
         blocked.push({
