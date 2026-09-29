@@ -686,6 +686,7 @@ CREATE TABLE IF NOT EXISTS anotaai_dispatch_links (
   linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   anotaai_dispatch_status TEXT NOT NULL DEFAULT 'PENDING',
   attempts INTEGER NOT NULL DEFAULT 0,
+  retry_cycle INTEGER NOT NULL DEFAULT 1,
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   processing_started_at TIMESTAMPTZ,
   dispatched_at TIMESTAMPTZ,
@@ -698,6 +699,8 @@ ALTER TABLE anotaai_dispatch_links
 ADD COLUMN IF NOT EXISTS anotaai_dispatch_status TEXT NOT NULL DEFAULT 'PENDING';
 ALTER TABLE anotaai_dispatch_links
 ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE anotaai_dispatch_links
+ADD COLUMN IF NOT EXISTS retry_cycle INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE anotaai_dispatch_links
 ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE anotaai_dispatch_links
@@ -1617,6 +1620,35 @@ function anotaAiDispatchBackoffSeconds(attempts) {
   return Math.min(600, 10 * Math.pow(2, Math.min(6, n - 1)));
 }
 
+async function notifyAnotaAiDispatchDead({
+  orderId,
+  dispatchId,
+  orderNumber,
+  attempts,
+  retryCycle,
+  reason = "retry_limit_reached"
+}) {
+  const cycle = Math.max(1, Number(retryCycle) || 1);
+  const count = Math.max(0, Number(attempts) || 0);
+
+  await createNotification({
+    type: "ANOTAAI_DISPATCH_FAILED",
+    severity: "error",
+    title: "Falha definitiva no despacho Anota AI",
+    message: `#${orderNumber} após ${count} tentativas`,
+    dispatchId,
+    uniqueKey: `anotaai-dispatch-dead:${orderId}:cycle:${cycle}`
+  }).catch(() => {});
+
+  await auditBestEffort(null, "ANOTAAI_DISPATCH_DEAD", "dispatch", dispatchId, {
+    anotaai_order_id: orderId,
+    order_number: orderNumber,
+    attempts: count,
+    retry_cycle: cycle,
+    reason
+  });
+}
+
 async function markAnotaAiDispatchSent(job, responseBody = null) {
   await pool.query(`
     UPDATE anotaai_dispatch_links
@@ -1669,25 +1701,18 @@ async function resetStaleAnotaAiDispatchJobs() {
         END
     WHERE anotaai_dispatch_status='PROCESSING'
       AND processing_started_at < NOW() - INTERVAL '3 minutes'
-    RETURNING anotaai_order_id,dispatch_id,local_order_number,attempts,anotaai_dispatch_status
+    RETURNING anotaai_order_id,dispatch_id,local_order_number,attempts,retry_cycle,anotaai_dispatch_status
   `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS]);
 
   const terminal = q.rows.filter(row => row.anotaai_dispatch_status === "DEAD");
 
   for (const row of terminal) {
-    await createNotification({
-      type: "ANOTAAI_DISPATCH_FAILED",
-      severity: "error",
-      title: "Falha definitiva no despacho Anota AI",
-      message: `#${row.local_order_number} após ${row.attempts} tentativas`,
+    await notifyAnotaAiDispatchDead({
+      orderId: row.anotaai_order_id,
       dispatchId: row.dispatch_id,
-      uniqueKey: `anotaai-dispatch-dead:${row.anotaai_order_id}`
-    }).catch(() => {});
-
-    await auditBestEffort(null, "ANOTAAI_DISPATCH_STALE_TERMINAL", "dispatch", row.dispatch_id, {
-      anotaai_order_id: row.anotaai_order_id,
-      order_number: row.local_order_number,
-      attempts: Number(row.attempts || 0),
+      orderNumber: row.local_order_number,
+      attempts: row.attempts,
+      retryCycle: row.retry_cycle,
       reason: "stale_processing_retry_limit_reached"
     });
   }
@@ -1720,6 +1745,7 @@ async function runAnotaAiDispatchWorkerOnce() {
         l.dispatch_id,
         l.local_order_number,
         l.attempts,
+        l.retry_cycle,
         a.page_id,
         a.status AS order_status,
         a.status_code,
@@ -1813,19 +1839,20 @@ async function runAnotaAiDispatchWorkerOnce() {
         ]);
 
         if (!retryAllowed) {
-          await createNotification({
-            type: "ANOTAAI_DISPATCH_FAILED",
-            severity: "error",
-            title: "Falha definitiva no despacho Anota AI",
-            message: `#${job.local_order_number} após ${attempts} tentativas`,
+          await notifyAnotaAiDispatchDead({
+            orderId: job.order_id,
             dispatchId: job.dispatch_id,
-            uniqueKey: `anotaai-dispatch-dead:${job.order_id}`
-          }).catch(() => {});
+            orderNumber: job.local_order_number,
+            attempts,
+            retryCycle: job.retry_cycle,
+            reason: "retry_limit_reached"
+          });
 
-          await auditBestEffort(null, "ANOTAAI_DISPATCH_DEAD", "dispatch", job.dispatch_id, {
+          await auditBestEffort(null, "ANOTAAI_DISPATCH_DEAD_ERROR", "dispatch", job.dispatch_id, {
             anotaai_order_id: job.order_id,
             order_number: job.local_order_number,
             attempts,
+            retry_cycle: Math.max(1, Number(job.retry_cycle) || 1),
             last_http_status: Number(error?.statusCode || 0) || null,
             error: errorText
           });
@@ -9164,6 +9191,7 @@ app.get("/api/admin/anotaai/status", auth, adminOnly, asyncRoute(async (req, res
       l.dispatch_id AS linked_dispatch_id,
       l.anotaai_dispatch_status,
       l.attempts AS dispatch_attempts,
+      l.retry_cycle AS dispatch_retry_cycle,
       l.last_error AS dispatch_last_error,
       l.last_http_status AS dispatch_last_http_status,
       l.next_attempt_at AS dispatch_next_attempt_at,
@@ -9269,7 +9297,7 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
   const row = (await pool.query(`
     SELECT
       a.order_id,a.display_id,
-      l.dispatch_id,l.anotaai_dispatch_status,l.attempts
+      l.dispatch_id,l.anotaai_dispatch_status,l.attempts,l.retry_cycle
     FROM anotaai_orders a
     JOIN anotaai_dispatch_links l ON l.anotaai_order_id=a.order_id
     WHERE a.order_id=$1
@@ -9277,23 +9305,33 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
   `, [orderId])).rows[0];
 
   if (!row) return res.status(404).json({ error: "Pedido/vínculo Anota AI não encontrado." });
-  if (row.anotaai_dispatch_status === "PROCESSING") {
-    return res.status(409).json({ error: "Esse despacho Anota AI já está sendo processado." });
-  }
-  if (row.anotaai_dispatch_status === "SENT") {
-    return res.status(409).json({ error: "Esse despacho já foi confirmado como enviado ao Anota AI." });
+  if (row.anotaai_dispatch_status !== "DEAD") {
+    return res.status(409).json({
+      error: row.anotaai_dispatch_status === "SENT"
+        ? "Esse despacho já foi confirmado como enviado ao Anota AI."
+        : "O replay manual só é permitido após uma falha definitiva."
+    });
   }
 
-  await pool.query(`
+  const replay = (await pool.query(`
     UPDATE anotaai_dispatch_links
     SET anotaai_dispatch_status='FAILED',
         attempts=0,
+        retry_cycle=retry_cycle+1,
         processing_started_at=NULL,
         next_attempt_at=NOW(),
         last_http_status=NULL,
         last_error=NULL
     WHERE anotaai_order_id=$1
-  `, [orderId]);
+      AND anotaai_dispatch_status='DEAD'
+    RETURNING retry_cycle
+  `, [orderId])).rows[0];
+
+  if (!replay) {
+    return res.status(409).json({
+      error: "O estado desse despacho mudou. Atualize a tela antes de tentar novamente."
+    });
+  }
 
   await auditBestEffort(
     req.session.user.id,
@@ -9305,7 +9343,9 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
       display_id: row.display_id,
       dispatch_id: row.dispatch_id,
       previous_status: row.anotaai_dispatch_status,
-      previous_attempts: Number(row.attempts || 0)
+      previous_attempts: Number(row.attempts || 0),
+      previous_retry_cycle: Math.max(1, Number(row.retry_cycle) || 1),
+      new_retry_cycle: Math.max(1, Number(replay.retry_cycle) || 1)
     }
   );
 
