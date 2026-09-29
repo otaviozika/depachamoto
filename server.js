@@ -43,6 +43,17 @@ function assertExternalMutationAllowed(target) {
   if (STAGING_SAFE_MODE) throw stagingSafetyError(target);
 }
 
+function runtimeNow() {
+  const override = String(process.env.OPERATIONAL_NOW_OVERRIDE || "").trim();
+  if (!override || !(STAGING_SAFE_MODE || process.env.NODE_ENV === "test")) return new Date();
+  const parsed = new Date(override);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function currentOperationalShift() {
+  return getCurrentOperationalShift(runtimeNow());
+}
+
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
   process.exit(1);
@@ -4813,7 +4824,7 @@ async function createDispatchTransaction({
       );
     }
 
-    const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
+    const effectiveDeparture = existingRoute?.departed_at || departedAt || runtimeNow().toISOString();
     if (append || recovery) {
       const routeShift=resolveDispatchShift({
         departedAt: effectiveDeparture,
@@ -5417,7 +5428,7 @@ async function verifyAttendanceQrToken(token) {
     throw err;
   }
 
-  const currentShift = getCurrentOperationalShift();
+  const currentShift = currentOperationalShift();
   if (!currentShift || currentShift.operational_date !== payload.d || currentShift.shift_code !== payloadShift) {
     const err = new Error("Este QR pertence a outro turno. Escaneie o QR do turno atual.");
     err.status = 409;
@@ -5958,7 +5969,7 @@ app.post("/api/presence", auth, asyncRoute(async (req, res) => {
 }));
 
 app.get("/api/admin/attendance/qr", auth, adminOnly, asyncRoute(async (req, res) => {
-  const shift = getCurrentOperationalShift();
+  const shift = currentOperationalShift();
   if (!shift) {
     return res.status(409).json({
       error: "Nenhum turno de operação está aberto neste momento.",
@@ -6069,7 +6080,7 @@ app.post("/api/admin/attendance/checkin", auth, adminOnly, asyncRoute(async (req
     return res.status(400).json({ error: "Informe o motivo da presença manual." });
   }
 
-  const shift = getCurrentOperationalShift();
+  const shift = currentOperationalShift();
   if (!shift) {
     return res.status(409).json({
       error: "Nenhum turno está aberto para registrar presença agora.",
@@ -6398,7 +6409,7 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,r
   const date=await getSPDate(),rule=await getPaymentRateRule(date);
   const courier=(await pool.query(`SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status FROM users WHERE id=$1 AND role='courier'`,[req.session.user.id])).rows[0];
   if(!courier)return res.status(404).json({error:'Motoboy não encontrado.'});
-  const current=getCurrentOperationalShift();
+  const current=currentOperationalShift();
   const fallback=resolveAttendanceViewShift(date,null);
   const currentShift=current?.shift_code||fallback.shift_code;
   const todayRows=(await getPaymentRows(date)).rows.filter(x=>Number(x.courier_id)===Number(courier.id));
@@ -7552,7 +7563,7 @@ async function addRouteOrder(req, res, recovery) {
   }
 
   if (!completedAssignment) {
-    const routeShift = getCurrentOperationalShift();
+    const routeShift = currentOperationalShift();
     if (!routeShift) {
       return res.status(409).json({
         error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',
@@ -7643,7 +7654,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = currentOperationalShift();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.",
@@ -8667,7 +8678,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = currentOperationalShift();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída manual.",
