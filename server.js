@@ -10278,8 +10278,18 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
       FROM active_order_locks l
       LEFT JOIN dispatches d ON d.id=l.dispatch_id
       LEFT JOIN users u ON u.id=l.courier_id
-      WHERE COALESCE(d.status,'') <> 'ON_ROAD'
-         OR l.created_at < NOW()-INTERVAL '12 hours'
+      WHERE (
+              d.status='ON_ROAD'
+              AND l.created_at < NOW()-INTERVAL '12 hours'
+            )
+         OR (
+              d.return_source='ADMIN_PENDING_DELIVERIES_OVERRIDE'
+              AND l.created_at < NOW()-INTERVAL '24 hours'
+            )
+         OR (
+              COALESCE(d.status,'') <> 'ON_ROAD'
+              AND COALESCE(d.return_source,'') NOT IN ('ADMIN_PENDING_DELIVERIES_OVERRIDE','LEGACY')
+            )
       ORDER BY l.created_at ASC
       LIMIT 20
     `)
