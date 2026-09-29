@@ -1938,26 +1938,10 @@ async function resetStaleAnotaAiDispatchJobs() {
   return q.rowCount;
 }
 
-async function runAnotaAiDispatchWorkerOnce() {
-  if (STAGING_SAFE_MODE) return { skipped: true, reason: "STAGING_SAFE_MODE" };
-  if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
-  anotaAiDispatchWorkerRunning = true;
-
-  try {
-    await resetStaleAnotaAiDispatchJobs();
-
-    const jobs = (await pool.query(`
-      SELECT
-        l.anotaai_order_id AS order_id,
-        l.dispatch_id,
-        l.local_order_number,
-        l.attempts,
-        l.retry_cycle,
-        a.page_id,
-        a.status AS order_status,
-        a.status_code,
-        a.order_type,
-        d.departed_at,d.trace_id,d.courier_id
+async function claimAnotaAiDispatchJob() {
+  const claimed = (await pool.query(`
+    WITH candidate AS (
+      SELECT l.anotaai_order_id
       FROM anotaai_dispatch_links l
       JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
       JOIN dispatches d ON d.id=l.dispatch_id
@@ -1968,24 +1952,55 @@ async function runAnotaAiDispatchWorkerOnce() {
         AND UPPER(COALESCE(a.order_type,''))='DELIVERY'
         AND UPPER(COALESCE(a.status,'')) NOT IN ('CANCELLED','DENIED','CANCELLATION_REQUESTED')
       ORDER BY l.next_attempt_at,l.linked_at
-      LIMIT 10
-    `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows;
+      FOR UPDATE OF l SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE anotaai_dispatch_links l
+    SET anotaai_dispatch_status='PROCESSING',
+        attempts=l.attempts+1,
+        processing_started_at=NOW(),
+        last_error=NULL
+    FROM candidate c
+    WHERE l.anotaai_order_id=c.anotaai_order_id
+    RETURNING l.anotaai_order_id
+  `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows[0];
 
-    for (const job of jobs) {
-      const claim = (await pool.query(`
-        UPDATE anotaai_dispatch_links
-        SET anotaai_dispatch_status='PROCESSING',
-            attempts=attempts+1,
-            processing_started_at=NOW(),
-            last_error=NULL
-        WHERE anotaai_order_id=$1
-          AND anotaai_dispatch_status IN ('PENDING','FAILED')
-          AND attempts < $2
-        RETURNING attempts
-      `, [job.order_id, ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows[0];
+  if (!claimed) return null;
 
-      if (!claim) continue;
-      const attempts = Number(claim.attempts || 1);
+  return (await pool.query(`
+    SELECT
+      l.anotaai_order_id AS order_id,
+      l.dispatch_id,
+      l.local_order_number,
+      l.attempts,
+      l.retry_cycle,
+      a.page_id,
+      a.status AS order_status,
+      a.status_code,
+      a.order_type,
+      d.departed_at,d.trace_id,d.courier_id
+    FROM anotaai_dispatch_links l
+    JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+    JOIN dispatches d ON d.id=l.dispatch_id
+    WHERE l.anotaai_order_id=$1
+      AND l.anotaai_dispatch_status='PROCESSING'
+    LIMIT 1
+  `, [claimed.anotaai_order_id])).rows[0] || null;
+}
+
+async function runAnotaAiDispatchWorkerOnce() {
+  if (STAGING_SAFE_MODE) return { skipped: true, reason: "STAGING_SAFE_MODE" };
+  if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
+  anotaAiDispatchWorkerRunning = true;
+
+  try {
+    await resetStaleAnotaAiDispatchJobs();
+
+    for (let i = 0; i < 10; i++) {
+      const job = await claimAnotaAiDispatchJob();
+      if (!job) break;
+
+      const attempts = Number(job.attempts || 1);
       await operationalEventBestEffort({
         traceId: job.trace_id,
         eventName: "anotaai.dispatch.claimed",
@@ -2840,11 +2855,12 @@ async function processIfoodDispatchByOrder(orderId, options = {}) {
   }
 
   if (existing.status === "FAILED") {
-    await pool.query(`
-      UPDATE ifood_dispatch_jobs SET
-        status='RETRY',locked_at=NULL,next_attempt_at=NOW(),updated_at=NOW()
-      WHERE ifood_order_id=$1
-    `, [id]);
+    return {
+      ok: false,
+      skipped: true,
+      reason: "terminal_failed_requires_admin_replay",
+      orderId: id
+    };
   }
 
   const job = await claimIfoodDispatchJob(id);
