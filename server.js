@@ -10126,6 +10126,418 @@ app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) =>
 }));
 
 
+
+app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res) => {
+  const startedAt = Date.now();
+  await pool.query("SELECT 1");
+  const dbLatencyMs = Date.now() - startedAt;
+
+  const [
+    ifoodStateQ,
+    ifoodQueueQ,
+    ifoodIssuesQ,
+    anotaStateQ,
+    anotaQueueQ,
+    anotaIssuesQ,
+    errorsQ,
+    recentErrorsQ,
+    conflictsQ,
+    conflictRowsQ,
+    locksQ
+  ] = await Promise.all([
+    pool.query(`
+      SELECT last_poll_at,last_success_at,last_error,last_error_at,last_event_count,total_events_received
+      FROM ifood_sync_state
+      WHERE singleton=1
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status='PENDING')::int AS pending,
+        COUNT(*) FILTER (WHERE status='RETRY')::int AS retry,
+        COUNT(*) FILTER (WHERE status='PROCESSING')::int AS processing,
+        COUNT(*) FILTER (WHERE status='FAILED')::int AS failed,
+        COUNT(*) FILTER (WHERE status='SENT')::int AS sent,
+        COUNT(*) FILTER (
+          WHERE status='PROCESSING'
+            AND locked_at < NOW()-INTERVAL '3 minutes'
+        )::int AS stale_processing,
+        COUNT(*) FILTER (
+          WHERE status IN ('PENDING','RETRY')
+            AND next_attempt_at < NOW()-INTERVAL '2 minutes'
+        )::int AS overdue
+      FROM ifood_dispatch_jobs
+    `),
+    pool.query(`
+      SELECT
+        j.ifood_order_id AS order_id,o.display_id,j.dispatch_id,j.status,
+        j.attempts,j.last_http_status,j.last_error,j.updated_at,
+        u.name AS courier_name
+      FROM ifood_dispatch_jobs j
+      JOIN ifood_orders o ON o.order_id=j.ifood_order_id
+      LEFT JOIN dispatches d ON d.id=j.dispatch_id
+      LEFT JOIN users u ON u.id=d.courier_id
+      WHERE j.status='FAILED'
+         OR (j.status='PROCESSING' AND j.locked_at < NOW()-INTERVAL '3 minutes')
+         OR (j.status IN ('PENDING','RETRY') AND j.next_attempt_at < NOW()-INTERVAL '2 minutes')
+      ORDER BY
+        CASE WHEN j.status='FAILED' THEN 0
+             WHEN j.status='PROCESSING' THEN 1
+             ELSE 2 END,
+        j.updated_at DESC
+      LIMIT 25
+    `),
+    pool.query(`
+      SELECT MAX(last_poll_at) AS last_poll_at,
+             MAX(last_success_at) AS last_success_at,
+             MAX(last_error_at) AS last_error_at,
+             (ARRAY_AGG(last_error ORDER BY last_error_at DESC NULLS LAST))[1] AS last_error,
+             COALESCE(SUM(last_order_count),0)::bigint AS last_order_count,
+             COALESCE(SUM(total_orders_received),0)::bigint AS total_orders_received
+      FROM anotaai_sync_state
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE anotaai_dispatch_status='PENDING')::int AS pending,
+        COUNT(*) FILTER (WHERE anotaai_dispatch_status='FAILED')::int AS retry,
+        COUNT(*) FILTER (WHERE anotaai_dispatch_status='PROCESSING')::int AS processing,
+        COUNT(*) FILTER (WHERE anotaai_dispatch_status='DEAD')::int AS dead,
+        COUNT(*) FILTER (WHERE anotaai_dispatch_status='SENT')::int AS sent,
+        COUNT(*) FILTER (
+          WHERE anotaai_dispatch_status='PROCESSING'
+            AND processing_started_at < NOW()-INTERVAL '3 minutes'
+        )::int AS stale_processing,
+        COUNT(*) FILTER (
+          WHERE anotaai_dispatch_status IN ('PENDING','FAILED')
+            AND next_attempt_at < NOW()-INTERVAL '2 minutes'
+        )::int AS overdue
+      FROM anotaai_dispatch_links
+    `),
+    pool.query(`
+      SELECT
+        l.anotaai_order_id AS order_id,a.display_id,l.dispatch_id,
+        l.anotaai_dispatch_status AS status,l.attempts,l.retry_cycle,
+        l.last_http_status,l.last_error,l.next_attempt_at,
+        COALESCE(l.processing_started_at,l.next_attempt_at,l.linked_at) AS updated_at,
+        u.name AS courier_name
+      FROM anotaai_dispatch_links l
+      JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
+      LEFT JOIN dispatches d ON d.id=l.dispatch_id
+      LEFT JOIN users u ON u.id=d.courier_id
+      WHERE l.anotaai_dispatch_status='DEAD'
+         OR (l.anotaai_dispatch_status='PROCESSING' AND l.processing_started_at < NOW()-INTERVAL '3 minutes')
+         OR (l.anotaai_dispatch_status IN ('PENDING','FAILED') AND l.next_attempt_at < NOW()-INTERVAL '2 minutes')
+      ORDER BY
+        CASE WHEN l.anotaai_dispatch_status='DEAD' THEN 0
+             WHEN l.anotaai_dispatch_status='PROCESSING' THEN 1
+             ELSE 2 END,
+        COALESCE(l.processing_started_at,l.next_attempt_at,l.linked_at) DESC
+      LIMIT 25
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '15 minutes')::int AS last15m,
+        COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '1 hour')::int AS last1h,
+        COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS last24h,
+        COUNT(*) FILTER (
+          WHERE created_at >= NOW()-INTERVAL '1 hour'
+            AND COALESCE(status_code,500) >= 500
+        )::int AS server_last1h
+      FROM system_errors
+    `),
+    pool.query(`
+      SELECT id,request_id,method,path,status_code,message,created_at
+      FROM system_errors
+      WHERE created_at >= NOW()-INTERVAL '24 hours'
+      ORDER BY created_at DESC,id DESC
+      LIMIT 10
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE resolved_at IS NULL)::int AS open,
+        COUNT(*) FILTER (WHERE resolved_at IS NULL AND severity='critical')::int AS critical_open,
+        COUNT(*) FILTER (WHERE resolved_at IS NULL AND severity='warning')::int AS warning_open
+      FROM operational_conflicts
+    `),
+    pool.query(`
+      SELECT c.id,c.conflict_type,c.severity,c.order_numbers,c.details,c.created_at,
+             au.name AS actor_name,cu.name AS courier_name
+      FROM operational_conflicts c
+      LEFT JOIN users au ON au.id=c.actor_user_id
+      LEFT JOIN users cu ON cu.id=c.courier_id
+      WHERE c.resolved_at IS NULL
+      ORDER BY
+        CASE WHEN c.severity='critical' THEN 0
+             WHEN c.severity='warning' THEN 1
+             ELSE 2 END,
+        c.created_at DESC,c.id DESC
+      LIMIT 15
+    `),
+    pool.query(`
+      SELECT l.order_number,l.order_date,l.platform,l.dispatch_id,l.courier_id,l.created_at,
+             d.status AS dispatch_status,u.name AS courier_name
+      FROM active_order_locks l
+      LEFT JOIN dispatches d ON d.id=l.dispatch_id
+      LEFT JOIN users u ON u.id=l.courier_id
+      WHERE COALESCE(d.status,'') <> 'ON_ROAD'
+         OR l.created_at < NOW()-INTERVAL '12 hours'
+      ORDER BY l.created_at ASC
+      LIMIT 20
+    `)
+  ]);
+
+  const runtimeControl = await getIfoodRuntimeControl().catch(() => ({ dispatch_paused: false, pause_reason: null }));
+  const ifoodState = ifoodStateQ.rows[0] || {};
+  const anotaState = anotaStateQ.rows[0] || {};
+  const ifoodQueue = ifoodQueueQ.rows[0] || {};
+  const anotaQueue = anotaQueueQ.rows[0] || {};
+  const errors = errorsQ.rows[0] || {};
+  const conflicts = conflictsQ.rows[0] || {};
+  const lockRows = locksQ.rows || [];
+
+  const ageSeconds = value => {
+    const parsed = Date.parse(value || "");
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor((Date.now() - parsed) / 1000)) : null;
+  };
+  const ifoodSyncAgeSeconds = ageSeconds(ifoodState.last_success_at);
+  const anotaSyncAgeSeconds = ageSeconds(anotaState.last_success_at);
+  const ifoodSyncStale = ifoodAutoEnabled() && (ifoodSyncAgeSeconds === null || ifoodSyncAgeSeconds > 120);
+  const anotaSyncStale = anotaAiAutoEnabled() && (anotaSyncAgeSeconds === null || anotaSyncAgeSeconds > 120);
+
+  const criticalReasons = [];
+  const attentionReasons = [];
+
+  if (Number(ifoodQueue.failed || 0) > 0) criticalReasons.push(`${ifoodQueue.failed} falha(s) definitiva(s) no iFood`);
+  if (Number(anotaQueue.dead || 0) > 0) criticalReasons.push(`${anotaQueue.dead} falha(s) definitiva(s) no Anota AI`);
+  if (Number(ifoodQueue.stale_processing || 0) > 0) criticalReasons.push(`${ifoodQueue.stale_processing} job(s) iFood travado(s)`);
+  if (Number(anotaQueue.stale_processing || 0) > 0) criticalReasons.push(`${anotaQueue.stale_processing} job(s) Anota AI travado(s)`);
+  if (Number(conflicts.critical_open || 0) > 0) criticalReasons.push(`${conflicts.critical_open} conflito(s) crítico(s) aberto(s)`);
+
+  if (ifoodSyncStale) attentionReasons.push("Sincronização iFood atrasada");
+  if (anotaSyncStale) attentionReasons.push("Sincronização Anota AI atrasada");
+  if (Number(ifoodQueue.retry || 0) + Number(ifoodQueue.pending || 0) > 0) attentionReasons.push("Fila iFood possui itens aguardando");
+  if (Number(anotaQueue.retry || 0) + Number(anotaQueue.pending || 0) > 0) attentionReasons.push("Fila Anota AI possui itens aguardando");
+  if (Number(ifoodQueue.overdue || 0) + Number(anotaQueue.overdue || 0) > 0) attentionReasons.push("Existem jobs vencidos na fila");
+  if (runtimeControl.dispatch_paused) attentionReasons.push("Despacho iFood pausado");
+  if (Number(errors.last1h || 0) > 0) attentionReasons.push(`${errors.last1h} erro(s) da aplicação na última hora`);
+  if (Number(conflicts.warning_open || 0) > 0) attentionReasons.push(`${conflicts.warning_open} conflito(s) em atenção`);
+  if (lockRows.length > 0) attentionReasons.push(`${lockRows.length} lock(s) operacional(is) anormal(is)`);
+  if (pool.waitingCount > 0) attentionReasons.push(`${pool.waitingCount} conexão(ões) aguardando no banco`);
+  if (dbLatencyMs > 250) attentionReasons.push(`Latência do banco em ${dbLatencyMs} ms`);
+
+  const severity = criticalReasons.length ? "CRITICAL" : attentionReasons.length ? "ATTENTION" : "OPERATIONAL";
+
+  const componentStatus = ({ critical = false, attention = false }) =>
+    critical ? "CRITICAL" : attention ? "ATTENTION" : "OPERATIONAL";
+
+  const ifoodStatus = componentStatus({
+    critical: Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
+    attention: ifoodSyncStale || runtimeControl.dispatch_paused ||
+      Number(ifoodQueue.pending || 0) > 0 || Number(ifoodQueue.retry || 0) > 0 ||
+      Number(ifoodQueue.overdue || 0) > 0
+  });
+
+  const anotaStatus = componentStatus({
+    critical: Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
+    attention: anotaSyncStale || Number(anotaQueue.pending || 0) > 0 ||
+      Number(anotaQueue.retry || 0) > 0 || Number(anotaQueue.overdue || 0) > 0
+  });
+
+  const serverStatus = componentStatus({
+    critical: false,
+    attention: Number(errors.last1h || 0) > 0 || pool.waitingCount > 0 || dbLatencyMs > 250
+  });
+
+  const exceptions = [];
+
+  for (const row of ifoodIssuesQ.rows) {
+    const stale = row.status === "PROCESSING";
+    const terminal = row.status === "FAILED";
+    exceptions.push({
+      key: `ifood:${row.order_id}:${row.status}`,
+      source: "IFOOD",
+      severity: terminal || stale ? "CRITICAL" : "ATTENTION",
+      kind: terminal ? "DISPATCH_FAILED" : stale ? "JOB_STALE" : "QUEUE_DELAY",
+      title: terminal ? `iFood #${row.display_id || row.order_id} com falha definitiva`
+        : stale ? `iFood #${row.display_id || row.order_id} com processamento travado`
+        : `iFood #${row.display_id || row.order_id} aguardando além do esperado`,
+      detail: row.last_error || `Status ${row.status}`,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      dispatch_id: row.dispatch_id,
+      courier_name: row.courier_name,
+      attempts: Number(row.attempts || 0),
+      updated_at: row.updated_at,
+      action: terminal ? "RETRY_IFOOD" : null
+    });
+  }
+
+  for (const row of anotaIssuesQ.rows) {
+    const terminal = row.status === "DEAD";
+    const stale = row.status === "PROCESSING";
+    exceptions.push({
+      key: `anotaai:${row.order_id}:${row.status}:${row.retry_cycle || 1}`,
+      source: "ANOTAAI",
+      severity: terminal || stale ? "CRITICAL" : "ATTENTION",
+      kind: terminal ? "DISPATCH_DEAD" : stale ? "JOB_STALE" : "QUEUE_DELAY",
+      title: terminal ? `Anota AI #${row.display_id || row.order_id} em falha definitiva`
+        : stale ? `Anota AI #${row.display_id || row.order_id} com processamento travado`
+        : `Anota AI #${row.display_id || row.order_id} aguardando além do esperado`,
+      detail: row.last_error || `Status ${row.status}`,
+      order_id: row.order_id,
+      display_id: row.display_id,
+      dispatch_id: row.dispatch_id,
+      courier_name: row.courier_name,
+      attempts: Number(row.attempts || 0),
+      retry_cycle: Number(row.retry_cycle || 1),
+      updated_at: row.updated_at,
+      action: terminal ? "RETRY_ANOTAAI" : null
+    });
+  }
+
+  if (ifoodSyncStale) {
+    exceptions.push({
+      key: "ifood:sync-stale",
+      source: "IFOOD",
+      severity: "ATTENTION",
+      kind: "SYNC_STALE",
+      title: "Sincronização iFood atrasada",
+      detail: ifoodSyncAgeSeconds === null ? "Ainda não houve sincronização com sucesso." : `Último sucesso há ${ifoodSyncAgeSeconds}s.`,
+      updated_at: ifoodState.last_success_at || null,
+      action: "SYNC_IFOOD"
+    });
+  }
+
+  if (anotaSyncStale) {
+    exceptions.push({
+      key: "anotaai:sync-stale",
+      source: "ANOTAAI",
+      severity: "ATTENTION",
+      kind: "SYNC_STALE",
+      title: "Sincronização Anota AI atrasada",
+      detail: anotaSyncAgeSeconds === null ? "Ainda não houve sincronização com sucesso." : `Último sucesso há ${anotaSyncAgeSeconds}s.`,
+      updated_at: anotaState.last_success_at || null,
+      action: "SYNC_ANOTAAI"
+    });
+  }
+
+  for (const row of conflictRowsQ.rows) {
+    exceptions.push({
+      key: `conflict:${row.id}`,
+      source: "OPERAÇÃO",
+      severity: row.severity === "critical" ? "CRITICAL" : "ATTENTION",
+      kind: "OPERATIONAL_CONFLICT",
+      title: `Conflito operacional: ${row.conflict_type}`,
+      detail: Array.isArray(row.order_numbers) && row.order_numbers.length
+        ? `Pedido(s): ${row.order_numbers.join(", ")}`
+        : "Conflito operacional aguardando revisão.",
+      courier_name: row.courier_name || row.actor_name || null,
+      updated_at: row.created_at,
+      conflict_id: row.id,
+      action: "RESOLVE_CONFLICT"
+    });
+  }
+
+  for (const row of lockRows) {
+    exceptions.push({
+      key: `lock:${row.order_number}:${row.order_date}:${row.platform}`,
+      source: "OPERAÇÃO",
+      severity: "ATTENTION",
+      kind: "LOCK_ANOMALY",
+      title: `Lock anormal no pedido ${row.order_number}`,
+      detail: row.dispatch_status === "ON_ROAD"
+        ? "Lock ativo há mais de 12 horas."
+        : `Lock permanece ativo com saída em status ${row.dispatch_status || "inexistente"}.`,
+      dispatch_id: row.dispatch_id,
+      courier_name: row.courier_name,
+      updated_at: row.created_at,
+      action: null
+    });
+  }
+
+  for (const row of recentErrorsQ.rows.slice(0, 5)) {
+    exceptions.push({
+      key: `system-error:${row.id}`,
+      source: "SISTEMA",
+      severity: Number(row.status_code || 500) >= 500 ? "ATTENTION" : "INFO",
+      kind: "SYSTEM_ERROR",
+      title: `${row.method || ""} ${row.path || "Erro da aplicação"}`.trim(),
+      detail: row.message,
+      request_id: row.request_id,
+      updated_at: row.created_at,
+      action: "OPEN_MONITORING"
+    });
+  }
+
+  const priority = { CRITICAL: 0, ATTENTION: 1, INFO: 2 };
+  exceptions.sort((a, b) => {
+    const p = (priority[a.severity] ?? 9) - (priority[b.severity] ?? 9);
+    if (p) return p;
+    return Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0);
+  });
+
+  const mem = process.memoryUsage();
+
+  res.json({
+    overall: {
+      status: severity,
+      criticalReasons,
+      attentionReasons,
+      exceptionCount: exceptions.filter(x => x.severity !== "INFO").length
+    },
+    components: {
+      ifood: {
+        status: ifoodStatus,
+        configured: ifoodConfigured(),
+        autoSyncEnabled: ifoodAutoEnabled(),
+        dispatchEnabled: ifoodDispatchEnabled(),
+        dispatchPaused: Boolean(runtimeControl.dispatch_paused),
+        pauseReason: runtimeControl.pause_reason || null,
+        syncAgeSeconds: ifoodSyncAgeSeconds,
+        lastSuccessAt: ifoodState.last_success_at || null,
+        lastError: ifoodState.last_error || null,
+        queue: ifoodQueue
+      },
+      anotaai: {
+        status: anotaStatus,
+        configured: anotaAiConfigured(),
+        autoSyncEnabled: anotaAiAutoEnabled(),
+        syncAgeSeconds: anotaSyncAgeSeconds,
+        lastSuccessAt: anotaState.last_success_at || null,
+        lastError: anotaState.last_error || null,
+        queue: anotaQueue
+      },
+      server: {
+        status: serverStatus,
+        version: VERSION,
+        uptimeSeconds: Math.floor(process.uptime()),
+        dbLatencyMs,
+        pool: {
+          total: pool.totalCount,
+          idle: pool.idleCount,
+          waiting: pool.waitingCount,
+          max: Number(process.env.DB_POOL_MAX || 20)
+        },
+        memory: {
+          rssMb: Math.round(mem.rss / 1024 / 1024),
+          heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+          heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024)
+        },
+        errors
+      },
+      operation: {
+        status: componentStatus({
+          critical: Number(conflicts.critical_open || 0) > 0,
+          attention: Number(conflicts.warning_open || 0) > 0 || lockRows.length > 0
+        }),
+        conflicts,
+        abnormalLocks: lockRows.length
+      }
+    },
+    exceptions: exceptions.slice(0, 50),
+    server_now: new Date().toISOString()
+  });
+}));
+
 app.get("/api/admin/payments", auth, adminOnly, asyncRoute(async (req,res)=>{
   const date=validDate(req.query.date)?String(req.query.date):await getSPDate();
   const requested=String(req.query.shift_code||req.query.shift||'').trim()||null;
