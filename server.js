@@ -10248,6 +10248,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
       SELECT id,request_id,method,path,status_code,message,created_at
       FROM system_errors
       WHERE created_at >= NOW()-INTERVAL '24 hours'
+        AND COALESCE(status_code,500) >= 500
       ORDER BY created_at DESC,id DESC
       LIMIT 10
     `),
@@ -10522,7 +10523,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     exceptions.push({
       key: `system-error:${row.id}`,
       source: "SISTEMA",
-      severity: Number(row.status_code || 500) >= 500 ? "ATTENTION" : "INFO",
+      severity: "ATTENTION",
       kind: "SYSTEM_ERROR",
       title: `${row.method || ""} ${row.path || "Erro da aplicação"}`.trim(),
       detail: row.message,
