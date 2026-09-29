@@ -6,6 +6,7 @@ const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "
 const checks = [
   ["Staging runtime identity exists", server.includes("const APP_ENV") && server.includes('APP_ENV === "staging"')],
   ["Staging safe mode is forced by APP_ENV", server.includes("const STAGING_SAFE_MODE") && server.includes('APP_ENV === "staging"')],
+  ["Forced staging shift is scoped behind safe mode", /function runtimeOperationalShift\(\)[\s\S]{0,260}STAGING_SAFE_MODE[\s\S]{0,260}STAGING_FORCE_SHIFT/.test(server)],
   ["iFood auto sync is disabled in staging", /function ifoodAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["iFood dispatch is disabled in staging", /function ifoodDispatchEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["Anota AI auto sync is disabled in staging", /function anotaAiAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
