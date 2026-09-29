@@ -279,6 +279,28 @@ ADD COLUMN IF NOT EXISTS route_sla_minutes INTEGER;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS return_sla_minutes INTEGER;
 
+-- Turno operacional congelado também precisa existir em bancos novos de homologação.
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS operational_date DATE;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS shift_code TEXT;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='dispatches'::regclass
+      AND conname='dispatches_shift_code_check'
+  ) THEN
+    ALTER TABLE dispatches
+      ADD CONSTRAINT dispatches_shift_code_check
+      CHECK (shift_code IS NULL OR shift_code IN ('LUNCH','DINNER'));
+  END IF;
+END $;
+
+CREATE INDEX IF NOT EXISTS dispatches_operational_shift_idx
+ON dispatches(operational_date,shift_code,courier_id);
+
 -- Histórico antigo continua válido: saídas já liberadas são consideradas concluídas.
 UPDATE dispatches
 SET operational_stage='COMPLETED',
@@ -4814,13 +4836,14 @@ async function createDispatchTransaction({
     }
 
     const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
+    const routeShift=resolveDispatchShift({
+      departedAt: effectiveDeparture,
+      existingOperationalDate: existingRoute?.operational_date || null,
+      existingShiftCode: existingRoute?.shift_code || null,
+      recovery
+    });
+
     if (append || recovery) {
-      const routeShift=resolveDispatchShift({
-        departedAt: effectiveDeparture,
-        existingOperationalDate: existingRoute?.operational_date || null,
-        existingShiftCode: existingRoute?.shift_code || null,
-        recovery
-      });
       const payment=(await client.query(`SELECT status FROM courier_payments WHERE courier_id=$1 AND payment_date=$2::date AND shift_code=$3 FOR UPDATE`,[courierId,routeShift.operational_date,routeShift.shift_code])).rows[0];
       if(payment&&payment.status!=='OPEN')throw Object.assign(new Error(`O pagamento de ${routeShift.shift_label} já foi revisado ou pago. Reabra este turno no Financeiro antes de vincular o pedido.`),{status:409});
     }
@@ -4833,11 +4856,12 @@ async function createDispatchTransaction({
       INSERT INTO dispatches(
         dispatch_code,order_number,courier_id,
         registered_by,registration_source,admin_reason,client_token,departed_at,
-        operational_stage,route_sla_minutes,return_sla_minutes
+        operational_stage,route_sla_minutes,return_sla_minutes,
+        operational_date,shift_code
       )
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,'EN_ROUTE',$9,$10)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,'EN_ROUTE',$9,$10,$11::date,$12)
       RETURNING id,dispatch_code,order_number,departed_at,status,operational_stage,
-                route_sla_minutes,return_sla_minutes,
+                route_sla_minutes,return_sla_minutes,operational_date,shift_code,
                 registered_by,registration_source,admin_reason
     `, [
       code,
@@ -4849,7 +4873,9 @@ async function createDispatchTransaction({
       clientToken || null,
       effectiveDeparture,
       routeSlaMinutes,
-      returnSlaMinutes
+      returnSlaMinutes,
+      routeShift.operational_date,
+      routeShift.shift_code
     ]);
 
     const dispatch = result.rows[0];
@@ -8785,6 +8811,24 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
         active: e.active || null
       });
     }
+
+    if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
+      const raceInspection = await inspectOrders(orders, ifoodInspection.accepted);
+      await logOperationalConflict({
+        type: "ACTIVE_ORDER_RACE_BLOCKED",
+        severity: "critical",
+        actorUserId: req.session.user.id,
+        courierId,
+        orders,
+        details: { conflicts: raceInspection.active, source: "ADMIN_MANUAL" }
+      });
+      return res.status(409).json({
+        error: "Outro registro utilizou este pedido ao mesmo tempo. Atualize e confira o pedido.",
+        code: "ORDER_ALREADY_ACTIVE",
+        conflicts: raceInspection.active
+      });
+    }
+
     throw e;
   }
 
