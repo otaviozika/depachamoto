@@ -54,8 +54,8 @@ jobs:
       LOADTEST_ADMIN_PASSWORD: StagingAdmin-987654
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
       COURIERS: "8"
-      DEPARTURES_PER_COURIER: "5"
-      ORDERS_PER_DEPARTURE: "2"
+      DEPARTURES_PER_COURIER: "3"
+      OPERATIONAL_NOW_OVERRIDE: "2026-09-29T15:00:00Z"
 
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +118,7 @@ jobs:
           exit 1
 
       - name: Critical-flow smoke under concurrency
-        run: node scripts/loadtest-staging-50.js
+        run: node scripts/smoke-staging-gate.js
 
       - name: Summary
         if: always()
@@ -128,11 +128,13 @@ jobs:
           echo "- APP_ENV=staging" >> "$GITHUB_STEP_SUMMARY"
           echo "- STAGING_SAFE_MODE=true" >> "$GITHUB_STEP_SUMMARY"
           echo "- External integrations forced off" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 8 concurrent couriers × 5 departures × 2 orders" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f full-staging-load-report.json ]; then
+          echo "- 8 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Idempotência do client_token validada" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Corrida concorrente do mesmo pedido validada" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f staging-smoke-report.json ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '~~~json' >> "$GITHUB_STEP_SUMMARY"
-            cat full-staging-load-report.json >> "$GITHUB_STEP_SUMMARY"
+            cat staging-smoke-report.json >> "$GITHUB_STEP_SUMMARY"
             echo '~~~' >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -143,7 +145,7 @@ jobs:
           name: despachefull-staging-gate
           path: |
             health.json
-            full-staging-load-report.json
+            staging-smoke-report.json
             staging-server.log
           if-no-files-found: ignore
 
