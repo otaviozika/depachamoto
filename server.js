@@ -10291,13 +10291,10 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
       FROM active_order_locks l
       LEFT JOIN dispatches d ON d.id=l.dispatch_id
       LEFT JOIN users u ON u.id=l.courier_id
-      WHERE (
+      WHERE d.id IS NULL
+         OR (
               d.status='ON_ROAD'
               AND l.created_at < NOW()-INTERVAL '12 hours'
-            )
-         OR (
-              d.return_source='ADMIN_PENDING_DELIVERIES_OVERRIDE'
-              AND l.created_at < NOW()-INTERVAL '24 hours'
             )
          OR (
               COALESCE(d.status,'') <> 'ON_ROAD'
@@ -10340,11 +10337,11 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
 
   if (ifoodSyncStale) attentionReasons.push("Sincronização iFood atrasada");
   if (anotaSyncStale) attentionReasons.push("Sincronização Anota AI atrasada");
-  if (Number(ifoodQueue.retry || 0) + Number(ifoodQueue.pending || 0) > 0) attentionReasons.push("Fila iFood possui itens aguardando");
-  if (Number(anotaQueue.retry || 0) + Number(anotaQueue.pending || 0) > 0) attentionReasons.push("Fila Anota AI possui itens aguardando");
+  if (Number(ifoodQueue.retry || 0) > 0) attentionReasons.push("Fila iFood possui tentativa em retry");
+  if (Number(anotaQueue.retry || 0) > 0) attentionReasons.push("Fila Anota AI possui tentativa em retry");
   if (Number(ifoodQueue.overdue || 0) + Number(anotaQueue.overdue || 0) > 0) attentionReasons.push("Existem jobs vencidos na fila");
   if (runtimeControl.dispatch_paused) attentionReasons.push("Despacho iFood pausado");
-  if (Number(errors.last1h || 0) > 0) attentionReasons.push(`${errors.last1h} erro(s) da aplicação na última hora`);
+  if (Number(errors.server_last1h || 0) > 0) attentionReasons.push(`${errors.server_last1h} erro(s) 5xx da aplicação na última hora`);
   if (Number(conflicts.warning_open || 0) > 0) attentionReasons.push(`${conflicts.warning_open} conflito(s) em atenção`);
   if (lockRows.length > 0) attentionReasons.push(`${lockRows.length} lock(s) operacional(is) anormal(is)`);
   if (pool.waitingCount > 0) attentionReasons.push(`${pool.waitingCount} conexão(ões) aguardando no banco`);
@@ -10360,20 +10357,19 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
       (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) ||
       Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
     attention: ifoodSyncStale || runtimeControl.dispatch_paused ||
-      Number(ifoodQueue.pending || 0) > 0 || Number(ifoodQueue.retry || 0) > 0 ||
-      Number(ifoodQueue.overdue || 0) > 0
+      Number(ifoodQueue.retry || 0) > 0 || Number(ifoodQueue.overdue || 0) > 0
   });
 
   const anotaStatus = componentStatus({
     critical: (anotaAiAutoEnabled() && !anotaAiConfigured()) ||
       Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
-    attention: anotaSyncStale || Number(anotaQueue.pending || 0) > 0 ||
-      Number(anotaQueue.retry || 0) > 0 || Number(anotaQueue.overdue || 0) > 0
+    attention: anotaSyncStale || Number(anotaQueue.retry || 0) > 0 ||
+      Number(anotaQueue.overdue || 0) > 0
   });
 
   const serverStatus = componentStatus({
     critical: false,
-    attention: Number(errors.last1h || 0) > 0 || pool.waitingCount > 0 || dbLatencyMs > 250
+    attention: Number(errors.server_last1h || 0) > 0 || pool.waitingCount > 0 || dbLatencyMs > 250
   });
 
   const exceptions = [];
