@@ -16,8 +16,6 @@ const DEPARTURES = Math.max(1, Number(process.env.DEPARTURES_PER_COURIER || 40))
 const ORDERS_PER_DEPARTURE = Math.min(5, Math.max(1, Number(process.env.ORDERS_PER_DEPARTURE || 3)));
 const TEST_PASSWORD = "LoadTest!987654";
 const RUN = `lt_${Date.now().toString(36)}`;
-const FIXTURE_PREFIX = `staging:${RUN}:`;
-const STAGING_MERCHANT_ID = String(process.env.IFOOD_MERCHANT_ID || "staging-fake-merchant").trim();
 
 if (CONFIRM !== "STAGING_ONLY_I_UNDERSTAND") {
   console.error("ABORTADO: LOAD_TEST_CONFIRM incorreto.");
@@ -88,39 +86,6 @@ async function call(path, cookie, opt = {}) {
   return res;
 }
 
-async function seedIfoodFixture(orderNumber) {
-  const normalized = String(orderNumber || "").replace(/^#/, "");
-  const orderId = `${FIXTURE_PREFIX}${normalized}`;
-  await pool.query(`
-    INSERT INTO ifood_orders(
-      order_id,display_id,merchant_id,status,order_type,order_timing,category,
-      sales_channel,delivered_by,is_test,order_created_at,last_event_code,
-      last_event_at,payload,updated_at
-    )
-    VALUES(
-      $1,$2,$3,'READY_TO_PICKUP','DELIVERY','IMMEDIATE','FOOD',
-      'STAGING_FIXTURE','MERCHANT',TRUE,NOW(),'READY_TO_PICKUP',
-      NOW(),$4::jsonb,NOW()
-    )
-    ON CONFLICT(order_id) DO UPDATE SET
-      status='READY_TO_PICKUP',
-      order_type='DELIVERY',
-      delivered_by='MERCHANT',
-      is_test=TRUE,
-      order_created_at=NOW(),
-      last_event_code='READY_TO_PICKUP',
-      last_event_at=NOW(),
-      payload=EXCLUDED.payload,
-      updated_at=NOW()
-  `, [
-    orderId,
-    orderNumber,
-    STAGING_MERCHANT_ID,
-    JSON.stringify({ staging_fixture: true, run: RUN })
-  ]);
-  return orderId;
-}
-
 async function seedCouriers() {
   const hash = await bcrypt.hash(TEST_PASSWORD, 10);
   for (let i = 1; i <= COURIERS; i++) {
@@ -148,7 +113,6 @@ async function cleanup() {
     await pool.query("DELETE FROM audit_logs WHERE user_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM active_order_locks WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM dispatches WHERE courier_id=ANY($1::int[])", [userIds]);
-    await pool.query("DELETE FROM ifood_orders WHERE order_id LIKE $1", [`${FIXTURE_PREFIX}%`]);
     await pool.query("DELETE FROM user_presence WHERE user_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM users WHERE id=ANY($1::int[])", [userIds]);
     await pool.query("COMMIT");
@@ -191,21 +155,6 @@ try {
     )
   );
 
-  // Presença é pré-requisito do fluxo atual. O gate usa o mesmo endpoint
-  // administrativo disponível em produção, mas em turno forçado de staging.
-  for (const courierId of userIds) {
-    const checkin = await call("/api/admin/attendance/checkin", adminCookie, {
-      method: "POST",
-      body: JSON.stringify({
-        courier_id: courierId,
-        reason: "Staging release gate"
-      })
-    });
-    if (!checkin.ok) {
-      throw new Error(`attendance ${courierId}: HTTP ${checkin.status} ${await checkin.text()}`);
-    }
-  }
-
   // Admin usa o sistema durante todo o pico.
   watcher = (async () => {
     while (running) {
@@ -240,11 +189,8 @@ try {
         (_, j) => `#${RUN.toUpperCase()}-${courierIndex + 1}-${n}-${j + 1}`
       );
 
-      for (const order of orders) await seedIfoodFixture(order);
-
       const token = `${RUN}-${courierIndex + 1}-${n}`;
       const payload = {
-        order_count: orders.length,
         order_numbers: orders,
         confirm_recent_orders: true,
         client_token: token
@@ -279,17 +225,12 @@ try {
         else failures.push(`idempotent-replay:HTTP${replay.status}`);
       }
 
-      // O fluxo atual não usa mais retorno/chegada manual. Para permitir vários
-      // ciclos no mesmo teste, o admin encerra a saída pendente pelo mecanismo
-      // administrativo vigente.
+      // v2.8: a próxima saída só é liberada após retorno + check-in na loja.
       if (departure && n < DEPARTURES) {
-        const released = await call(`/api/admin/dispatches/${departure.id}/release`, adminCookie, {
-          method: "POST",
-          body: JSON.stringify({ reason: "Staging gate: encerrar ciclo de teste" })
-        });
-        if (!released.ok) {
-          failures.push(`release-c${courierIndex + 1}-n${n}:HTTP${released.status}:${await released.text()}`);
-        }
+        const ret = await call(`/api/courier/dispatches/${departure.id}/start-return`, cookie, { method: "POST", body: "{}" });
+        if (!ret.ok) failures.push(`start-return-c${courierIndex + 1}-n${n}:HTTP${ret.status}`);
+        const arrived = await call(`/api/courier/dispatches/${departure.id}/arrive`, cookie, { method: "POST", body: "{}" });
+        if (!arrived.ok) failures.push(`arrive-c${courierIndex + 1}-n${n}:HTTP${arrived.status}`);
       }
     }
   }));
@@ -350,19 +291,17 @@ try {
     WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
     ORDER BY courier_id
   `, [userIds])).rows;
+  const cookieByUser = new Map(userIds.map((id,i)=>[Number(id),courierCookies[i]]));
   for (const row of finalActives) {
-    const released = await call(`/api/admin/dispatches/${row.id}/release`, adminCookie, {
-      method: "POST",
-      body: JSON.stringify({ reason: "Staging gate: preparar corrida de duplicidade" })
-    });
-    if (!released.ok) {
-      failures.push(`pre-race-release:${row.courier_id}:${released.status}:${await released.text()}`);
-    }
+    const cookie = cookieByUser.get(Number(row.courier_id));
+    const ret = await call(`/api/courier/dispatches/${row.id}/start-return`, cookie, { method: "POST", body: "{}" });
+    if (!ret.ok) failures.push(`pre-race-return:${row.courier_id}:${ret.status}`);
+    const arrived = await call(`/api/courier/dispatches/${row.id}/arrive`, cookie, { method: "POST", body: "{}" });
+    if (!arrived.ok) failures.push(`pre-race-arrive:${row.courier_id}:${arrived.status}`);
   }
 
   // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
   const raceOrder = `#${RUN.toUpperCase()}-RACE-SAME-ORDER`;
-  await seedIfoodFixture(raceOrder);
   const raceStarted = performance.now();
 
   const raceResponses = await Promise.all(
@@ -370,7 +309,6 @@ try {
       call("/api/courier/depart", cookie, {
         method: "POST",
         body: JSON.stringify({
-          order_count: 1,
           order_numbers: [raceOrder],
           confirm_recent_orders: true,
           client_token: `${RUN}-race-${i + 1}`

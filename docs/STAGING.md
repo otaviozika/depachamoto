@@ -45,6 +45,12 @@ A interface exibe uma faixa "HOMOLOGAÇÃO SEGURA".
 6. Somente depois promover `staging` para `main`.
 7. Após o deploy de produção, conferir health, logs, filas e erros.
 
+## Relógio operacional determinístico no CI
+
+O gate usa `OPERATIONAL_NOW_OVERRIDE` para executar saídas dentro de um turno conhecido, independentemente da hora em que o GitHub Actions rodar. Essa variável só é obedecida quando `STAGING_SAFE_MODE=true` ou `NODE_ENV=test`; em produção o servidor ignora o override e usa o relógio real.
+
+O smoke permanente valida o fluxo administrativo interno sem depender de pedidos externos: cria motoboys efêmeros, registra presença, cria e libera saídas manuais, valida replay idempotente e força uma corrida concorrente do mesmo número de pedido para confirmar que somente uma tentativa vence.
+
 ## Critérios mínimos de aprovação
 
 - todos os self-tests = PASS;

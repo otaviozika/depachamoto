@@ -9,7 +9,7 @@ if(!shift.includes('export function dispatchShiftAt(')){
  * Almoço: até 17:59; janta: até 01:59 do dia seguinte.
  * A data operacional da madrugada permanece a do turno de janta anterior.
  */
-export function dispatchShiftAt(value=new Date()){
+export function dispatchShiftAt(value=operationalClockNow()){
   const sp=spParts(value);
   const minutes=minutesOfDay(sp.time);
   const todayGroup=ruleGroupForWeekday(sp.weekday);
@@ -29,7 +29,13 @@ export function dispatchShiftAt(value=new Date()){
   return null;
 }
 `;
- shift=shift.replace('export function getCurrentOperationalShift(now = new Date()) {',insertion+'\nexport function getCurrentOperationalShift(now = new Date()) {');
+ const currentShiftSignatures=[
+   'export function getCurrentOperationalShift(now = operationalClockNow()) {',
+   'export function getCurrentOperationalShift(now = new Date()) {'
+ ];
+ const signature=currentShiftSignatures.find(candidate=>shift.includes(candidate));
+ if(!signature)throw Error('Current shift signature not found');
+ shift=shift.replace(signature,insertion+'\n'+signature);
  shift=shift.replace('const derived = operationalShiftAt(departedAt);','const derived = dispatchShiftAt(departedAt);');
  if(!shift.includes('export function dispatchShiftAt('))throw Error('Shift insertion failed');
  fs.writeFileSync(shiftFile,shift);

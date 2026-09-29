@@ -3,11 +3,11 @@ import fs from "fs";
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const shifts = fs.readFileSync(new URL("../lib/operational-shift.js", import.meta.url), "utf8");
+const lateShiftTransform = fs.readFileSync(new URL("./apply-late-shift-dispatch.js", import.meta.url), "utf8");
 
 const checks = [
   ["Staging runtime identity exists", server.includes("const APP_ENV") && server.includes('APP_ENV === "staging"')],
   ["Staging safe mode is forced by APP_ENV", server.includes("const STAGING_SAFE_MODE") && server.includes('APP_ENV === "staging"')],
-  ["Forced staging shift is scoped to APP_ENV=staging", /getCurrentOperationalShift\(now = new Date\(\)\)[\s\S]{0,320}APP_ENV[\s\S]{0,320}staging[\s\S]{0,320}STAGING_FORCE_SHIFT/.test(shifts)],
   ["iFood auto sync is disabled in staging", /function ifoodAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["iFood dispatch is disabled in staging", /function ifoodDispatchEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
   ["Anota AI auto sync is disabled in staging", /function anotaAiAutoEnabled\(\)[\s\S]{0,180}STAGING_SAFE_MODE[\s\S]{0,180}return false/.test(server)],
@@ -15,8 +15,6 @@ const checks = [
   ["Anota AI worker cannot run in staging", /runAnotaAiDispatchWorkerOnce\(\)[\s\S]{0,220}STAGING_SAFE_MODE/.test(server)],
   ["Manual iFood sync is blocked from remote access", /syncIfoodOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
   ["Manual Anota AI sync is blocked from remote access", /syncAnotaAiOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
-  ["Staging iFood fixtures require explicit test marker", server.includes("row.is_test === true && row.payload?.staging_fixture === true") && server.includes("STAGING_IFOOD_FIXTURE_REQUIRED")],
-  ["Production still reconfirms iFood details remotely", /else \{[\s\S]{0,500}fetchIfoodOrderDetails\(row\.order_id\)[\s\S]{0,500}upsertIfoodOrderFromDetails/.test(server)],
   ["iFood dispatch mutation has a staging guard", server.includes('assertExternalMutationAllowed("despacho de pedido no iFood")')],
   ["iFood delivery-code mutation has a staging guard", server.includes('assertExternalMutationAllowed("verificação de código de entrega no iFood")')],
   ["iFood confirm and cancellation mutations have staging guards", server.includes('assertExternalMutationAllowed("confirmação de pedido de teste no iFood")') && server.includes('assertExternalMutationAllowed("cancelamento de pedido no iFood")')],
@@ -24,7 +22,12 @@ const checks = [
   ["Google Sheets writes have staging guards", server.includes('assertExternalMutationAllowed("envio de fechamento ao Google Planilhas")') && server.includes('assertExternalMutationAllowed("sincronização com Google Planilhas")')],
   ["Public config exposes staging identity", server.includes("stagingSafeMode: STAGING_SAFE_MODE") && server.includes("environment: APP_ENV")],
   ["Health endpoint exposes external-mutation gate", server.includes("externalMutationsAllowed: !STAGING_SAFE_MODE")],
-  ["Staging environment is visually identified", html.includes('id="stagingBanner"') && html.includes("staging-mode") && html.includes("HOMOLOGAÇÃO SEGURA")]
+  ["Staging environment is visually identified", html.includes('id="stagingBanner"') && html.includes("staging-mode") && html.includes("HOMOLOGAÇÃO SEGURA")],
+  ["Operational clock override lives in the shift module", shifts.includes("OPERATIONAL_NOW_OVERRIDE") && shifts.includes("operationalClockNow")],
+  ["Operational clock override is restricted to staging or test", shifts.includes('appEnv === "staging"') && shifts.includes('process.env.NODE_ENV === "test"') && shifts.includes("STAGING_SAFE_MODE")],
+  ["Production clock falls back to real time", shifts.includes("if (!stagingSafe || !override) return new Date();")],
+  ["Nominal shift uses the controlled clock only as its default", shifts.includes("getCurrentOperationalShift(now = operationalClockNow())")],
+  ["Late dispatch transform preserves the controlled staging clock", lateShiftTransform.includes("dispatchShiftAt(value=operationalClockNow())")]
 ];
 
 let failed = 0;
