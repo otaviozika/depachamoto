@@ -14,7 +14,7 @@ const checks = [
   ["iFood handles ambiguous 409 by reconciling remote state", server.includes("if (Number(err?.statusCode || 0) === 409)") && server.includes("fetchIfoodOrderDetails(job.ifood_order_id)")],
   ["Anota AI recovers stale PROCESSING jobs", server.includes("resetStaleAnotaAiDispatchJobs") && server.includes("processing_started_at < NOW() - INTERVAL '3 minutes'")],
   ["Anota AI stale recovery terminalizes jobs at the retry ceiling", /resetStaleAnotaAiDispatchJobs[\s\S]{0,1800}WHEN attempts >= \$1 THEN 'DEAD'/.test(server)],
-  ["Anota AI selection and claim both refuse exhausted jobs", /runAnotaAiDispatchWorkerOnce[\s\S]{0,1800}l\.attempts < \$1[\s\S]{0,1800}AND attempts < \$2/.test(server)],
+  ["Anota AI atomic claim refuses exhausted jobs", /claimAnotaAiDispatchJob[\s\S]{0,1800}l\.attempts < \$1[\s\S]{0,1800}FOR UPDATE OF l SKIP LOCKED/.test(server)],
   ["Anota AI worker invokes stale recovery before claiming", /runAnotaAiDispatchWorkerOnce[\s\S]*await resetStaleAnotaAiDispatchJobs\(\)/.test(server)],
   ["Anota AI retries durable FAILED jobs", server.includes("anotaai_dispatch_status IN ('PENDING','FAILED')")],
   ["Anota AI claim is atomic and concurrency-safe", /async function claimAnotaAiDispatchJob\(\)[\s\S]{0,1800}FOR UPDATE OF l SKIP LOCKED[\s\S]{0,900}anotaai_dispatch_status='PROCESSING'/.test(server)],
