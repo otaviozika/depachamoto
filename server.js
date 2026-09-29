@@ -25,6 +25,23 @@ const PgSession = connectPg(session);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const VERSION = "3.7.0";
+const APP_ENV = String(
+  process.env.APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development")
+).trim().toLowerCase();
+const STAGING_SAFE_MODE =
+  APP_ENV === "staging" ||
+  ["1","true","yes","on"].includes(String(process.env.STAGING_SAFE_MODE || "").trim().toLowerCase());
+
+function stagingSafetyError(target = "operação externa") {
+  const err = new Error(`Homologação protegida: ${target} está bloqueada por STAGING_SAFE_MODE.`);
+  err.status = 409;
+  err.code = "STAGING_SAFE_MODE";
+  return err;
+}
+
+function assertExternalMutationAllowed(target) {
+  if (STAGING_SAFE_MODE) throw stagingSafetyError(target);
+}
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -1300,6 +1317,7 @@ function anotaAiConfigured() {
 }
 
 function anotaAiAutoEnabled() {
+  if (STAGING_SAFE_MODE) return false;
   return String(process.env.ANOTAAI_ENABLED || "false").toLowerCase() === "true";
 }
 
@@ -1579,6 +1597,9 @@ async function syncAnotaAiPage(pageId) {
 }
 
 async function syncAnotaAiOnce({ reason = "manual" } = {}) {
+  if (STAGING_SAFE_MODE) {
+    return { ok: true, skipped: true, reason: "STAGING_SAFE_MODE", pages: [], errors: [], listed: 0, inserted: 0, changed: 0 };
+  }
   if (!anotaAiConfigured()) throw Object.assign(new Error("Credenciais do Anota AI não configuradas."), { status: 503 });
   if (anotaAiSyncRunning) return { ok: true, skipped: true, reason: "already_running" };
   const pageIds = await getAnotaAiPageIds();
@@ -1733,6 +1754,7 @@ async function resetStaleAnotaAiDispatchJobs() {
 }
 
 async function runAnotaAiDispatchWorkerOnce() {
+  if (STAGING_SAFE_MODE) return { skipped: true, reason: "STAGING_SAFE_MODE" };
   if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
   anotaAiDispatchWorkerRunning = true;
 
@@ -1786,6 +1808,7 @@ async function runAnotaAiDispatchWorkerOnce() {
           continue;
         }
 
+        assertExternalMutationAllowed("finalização de pedido no Anota AI");
         const body = await anotaAiClient.finalizeOrder(job.page_id, job.order_id);
         await markAnotaAiDispatchSent(job, body);
 
@@ -1912,10 +1935,12 @@ function ifoodConfigured() {
 }
 
 function ifoodAutoEnabled() {
+  if (STAGING_SAFE_MODE) return false;
   return String(process.env.IFOOD_ENABLED || "false").toLowerCase() === "true";
 }
 
 function ifoodDispatchEnabled() {
+  if (STAGING_SAFE_MODE) return false;
   return String(process.env.IFOOD_DISPATCH_ENABLED || "false").toLowerCase() === "true";
 }
 
@@ -2378,6 +2403,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
   }
 
   try {
+    assertExternalMutationAllowed("despacho de pedido no iFood");
     const { response, body } = await ifoodApi(
       `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(job.ifood_order_id)}/dispatch`,
       {
@@ -2522,6 +2548,7 @@ async function processIfoodDispatchByOrder(orderId, options = {}) {
 }
 
 async function runIfoodDispatchWorkerOnce() {
+  if (STAGING_SAFE_MODE) return { skipped: true, reason: "STAGING_SAFE_MODE" };
   if (ifoodDispatchWorkerRunning) return;
 
   const gate = await ifoodAutomaticDispatchAllowed();
@@ -3820,6 +3847,9 @@ async function setIfoodSyncError(err) {
 }
 
 async function syncIfoodOnce({ reason = "manual" } = {}) {
+  if (STAGING_SAFE_MODE) {
+    return { ok: true, skipped: true, reason: "STAGING_SAFE_MODE", events: 0, ordersUpdated: 0, acknowledged: 0 };
+  }
   if (ifoodSyncRunning) {
     return {
       ok: true,
@@ -5779,7 +5809,9 @@ async function getAdminMonthlyPaymentRows(month) {
 app.get("/api/public/config", asyncRoute(async (req, res) => {
   res.json({
     registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
-    version: VERSION
+    version: VERSION,
+    environment: APP_ENV,
+    stagingSafeMode: STAGING_SAFE_MODE
   });
 }));
 
@@ -6839,6 +6871,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
   }
 
   try {
+    assertExternalMutationAllowed("verificação de código de entrega no iFood");
     const { response, body } = await ifoodApi(
       `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(row.order_id)}/verifyDeliveryCode`,
       {
@@ -9255,6 +9288,7 @@ app.post("/api/admin/anotaai/link-page", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "Chave de integração da loja inválida." });
   }
 
+  assertExternalMutationAllowed("vinculação de loja no Anota AI");
   const linked = await anotaAiClient.linkPage(pageToken);
   const pageId = linked.pageId || anotaAiEnvironmentPageIds()[0] || null;
   if (pageId) {
@@ -9735,6 +9769,7 @@ app.post("/api/admin/ifood/orders/:id/confirm-test", auth, adminOnly, asyncRoute
     });
   }
 
+  assertExternalMutationAllowed("confirmação de pedido de teste no iFood");
   const { body } = await ifoodApi(
     `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/confirm`,
     {
@@ -9917,6 +9952,7 @@ app.post("/api/admin/ifood/orders/:id/cancel-test", auth, adminOnly, asyncRoute(
     cancellationCode
   };
 
+  assertExternalMutationAllowed("cancelamento de pedido no iFood");
   const { body } = await ifoodApi(
     `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/requestCancellation`,
     {
@@ -10656,6 +10692,7 @@ app.post("/api/admin/payments/close-day", auth, adminOnly, asyncRoute(async (req
   if(!book)return res.status(409).json({error:'Vincule as planilhas de almoço e janta deste mês antes de fechar o dia.',code:'PAYMENT_SHEETS_NOT_LINKED'});
   const spreadsheetId=shift==='LUNCH'?book.lunch_spreadsheet_id:book.dinner_spreadsheet_id;
   const {rows}=await getPaymentRows(date,shift);
+  assertExternalMutationAllowed("envio de fechamento ao Google Planilhas");
   const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
   await pool.query(`INSERT INTO payment_sheet_day_closures(payment_date,shift_code,spreadsheet_id,tab_title,row_count,synced_by,synced_at) VALUES($1::date,$2,$3,$4,$5,$6,NOW()) ON CONFLICT(payment_date,shift_code) DO UPDATE SET spreadsheet_id=EXCLUDED.spreadsheet_id,tab_title=EXCLUDED.tab_title,row_count=EXCLUDED.row_count,synced_by=EXCLUDED.synced_by,synced_at=NOW()`,[date,shift,spreadsheetId,result.tabTitle,result.rows,req.session.user.id]);
   await audit(req.session.user.id,'PAYMENT_DAY_CLOSED','payment',null,{payment_date:date,shift_code:shift,rows:result.rows,spreadsheet_id:spreadsheetId,tab_title:result.tabTitle});
@@ -10670,6 +10707,7 @@ app.get("/api/admin/payments/drive/status", auth, adminOnly, asyncRoute(async (r
 app.post("/api/admin/payments/drive/sync", auth, adminOnly, asyncRoute(async (req,res)=>{
   const month=String(req.body?.month||'').trim();
   const data=await getAdminMonthlyPaymentRows(month);
+  assertExternalMutationAllowed("sincronização com Google Planilhas");
   const result=await syncPaymentsToGoogleSheets({month,rows:data.rows});
   await audit(req.session.user.id,'PAYMENT_DRIVE_SYNCED','payment',null,{month,rows:result.rows,tab_title:result.tabTitle});
   res.json({...result,message:`${result.rows} fechamento(s) sincronizados com o Google Planilhas.`});
@@ -11673,6 +11711,9 @@ app.get("/api/health", async (req, res) => {
       dbLatencyMs: Date.now() - started,
       time: new Date().toISOString(),
       version: VERSION,
+      environment: APP_ENV,
+      stagingSafeMode: STAGING_SAFE_MODE,
+      externalMutationsAllowed: !STAGING_SAFE_MODE,
       ifood: {
         configured: ifoodConfigured(),
         environment: ifoodEnvironment(),
