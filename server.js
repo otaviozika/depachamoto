@@ -8825,6 +8825,24 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
         active: e.active || null
       });
     }
+
+    if (e.code === "23505" && String(e.constraint || "").includes("active_order_locks")) {
+      const raceInspection = await inspectOrders(orders, ifoodInspection.accepted);
+      await logOperationalConflict({
+        type: "ACTIVE_ORDER_RACE_BLOCKED",
+        severity: "critical",
+        actorUserId: req.session.user.id,
+        courierId,
+        orders,
+        details: { conflicts: raceInspection.active, source: "ADMIN_MANUAL" }
+      });
+      return res.status(409).json({
+        error: "Outro registro utilizou este pedido ao mesmo tempo. Atualize e confira o pedido.",
+        code: "ORDER_ALREADY_ACTIVE",
+        conflicts: raceInspection.active
+      });
+    }
+
     throw e;
   }
 
