@@ -2203,7 +2203,7 @@ async function claimIfoodDispatchJob(orderId = null) {
   }
 
   params.push(IFOOD_DISPATCH_MAX_ATTEMPTS);
-  const maxAttemptsParam = `${params.length}`;
+  const maxAttemptsParam = orderId ? "$2" : "$1";
 
   const q = await pool.query(`
     WITH candidate AS (
