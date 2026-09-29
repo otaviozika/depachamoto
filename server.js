@@ -279,6 +279,30 @@ ADD COLUMN IF NOT EXISTS route_sla_minutes INTEGER;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS return_sla_minutes INTEGER;
 
+-- Turno operacional persistido na saída. Essas colunas já existem em produção,
+-- mas precisam fazer parte do bootstrap para bancos novos de homologação.
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS operational_date DATE;
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS shift_code TEXT;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid='dispatches'::regclass
+      AND conname='dispatches_shift_code_check'
+  ) THEN
+    ALTER TABLE dispatches
+    ADD CONSTRAINT dispatches_shift_code_check
+    CHECK (shift_code IS NULL OR shift_code IN ('LUNCH','DINNER'));
+  END IF;
+END $;
+
+CREATE INDEX IF NOT EXISTS dispatches_operational_shift_idx
+ON dispatches(operational_date,shift_code,courier_id);
+
 -- Histórico antigo continua válido: saídas já liberadas são consideradas concluídas.
 UPDATE dispatches
 SET operational_stage='COMPLETED',
