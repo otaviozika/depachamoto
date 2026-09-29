@@ -30,9 +30,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachefull_staging
-      SESSION_SECRET: github-actions-staging-session-secret-2026-safe-very-long
       ADMIN_USERNAME: stagingadmin
-      ADMIN_PASSWORD: StagingAdmin-987654
       ADMIN_NAME: Administrador Homologacao
       NODE_ENV: test
       APP_ENV: staging
@@ -48,10 +46,8 @@ jobs:
       ANOTAAI_CLIENT_SECRET: staging-fake-secret
       PORT: "3000"
       DB_POOL_MAX: "20"
-      LOAD_TEST_KEY: staging-gate-load-test
       TARGET_URL: http://127.0.0.1:3000
       LOADTEST_ADMIN_USERNAME: stagingadmin
-      LOADTEST_ADMIN_PASSWORD: StagingAdmin-987654
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
       COURIERS: "8"
       DEPARTURES_PER_COURIER: "3"
@@ -64,6 +60,22 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+
+      - name: Prepare ephemeral staging secrets
+        shell: bash
+        run: |
+          SESSION_SECRET="$(openssl rand -hex 32)"
+          ADMIN_PASSWORD="Stg-$(openssl rand -hex 24)"
+          LOAD_TEST_KEY="$(openssl rand -hex 24)"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$LOAD_TEST_KEY"
+          {
+            echo "SESSION_SECRET=$SESSION_SECRET"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "LOADTEST_ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "LOAD_TEST_KEY=$LOAD_TEST_KEY"
+          } >> "$GITHUB_ENV"
 
       - name: Install
         run: npm install
