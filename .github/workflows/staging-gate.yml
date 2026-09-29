@@ -50,6 +50,10 @@ jobs:
       TARGET_URL: http://127.0.0.1:3000
       PORT: "3000"
       DB_POOL_MAX: "10"
+      LOAD_TEST_KEY: staging-ci-load-key
+      LOADTEST_ADMIN_USERNAME: stagingadmin
+      LOADTEST_ADMIN_PASSWORD: StagingAdmin-987654
+      LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
 
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +92,12 @@ jobs:
           exit 1
       - name: Authenticated staging smoke
         run: node scripts/smoke-staging.js
+      - name: Mini E2E operational flow
+        env:
+          COURIERS: "4"
+          DEPARTURES_PER_COURIER: "4"
+          ORDERS_PER_DEPARTURE: "2"
+        run: node scripts/loadtest-staging-50.js
       - name: Save diagnostic artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -96,6 +106,7 @@ jobs:
           path: |
             staging-server.log
             staging-health.json
+            full-staging-load-report.json
           if-no-files-found: ignore
       - name: Stop app
         if: always()
