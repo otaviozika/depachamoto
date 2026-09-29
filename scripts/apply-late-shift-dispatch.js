@@ -29,7 +29,13 @@ export function dispatchShiftAt(value=operationalClockNow()){
   return null;
 }
 `;
- shift=shift.replace('export function getCurrentOperationalShift(now = new Date()) {',insertion+'\nexport function getCurrentOperationalShift(now = new Date()) {');
+ const currentShiftSignatures=[
+   'export function getCurrentOperationalShift(now = operationalClockNow()) {',
+   'export function getCurrentOperationalShift(now = new Date()) {'
+ ];
+ const signature=currentShiftSignatures.find(candidate=>shift.includes(candidate));
+ if(!signature)throw Error('Current shift signature not found');
+ shift=shift.replace(signature,insertion+'\n'+signature);
  shift=shift.replace('const derived = operationalShiftAt(departedAt);','const derived = dispatchShiftAt(departedAt);');
  if(!shift.includes('export function dispatchShiftAt('))throw Error('Shift insertion failed');
  fs.writeFileSync(shiftFile,shift);
