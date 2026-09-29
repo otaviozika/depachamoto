@@ -4,10 +4,15 @@ const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8")
 
 const checks = [
   ["iFood recovers stale PROCESSING jobs", server.includes("resetStaleIfoodDispatchJobs") && server.includes("locked_at < NOW() - INTERVAL '3 minutes'")],
+  ["iFood stale recovery terminalizes jobs at the retry ceiling", server.includes("const IFOOD_DISPATCH_MAX_ATTEMPTS = 8") && /resetStaleIfoodDispatchJobs[\s\S]{0,1800}WHEN attempts >= \$1 THEN 'FAILED'/.test(server)],
+  ["iFood claim refuses jobs at or above the retry ceiling", /claimIfoodDispatchJob[\s\S]{0,1200}const maxAttemptsParam = orderId \? "\$2" : "\$1";[\s\S]{0,800}j\.attempts < \$\{maxAttemptsParam\}/.test(server)],
+  ["iFood retry path uses the shared retry ceiling", server.includes("attempts < IFOOD_DISPATCH_MAX_ATTEMPTS")],
   ["iFood worker continuously retries durable jobs", server.includes("setInterval(() => {\n  runIfoodDispatchWorkerOnce()")],
   ["iFood claim uses SKIP LOCKED", server.includes("FOR UPDATE OF j SKIP LOCKED")],
   ["iFood handles ambiguous 409 by reconciling remote state", server.includes("if (Number(err?.statusCode || 0) === 409)") && server.includes("fetchIfoodOrderDetails(job.ifood_order_id)")],
   ["Anota AI recovers stale PROCESSING jobs", server.includes("resetStaleAnotaAiDispatchJobs") && server.includes("processing_started_at < NOW() - INTERVAL '3 minutes'")],
+  ["Anota AI stale recovery terminalizes jobs at the retry ceiling", /resetStaleAnotaAiDispatchJobs[\s\S]{0,1800}WHEN attempts >= \$1 THEN 'DEAD'/.test(server)],
+  ["Anota AI selection and claim both refuse exhausted jobs", /runAnotaAiDispatchWorkerOnce[\s\S]{0,1800}l\.attempts < \$1[\s\S]{0,1800}AND attempts < \$2/.test(server)],
   ["Anota AI worker invokes stale recovery before claiming", /runAnotaAiDispatchWorkerOnce[\s\S]*await resetStaleAnotaAiDispatchJobs\(\)/.test(server)],
   ["Anota AI retries durable FAILED jobs", server.includes("anotaai_dispatch_status IN ('PENDING','FAILED')")],
   ["Anota AI caps automatic retries", server.includes("const ANOTAAI_DISPATCH_MAX_ATTEMPTS = 8") && server.includes('const nextStatus = retryAllowed ? "FAILED" : "DEAD"')],

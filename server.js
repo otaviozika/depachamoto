@@ -1655,18 +1655,54 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
 async function resetStaleAnotaAiDispatchJobs() {
   const q = await pool.query(`
     UPDATE anotaai_dispatch_links
-    SET anotaai_dispatch_status='FAILED',
+    SET anotaai_dispatch_status=CASE
+          WHEN attempts >= $1 THEN 'DEAD'
+          ELSE 'FAILED'
+        END,
         processing_started_at=NULL,
         next_attempt_at=NOW(),
-        last_error=COALESCE(last_error,'Processamento anterior interrompido; nova tentativa liberada.')
+        last_error=CASE
+          WHEN attempts >= $1 THEN
+            COALESCE(last_error,'Processamento anterior interrompido no limite de tentativas; retry automático bloqueado.')
+          ELSE
+            COALESCE(last_error,'Processamento anterior interrompido; nova tentativa liberada.')
+        END
     WHERE anotaai_dispatch_status='PROCESSING'
       AND processing_started_at < NOW() - INTERVAL '3 minutes'
-    RETURNING anotaai_order_id,dispatch_id
-  `);
+    RETURNING anotaai_order_id,dispatch_id,local_order_number,attempts,anotaai_dispatch_status
+  `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS]);
+
+  const terminal = q.rows.filter(row => row.anotaai_dispatch_status === "DEAD");
+
+  for (const row of terminal) {
+    await createNotification({
+      type: "ANOTAAI_DISPATCH_FAILED",
+      severity: "error",
+      title: "Falha definitiva no despacho Anota AI",
+      message: `#${row.local_order_number} após ${row.attempts} tentativas`,
+      dispatchId: row.dispatch_id,
+      uniqueKey: `anotaai-dispatch-dead:${row.anotaai_order_id}`
+    }).catch(() => {});
+
+    await auditBestEffort(null, "ANOTAAI_DISPATCH_STALE_TERMINAL", "dispatch", row.dispatch_id, {
+      anotaai_order_id: row.anotaai_order_id,
+      order_number: row.local_order_number,
+      attempts: Number(row.attempts || 0),
+      reason: "stale_processing_retry_limit_reached"
+    });
+  }
 
   if (q.rowCount) {
-    console.warn(`Anota AI: ${q.rowCount} despacho(s) PROCESSING obsoleto(s) liberado(s) para nova tentativa.`);
-    emitRealtime("anotaai:changed", { change: "STALE_DISPATCH_RECOVERED", recovered: q.rowCount });
+    const retryable = q.rowCount - terminal.length;
+    console.warn(
+      `Anota AI: ${q.rowCount} despacho(s) PROCESSING obsoleto(s) recuperado(s); ${retryable} liberado(s) e ${terminal.length} terminalizado(s).`
+    );
+    emitRealtime("anotaai:changed", {
+      change: "STALE_DISPATCH_RECOVERED",
+      recovered: q.rowCount,
+      retryable,
+      terminal: terminal.length
+    });
   }
   return q.rowCount;
 }
@@ -1693,13 +1729,14 @@ async function runAnotaAiDispatchWorkerOnce() {
       JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
       JOIN dispatches d ON d.id=l.dispatch_id
       WHERE l.anotaai_dispatch_status IN ('PENDING','FAILED')
+        AND l.attempts < $1
         AND l.next_attempt_at <= NOW()
         AND d.departed_at >= NOW()-INTERVAL '48 hours'
         AND UPPER(COALESCE(a.order_type,''))='DELIVERY'
         AND UPPER(COALESCE(a.status,'')) NOT IN ('CANCELLED','DENIED','CANCELLATION_REQUESTED')
       ORDER BY l.next_attempt_at,l.linked_at
       LIMIT 10
-    `)).rows;
+    `, [ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows;
 
     for (const job of jobs) {
       const claim = (await pool.query(`
@@ -1710,8 +1747,9 @@ async function runAnotaAiDispatchWorkerOnce() {
             last_error=NULL
         WHERE anotaai_order_id=$1
           AND anotaai_dispatch_status IN ('PENDING','FAILED')
+          AND attempts < $2
         RETURNING attempts
-      `, [job.order_id])).rows[0];
+      `, [job.order_id, ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows[0];
 
       if (!claim) continue;
       const attempts = Number(claim.attempts || 1);
@@ -2048,6 +2086,7 @@ async function ifoodApi(url, options = {}) {
 
 
 let ifoodDispatchWorkerRunning = false;
+const IFOOD_DISPATCH_MAX_ATTEMPTS = 8;
 
 function ifoodDispatchBackoffSeconds(attempts) {
   const schedule = [5, 15, 30, 60, 120, 300, 600, 900];
@@ -2088,16 +2127,70 @@ async function ensureIfoodDispatchJob(orderId) {
 }
 
 async function resetStaleIfoodDispatchJobs() {
-  await pool.query(`
+  const q = await pool.query(`
     UPDATE ifood_dispatch_jobs SET
-      status='RETRY',
+      status=CASE
+        WHEN attempts >= $1 THEN 'FAILED'
+        ELSE 'RETRY'
+      END,
       locked_at=NULL,
       next_attempt_at=NOW(),
-      last_error=COALESCE(last_error,'Processamento anterior interrompido; nova tentativa liberada.'),
+      last_error=CASE
+        WHEN attempts >= $1 THEN
+          COALESCE(last_error,'Processamento anterior interrompido no limite de tentativas; retry automático bloqueado.')
+        ELSE
+          COALESCE(last_error,'Processamento anterior interrompido; nova tentativa liberada.')
+      END,
       updated_at=NOW()
     WHERE status='PROCESSING'
       AND locked_at < NOW() - INTERVAL '3 minutes'
-  `);
+    RETURNING ifood_order_id,dispatch_id,attempts,status
+  `, [IFOOD_DISPATCH_MAX_ATTEMPTS]);
+
+  const terminal = q.rows.filter(row => row.status === "FAILED");
+
+  if (terminal.length) {
+    const terminalIds = terminal.map(row => String(row.ifood_order_id));
+
+    await pool.query(`
+      UPDATE ifood_dispatch_links
+      SET ifood_dispatch_status='FAILED'
+      WHERE ifood_order_id = ANY($1::text[])
+    `, [terminalIds]);
+
+    for (const row of terminal) {
+      try {
+        const current = await fetchIfoodOrderDetails(row.ifood_order_id);
+        const lifecycle = normalizeIfoodLifecycleStatus(current?.status);
+        if (["DISPATCHED","CONCLUDED","DELIVERED"].includes(lifecycle)) {
+          await markIfoodDispatchDone(row.ifood_order_id, lifecycle);
+          continue;
+        }
+      } catch {}
+
+      await auditBestEffort(null, "IFOOD_DISPATCH_STALE_TERMINAL", "ifood_order", null, {
+        ifood_order_id: row.ifood_order_id,
+        dispatch_id: row.dispatch_id,
+        attempts: Number(row.attempts || 0),
+        reason: "stale_processing_retry_limit_reached"
+      });
+    }
+  }
+
+  if (q.rowCount) {
+    const retryable = q.rowCount - terminal.length;
+    console.warn(
+      `iFood: ${q.rowCount} despacho(s) PROCESSING obsoleto(s) recuperado(s); ${retryable} liberado(s) e ${terminal.length} terminalizado(s).`
+    );
+    emitRealtime("ifood:changed", {
+      change: "STALE_DISPATCH_RECOVERED",
+      recovered: q.rowCount,
+      retryable,
+      terminal: terminal.length
+    });
+  }
+
+  return q.rowCount;
 }
 
 async function claimIfoodDispatchJob(orderId = null) {
@@ -2109,12 +2202,16 @@ async function claimIfoodDispatchJob(orderId = null) {
     specific = `AND j.ifood_order_id=$${params.length}`;
   }
 
+  params.push(IFOOD_DISPATCH_MAX_ATTEMPTS);
+  const maxAttemptsParam = orderId ? "$2" : "$1";
+
   const q = await pool.query(`
     WITH candidate AS (
       SELECT j.ifood_order_id
       FROM ifood_dispatch_jobs j
       JOIN ifood_orders o ON o.order_id=j.ifood_order_id
       WHERE j.status IN ('PENDING','RETRY')
+        AND j.attempts < ${maxAttemptsParam}
         AND j.next_attempt_at<=NOW()
         AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
         AND UPPER(COALESCE(o.delivered_by,''))='MERCHANT'
@@ -2316,7 +2413,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       } catch {}
     }
 
-    if (ifoodDispatchRetryableError(err) && attempts < 8) {
+    if (ifoodDispatchRetryableError(err) && attempts < IFOOD_DISPATCH_MAX_ATTEMPTS) {
       const backoff = ifoodDispatchBackoffSeconds(attempts);
       const errorText = ifoodDispatchErrorText(err);
 
