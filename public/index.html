@@ -5910,6 +5910,7 @@ socket.on('ifood:changed',d=>{
 });
 socket.on('anotaai:changed',()=>{
   if(me?.role==='admin'&&$('anotaai')?.classList.contains('active'))queueRealtimeRefresh('anotaai-status',loadAnotaAiStatus,750,{visibleOnly:true});
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),750,{visibleOnly:true});
 });
 socket.on('delivery:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});
@@ -5927,8 +5928,14 @@ socket.on('notification:new',n=>{
 });
 socket.on('notification:changed',()=>{if(me?.role==='admin')loadNotifications()});
 socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotificationSettings()});
-socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
-socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
+socket.on('conflict:new',()=>{
+  if(me?.role==='admin')loadConflicts();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),500,{visibleOnly:true});
+});
+socket.on('conflict:changed',()=>{
+  if(me?.role==='admin')loadConflicts();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),500,{visibleOnly:true});
+});
 
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)return;
@@ -5938,6 +5945,10 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(()=>{if(document.hidden)return;document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
 // Telão/KDS desativado: polling de /api/admin/wallboard removido para evitar alto consumo de bandwidth.
 setInterval(()=>{heartbeat();},60000);
+setInterval(()=>{
+  if(document.hidden||me?.role!=='admin'||!$('ifood')?.classList.contains('active'))return;
+  loadHealthCenter({silent:true}).catch(()=>{});
+},30000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});
