@@ -959,6 +959,7 @@
 .staging-banner{display:none;position:sticky;top:0;z-index:99999;padding:8px 14px;text-align:center;background:#f59e0b;color:#111827;font-size:12px;font-weight:950;letter-spacing:.55px;border-bottom:1px solid rgba(0,0,0,.22)}
 body.staging-mode .staging-banner{display:block}
 body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
+#adminApp .recovery-list{display:grid;gap:10px;padding:14px}.recovery-item{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;padding:15px;border:1px solid #2a313a;border-radius:12px;background:#0a0e13}.recovery-item.stale{border-color:#854d0e}.recovery-title{font-weight:900;color:#f3f4f6;margin-bottom:7px;display:flex;gap:8px;align-items:center}.recovery-error{margin-top:9px;padding:9px 10px;border-radius:8px;background:#2b0b0b;color:#fca5a5;font-size:12px;max-width:900px;overflow-wrap:anywhere}.recovery-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.recovery-trace-list{padding:14px;display:grid;gap:8px}.recovery-trace-row{display:flex;justify-content:space-between;gap:16px;padding:11px;border-bottom:1px solid #252b33}@media(max-width:760px){.recovery-item{grid-template-columns:1fr}.recovery-actions{justify-content:flex-start}.recovery-kpis{grid-template-columns:1fr 1fr!important}}
 </style>
 <link rel="stylesheet" href="/courier-dark.css?v=3">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
@@ -1600,6 +1601,38 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button>
         </div>
         <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>PIX</th><th>Pedidos hoje</th><th>Status operacional</th><th>Conexão</th><th>Última saída</th><th>Aprovação</th><th>Conta</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
+      </section>
+
+      <section id="recovery" class="page">
+        <h1 class="title">Central de Recuperação</h1>
+        <p class="muted">Intervenção segura em falhas definitivas e processamentos travados das integrações.</p>
+
+        <div class="warning" style="margin-top:18px">
+          <b>Proteção operacional:</b> esta tela não permite editar estados livremente. As ações disponíveis são calculadas e validadas novamente pelo servidor no momento do clique.
+        </div>
+
+        <div class="cards recovery-kpis" style="margin-top:18px">
+          <div class="card"><div class="label">Incidentes</div><div id="recoveryCount" class="metric">0</div></div>
+          <div class="card"><div class="label">Com ação segura</div><div id="recoveryActionable" class="metric">0</div></div>
+          <div class="card"><div class="label">iFood</div><div id="recoveryIfood" class="metric">0</div></div>
+          <div class="card"><div class="label">Anota AI</div><div id="recoveryAnota" class="metric">0</div></div>
+        </div>
+
+        <div class="section" style="margin-top:18px">
+          <div class="section-head">
+            <div><b>Incidentes recuperáveis</b><div class="small muted" style="margin-top:4px">FAILED/DEAD e PROCESSING obsoleto. Jobs normais não aparecem aqui.</div></div>
+            <button class="btn outline" type="button" onclick="loadRecoveryCenter()">Atualizar</button>
+          </div>
+          <div id="recoveryList" class="recovery-list"><div class="empty">Carregando...</div></div>
+        </div>
+
+        <div id="recoveryTracePanel" class="section hidden" style="margin-top:18px">
+          <div class="section-head">
+            <div><b>Histórico do incidente</b><div id="recoveryTraceTitle" class="small muted"></div></div>
+            <button class="btn outline" type="button" onclick="$('recoveryTracePanel').classList.add('hidden')">Fechar</button>
+          </div>
+          <div id="recoveryTraceList" class="recovery-trace-list"></div>
+        </div>
       </section>
 
       <section id="alerts" class="page">
@@ -5748,6 +5781,55 @@ async function saveCourierProfile(e){
   }catch(err){message('courierProfileMsg',err.message,'err')}
 }
 
+function recoveryEsc(value){return escapeHtml(String(value??''))}
+function recoveryWhen(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR')}
+function recoveryActionLabel(action){return action==='RETRY_CYCLE'?'Iniciar novo ciclo':'Recuperar processamento'}
+async function loadRecoveryCenter(){
+  const host=$('recoveryList');if(!host)return;
+  try{
+    const d=await api('/api/admin/recovery-center');
+    const rows=d.items||[];
+    $('recoveryCount').textContent=d.count||0;
+    $('recoveryActionable').textContent=d.actionable_count||0;
+    $('recoveryIfood').textContent=rows.filter(x=>x.platform==='ifood').length;
+    $('recoveryAnota').textContent=rows.filter(x=>x.platform==='anotaai').length;
+    if(!rows.length){host.innerHTML='<div class="empty">Operação normal. Nenhum pedido necessita de intervenção.</div>';return}
+    host.innerHTML=rows.map(x=>{
+      const actions=(x.allowed_actions||[]).map(a=>`<button class="btn ${a==='RETRY_CYCLE'?'danger':'primary'}" type="button" onclick="runRecoveryAction('${recoveryEsc(x.platform)}','${recoveryEsc(x.order_id)}','${a}')">${recoveryActionLabel(a)}</button>`).join('');
+      return `<article class="recovery-item ${x.stale?'stale':''}">
+        <div class="recovery-main"><div class="recovery-title"><span class="badge ${x.platform==='ifood'?'red':'orange'}">${recoveryEsc(x.platform==='ifood'?'iFood':'Anota AI')}</span> Pedido #${recoveryEsc(x.display_id||x.order_id)}</div>
+        <div class="small muted">Motoboy: ${recoveryEsc(x.courier_name||'—')} · Saída: ${recoveryEsc(x.dispatch_id||'—')} · Estado: <b>${recoveryEsc(x.status)}</b></div>
+        <div class="small muted">Tentativas: ${recoveryEsc(x.attempts)}/${recoveryEsc(x.max_attempts)} · Última atualização: ${recoveryWhen(x.updated_at||x.locked_at)}</div>
+        ${x.last_error?`<div class="recovery-error">${recoveryEsc(x.last_error)}</div>`:''}</div>
+        <div class="recovery-actions"><button class="btn outline" type="button" onclick="showRecoveryTrace(${Number(x.dispatch_id)||0},'${recoveryEsc(x.display_id||x.order_id)}')">Ver histórico</button>${actions}</div>
+      </article>`;
+    }).join('');
+  }catch(err){host.innerHTML=`<div class="empty">Não foi possível carregar: ${recoveryEsc(err.message)}</div>`}
+}
+async function runRecoveryAction(platform,orderId,action){
+  const label=recoveryActionLabel(action);
+  if(!confirm(`${label}?\n\nPlataforma: ${platform==='ifood'?'iFood':'Anota AI'}\nPedido: ${orderId}\n\nO servidor validará o estado novamente antes de executar.`))return;
+  try{
+    const path=action==='RECOVER_STALE'
+      ? `/api/admin/recovery-center/${encodeURIComponent(platform)}/${encodeURIComponent(orderId)}/recover-stale`
+      : `/api/admin/${platform}/orders/${encodeURIComponent(orderId)}/retry-dispatch`;
+    const d=await api(path,{method:'POST'});
+    alert(d.message||'Ação executada.');
+    await loadRecoveryCenter();
+  }catch(err){alert(err.message);await loadRecoveryCenter()}
+}
+async function showRecoveryTrace(dispatchId,label){
+  if(!dispatchId){alert('Esta ocorrência ainda não possui uma saída vinculada.');return}
+  const panel=$('recoveryTracePanel'),host=$('recoveryTraceList');
+  panel.classList.remove('hidden');$('recoveryTraceTitle').textContent='Pedido #'+label+' · saída '+dispatchId;
+  host.innerHTML='<div class="empty">Carregando histórico...</div>';
+  try{
+    const d=await api('/api/admin/trace?dispatch_id='+encodeURIComponent(dispatchId)+'&limit=150');
+    const events=d.events||[];
+    host.innerHTML=events.length?events.map(e=>`<div class="recovery-trace-row"><div><b>${recoveryEsc(e.event_name)}</b><div class="small muted">${recoveryEsc(e.message||e.status||'')}</div></div><div class="small muted">${recoveryWhen(e.created_at)}</div></div>`).join(''):'<div class="empty">Nenhum evento rastreado para esta saída.</div>';
+  }catch(err){host.innerHTML=`<div class="empty">Falha ao carregar histórico: ${recoveryEsc(err.message)}</div>`}
+}
+
 const adminGroups={
   dashboard:{label:'Dashboard',defaultPage:'dashboard',tabs:[]},
   operations:{label:'Operação',defaultPage:'operations',tabs:[
@@ -5758,7 +5840,7 @@ const adminGroups={
     ['management','Desempenho'],['report','Relatórios'],['payments','Financeiro'],['couriers','Motoboys']
   ]},
   system:{label:'Sistema',defaultPage:'alerts',tabs:[
-    ['alerts','Alertas'],['notifications','Notificações'],['security','Segurança'],['audit','Auditoria']
+    ['alerts','Alertas'],['recovery','Recuperação'],['notifications','Notificações'],['security','Segurança'],['audit','Auditoria']
   ]}
 };
 const adminPageGroup={
@@ -5766,7 +5848,7 @@ const adminPageGroup={
   operations:'operations',attendance:'operations',wallboard:'operations',history:'operations',conflicts:'operations',
   ifood:'ifood',anotaai:'ifood',
   management:'management',report:'management',payments:'management',couriers:'management',
-  alerts:'system',notifications:'system',security:'system',audit:'system'
+  alerts:'system',recovery:'system',notifications:'system',security:'system',audit:'system'
 };
 
 function renderAdminSubnav(groupKey,activePage){
@@ -5792,6 +5874,7 @@ async function activateAdminPage(page,explicitGroup){
   renderAdminSubnav(groupKey,page);
 
   if(page==='audit')await loadAudit();
+  else if(page==='recovery')await loadRecoveryCenter();
   else if(page==='attendance')await loadAttendance();
   else if(page==='operations')await loadOperations();
   else if(page==='ifood')await loadIfoodStatus();
