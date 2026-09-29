@@ -16,6 +16,8 @@ const DEPARTURES = Math.max(1, Number(process.env.DEPARTURES_PER_COURIER || 40))
 const ORDERS_PER_DEPARTURE = Math.min(5, Math.max(1, Number(process.env.ORDERS_PER_DEPARTURE || 3)));
 const TEST_PASSWORD = "LoadTest!987654";
 const RUN = `lt_${Date.now().toString(36)}`;
+const FIXTURE_PREFIX = `staging:${RUN}:`;
+const STAGING_MERCHANT_ID = String(process.env.IFOOD_MERCHANT_ID || "staging-fake-merchant").trim();
 
 if (CONFIRM !== "STAGING_ONLY_I_UNDERSTAND") {
   console.error("ABORTADO: LOAD_TEST_CONFIRM incorreto.");
@@ -86,6 +88,39 @@ async function call(path, cookie, opt = {}) {
   return res;
 }
 
+async function seedIfoodFixture(orderNumber) {
+  const normalized = String(orderNumber || "").replace(/^#/, "");
+  const orderId = `${FIXTURE_PREFIX}${normalized}`;
+  await pool.query(`
+    INSERT INTO ifood_orders(
+      order_id,display_id,merchant_id,status,order_type,order_timing,category,
+      sales_channel,delivered_by,is_test,order_created_at,last_event_code,
+      last_event_at,payload,updated_at
+    )
+    VALUES(
+      $1,$2,$3,'READY_TO_PICKUP','DELIVERY','IMMEDIATE','FOOD',
+      'STAGING_FIXTURE','MERCHANT',TRUE,NOW(),'READY_TO_PICKUP',
+      NOW(),$4::jsonb,NOW()
+    )
+    ON CONFLICT(order_id) DO UPDATE SET
+      status='READY_TO_PICKUP',
+      order_type='DELIVERY',
+      delivered_by='MERCHANT',
+      is_test=TRUE,
+      order_created_at=NOW(),
+      last_event_code='READY_TO_PICKUP',
+      last_event_at=NOW(),
+      payload=EXCLUDED.payload,
+      updated_at=NOW()
+  `, [
+    orderId,
+    orderNumber,
+    STAGING_MERCHANT_ID,
+    JSON.stringify({ staging_fixture: true, run: RUN })
+  ]);
+  return orderId;
+}
+
 async function seedCouriers() {
   const hash = await bcrypt.hash(TEST_PASSWORD, 10);
   for (let i = 1; i <= COURIERS; i++) {
@@ -113,6 +148,7 @@ async function cleanup() {
     await pool.query("DELETE FROM audit_logs WHERE user_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM active_order_locks WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM dispatches WHERE courier_id=ANY($1::int[])", [userIds]);
+    await pool.query("DELETE FROM ifood_orders WHERE order_id LIKE $1", [`${FIXTURE_PREFIX}%`]);
     await pool.query("DELETE FROM user_presence WHERE user_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM users WHERE id=ANY($1::int[])", [userIds]);
     await pool.query("COMMIT");
@@ -203,6 +239,8 @@ try {
         { length: ORDERS_PER_DEPARTURE },
         (_, j) => `#${RUN.toUpperCase()}-${courierIndex + 1}-${n}-${j + 1}`
       );
+
+      for (const order of orders) await seedIfoodFixture(order);
 
       const token = `${RUN}-${courierIndex + 1}-${n}`;
       const payload = {
@@ -324,6 +362,7 @@ try {
 
   // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
   const raceOrder = `#${RUN.toUpperCase()}-RACE-SAME-ORDER`;
+  await seedIfoodFixture(raceOrder);
   const raceStarted = performance.now();
 
   const raceResponses = await Promise.all(

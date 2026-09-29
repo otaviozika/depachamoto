@@ -3059,7 +3059,7 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false, allowC
   const rows = (await pool.query(`
     SELECT
       o.order_id,o.display_id,o.merchant_id,o.status,o.order_type,o.category,
-      o.sales_channel,o.delivered_by,o.is_test,o.order_created_at,
+      o.sales_channel,o.delivered_by,o.is_test,o.order_created_at,o.payload,
       o.last_event_code,o.last_event_at,
       l.dispatch_id AS linked_dispatch_id,
       d.status AS linked_dispatch_status,
@@ -3140,17 +3140,31 @@ async function inspectIfoodOrdersForDeparture(orders, { recovery = false, allowC
     }
 
     let row = current[0] || selectionPool[0];
-    // Always consult iFood details before selecting; lifecycle comes from polling when absent.
-    const details = await fetchIfoodOrderDetails(row.order_id);
-    if (String(details?.id || '') !== String(row.order_id) ||
-        String(details?.merchant?.id || '').toLowerCase() !== String(row.merchant_id || '').toLowerCase()) {
-      throw Object.assign(new Error("Não foi possível confirmar o pedido e a loja no iFood."), { status: 409 });
-    }
-    await upsertIfoodOrderFromDetails(details, { orderId: row.order_id, merchantId: row.merchant_id });
-    row = { ...row, ...(await pool.query('SELECT * FROM ifood_orders WHERE order_id=$1', [row.order_id])).rows[0],
-      order_type: details.orderType, delivered_by: details.delivery?.deliveredBy };
-    if (orderDateSP(row.order_created_at) !== day) {
-      throw Object.assign(new Error("A data do pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
+
+    if (typeof STAGING_SAFE_MODE !== "undefined" && STAGING_SAFE_MODE) {
+      const stagingFixture = row.is_test === true && row.payload?.staging_fixture === true;
+      if (!stagingFixture) {
+        blocked.push({
+          order_number: localOrder,
+          order_id: row.order_id,
+          code: "STAGING_IFOOD_FIXTURE_REQUIRED",
+          message: "Homologação protegida: somente pedidos iFood de fixture podem ser usados neste ambiente."
+        });
+        continue;
+      }
+    } else {
+      // Em produção, sempre reconfirma os detalhes no iFood antes da seleção.
+      const details = await fetchIfoodOrderDetails(row.order_id);
+      if (String(details?.id || '') !== String(row.order_id) ||
+          String(details?.merchant?.id || '').toLowerCase() !== String(row.merchant_id || '').toLowerCase()) {
+        throw Object.assign(new Error("Não foi possível confirmar o pedido e a loja no iFood."), { status: 409 });
+      }
+      await upsertIfoodOrderFromDetails(details, { orderId: row.order_id, merchantId: row.merchant_id });
+      row = { ...row, ...(await pool.query('SELECT * FROM ifood_orders WHERE order_id=$1', [row.order_id])).rows[0],
+        order_type: details.orderType, delivered_by: details.delivery?.deliveredBy };
+      if (orderDateSP(row.order_created_at) !== day) {
+        throw Object.assign(new Error("A data do pedido mudou no iFood. Atualize e valide novamente."), { status: 409 });
+      }
     }
     const status = canonicalIfoodOrderStatus(row.status);
 

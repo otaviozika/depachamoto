@@ -15,6 +15,8 @@ const checks = [
   ["Anota AI worker cannot run in staging", /runAnotaAiDispatchWorkerOnce\(\)[\s\S]{0,220}STAGING_SAFE_MODE/.test(server)],
   ["Manual iFood sync is blocked from remote access", /syncIfoodOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
   ["Manual Anota AI sync is blocked from remote access", /syncAnotaAiOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
+  ["Staging iFood fixtures require explicit test marker", server.includes("row.is_test === true && row.payload?.staging_fixture === true") && server.includes("STAGING_IFOOD_FIXTURE_REQUIRED")],
+  ["Production still reconfirms iFood details remotely", /else \{[\s\S]{0,500}fetchIfoodOrderDetails\(row\.order_id\)[\s\S]{0,500}upsertIfoodOrderFromDetails/.test(server)],
   ["iFood dispatch mutation has a staging guard", server.includes('assertExternalMutationAllowed("despacho de pedido no iFood")')],
   ["iFood delivery-code mutation has a staging guard", server.includes('assertExternalMutationAllowed("verificação de código de entrega no iFood")')],
   ["iFood confirm and cancellation mutations have staging guards", server.includes('assertExternalMutationAllowed("confirmação de pedido de teste no iFood")') && server.includes('assertExternalMutationAllowed("cancelamento de pedido no iFood")')],
