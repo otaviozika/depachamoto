@@ -101,6 +101,41 @@
 @media(max-width:760px){#wallboard.kds-page{overflow:visible;min-height:0}.kds-top{grid-template-columns:1fr}.kds-right{justify-self:start}.kds-board{grid-template-columns:1fr;height:auto;min-height:0}.kds-column{height:62vh;min-height:420px}#wallboard:fullscreen{overflow:auto!important;height:100vh}#wallboard:fullscreen .kds-board{height:auto}.kds-brand{font-size:20px}}
 
 .monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.monitor-box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px}.monitor-value{font-size:25px;font-weight:900;margin-top:5px}
+.health-center-body{padding:18px;display:grid;gap:16px}
+.health-overall{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.health-overall.OPERATIONAL{border-color:#166534;background:color-mix(in srgb,#16a34a 7%,var(--card))}
+.health-overall.ATTENTION{border-color:#a16207;background:color-mix(in srgb,#f59e0b 8%,var(--card))}
+.health-overall.CRITICAL{border-color:#991b1b;background:color-mix(in srgb,#dc2626 8%,var(--card))}
+.health-overall-kicker{font-size:10px;font-weight:950;letter-spacing:1.1px;color:var(--muted)}
+.health-overall-title{font-size:21px;font-weight:950;margin-top:5px}
+.health-component-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.health-component{border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--card);min-width:0}
+.health-component.OPERATIONAL{border-top:3px solid #16a34a}.health-component.ATTENTION{border-top:3px solid #f59e0b}.health-component.CRITICAL{border-top:3px solid #dc2626}
+.health-component-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.health-component-name{font-size:13px;font-weight:900}.health-component-main{font-size:20px;font-weight:950;margin-top:10px}
+.health-component-meta{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45}
+.health-queue-block,.health-exceptions-block{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.health-subhead{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.health-queue-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.health-queue-panel{padding:15px}.health-queue-panel+.health-queue-panel{border-left:1px solid var(--line)}
+.health-queue-title{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:900}
+.health-queue-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}
+.health-queue-metric{padding:10px;border:1px solid var(--line);border-radius:10px;min-width:0}
+.health-queue-metric b{display:block;font-size:20px}.health-queue-metric span{display:block;margin-top:3px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.35px}
+.health-exception-list{display:grid}
+.health-exception{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 15px;border-bottom:1px solid var(--line)}
+.health-exception:last-child{border-bottom:0}.health-exception.CRITICAL{background:color-mix(in srgb,#dc2626 5%,var(--card))}.health-exception.ATTENTION{background:color-mix(in srgb,#f59e0b 5%,var(--card))}
+.health-exception-icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:950;background:#eef2f7;color:#475569}
+.health-exception.CRITICAL .health-exception-icon{background:#fee2e2;color:#991b1b}.health-exception.ATTENTION .health-exception-icon{background:#fef3c7;color:#92400e}
+.health-exception-title{font-size:13px;font-weight:900}.health-exception-detail{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
+.health-exception-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.health-protection-details{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.health-protection-details summary{cursor:pointer;padding:14px 15px;font-weight:900;list-style:none}.health-protection-details summary::-webkit-details-marker{display:none}
+.health-protection-content{padding:0 15px 16px;border-top:1px solid var(--line);padding-top:15px}
+.health-center .skeleton{min-height:105px;opacity:.55}
+@media(max-width:1100px){.health-component-grid{grid-template-columns:1fr 1fr}.health-queue-metrics{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){.health-center-head{align-items:flex-start;gap:12px}.health-component-grid,.health-queue-grid{grid-template-columns:1fr}.health-queue-panel+.health-queue-panel{border-left:0;border-top:1px solid var(--line)}.health-queue-metrics{grid-template-columns:repeat(2,1fr)}.health-exception{grid-template-columns:auto minmax(0,1fr)}.health-exception-actions{grid-column:1/-1}.health-overall{align-items:flex-start}.health-overall-title{font-size:18px}}
+
 
 
 .ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.ops-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.ops-value{font-size:28px;font-weight:900;margin-top:5px}.team-status{display:inline-flex;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:900}.team-status.NA_RUA{background:#ffedd5;color:#9a3412}.team-status.RETORNANDO{background:#dbeafe;color:#1d4ed8}.team-status.DISPONIVEL{background:#dcfce7;color:#166534}.team-status.OFFLINE{background:#eef2f7;color:#475569}.team-status.INATIVO{background:#fee2e2;color:#991b1b}.team-status.AUSENTE{background:#f1f5f9;color:#64748b}.team-status.ENCERRADO{background:#e2e8f0;color:#334155}.conn-dot{font-size:11px}
@@ -1176,18 +1211,62 @@
   </div>
 
 
-  <div class="section" style="margin-top:18px">
-    <div class="section-head">
-      <b>🛡️ Segurança de produção</b>
+  <div class="section health-center" style="margin-top:18px">
+    <div class="section-head health-center-head">
+      <div>
+        <b>Central de Saúde e Exceções</b>
+        <div class="small muted" style="margin-top:4px">Fila, integrações, banco, erros e conflitos em uma única visão operacional.</div>
+      </div>
       <div class="actions">
-        <button id="ifoodPauseBtn" class="btn danger" type="button" onclick="pauseIfoodDispatch()">Pausar despachos</button>
-        <button id="ifoodResumeBtn" class="btn primary hidden" type="button" onclick="resumeIfoodDispatch()">Retomar despachos</button>
+        <span id="healthCenterFreshness" class="badge gray">CARREGANDO</span>
+        <button class="btn outline" type="button" onclick="loadHealthCenter()">Atualizar</button>
+        <button id="ifoodPauseBtn" class="btn danger" type="button" onclick="pauseIfoodDispatch()">Pausar iFood</button>
+        <button id="ifoodResumeBtn" class="btn primary hidden" type="button" onclick="resumeIfoodDispatch()">Retomar iFood</button>
       </div>
     </div>
-    <div style="padding:20px">
-      <div id="ifoodSafetySummary" class="small muted">Carregando proteções...</div>
-      <div id="ifoodSafetyChecklist" style="display:grid;gap:8px;margin-top:14px"></div>
-      <div id="ifoodMerchantSafety" style="margin-top:16px"></div>
+
+    <div class="health-center-body">
+      <div id="healthCenterOverall" class="health-overall loading">
+        <div>
+          <div class="health-overall-kicker">SAÚDE GERAL</div>
+          <div class="health-overall-title">Carregando diagnóstico...</div>
+          <div class="small muted" style="margin-top:5px">Aguarde a leitura operacional.</div>
+        </div>
+        <span class="badge gray">—</span>
+      </div>
+
+      <div id="healthCenterComponents" class="health-component-grid">
+        <div class="health-component skeleton"></div>
+        <div class="health-component skeleton"></div>
+        <div class="health-component skeleton"></div>
+        <div class="health-component skeleton"></div>
+      </div>
+
+      <div class="health-queue-block">
+        <div class="health-subhead">
+          <div><b>Fila de integrações</b><div class="small muted">O que está enviado, aguardando, tentando novamente ou exige intervenção.</div></div>
+        </div>
+        <div id="healthQueueSummary" class="health-queue-grid"></div>
+      </div>
+
+      <div class="health-exceptions-block">
+        <div class="health-subhead">
+          <div><b>Exceções que exigem atenção</b><div class="small muted">Falhas definitivas, jobs travados, atrasos de sincronização, conflitos e erros recentes.</div></div>
+          <span id="healthExceptionCount" class="badge gray">0</span>
+        </div>
+        <div id="healthExceptions" class="health-exception-list">
+          <div class="empty">Carregando exceções...</div>
+        </div>
+      </div>
+
+      <details class="health-protection-details" open>
+        <summary>Proteções de produção iFood</summary>
+        <div class="health-protection-content">
+          <div id="ifoodSafetySummary" class="small muted">Carregando proteções...</div>
+          <div id="ifoodSafetyChecklist" style="display:grid;gap:8px;margin-top:14px"></div>
+          <div id="ifoodMerchantSafety" style="margin-top:16px"></div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -4567,8 +4646,157 @@ function ifoodDeliveryConfirmationBadge(value,orderStatus){
   return '';
 }
 
+function healthStatusMeta(status){
+  const s=String(status||'OPERATIONAL').toUpperCase();
+  if(s==='CRITICAL')return {label:'CRÍTICO',badge:'red',icon:'!'};
+  if(s==='ATTENTION')return {label:'ATENÇÃO',badge:'yellow',icon:'!'};
+  return {label:'OPERACIONAL',badge:'green',icon:'✓'};
+}
+function healthSecondsLabel(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return 'sem dado';
+  if(n<60)return n+'s';
+  const m=Math.floor(n/60),s=n%60;
+  if(m<60)return m+'m '+s+'s';
+  const h=Math.floor(m/60);
+  return h+'h '+(m%60)+'m';
+}
+function healthUptimeLabel(value){
+  const n=Math.max(0,Number(value)||0);
+  const d=Math.floor(n/86400),h=Math.floor((n%86400)/3600),m=Math.floor((n%3600)/60);
+  return d?d+'d '+h+'h':h?h+'h '+m+'m':m+'m';
+}
+function healthQueueMetric(value,label,tone=''){
+  const cls=tone?(' '+tone):'';
+  return `<div class="health-queue-metric${cls}"><b>${Number(value||0)}</b><span>${escapeHtml(label)}</span></div>`;
+}
+function healthComponentCard(name,status,main,meta){
+  const m=healthStatusMeta(status);
+  return `<div class="health-component ${escapeHtml(String(status||'OPERATIONAL'))}">
+    <div class="health-component-top"><span class="health-component-name">${escapeHtml(name)}</span><span class="badge ${m.badge}">${m.label}</span></div>
+    <div class="health-component-main">${main}</div>
+    <div class="health-component-meta">${meta}</div>
+  </div>`;
+}
+function healthExceptionAction(x){
+  if(x.action==='RETRY_IFOOD')return `<button class="btn outline" onclick='retryIfoodFromHealth(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
+  if(x.action==='RETRY_ANOTAAI')return `<button class="btn outline" onclick='retryAnotaAiFromHealth(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
+  if(x.action==='SYNC_IFOOD')return '<button class="btn outline" onclick="syncIfoodFromHealth()">Sincronizar iFood</button>';
+  if(x.action==='SYNC_ANOTAAI')return '<button class="btn outline" onclick="syncAnotaAiFromHealth()">Sincronizar Anota AI</button>';
+  if(x.action==='RESOLVE_CONFLICT')return `<button class="btn outline" onclick="resolveConflictFromHealth(${Number(x.conflict_id)})">Resolver</button>`;
+  if(x.action==='OPEN_MONITORING')return '<button class="btn outline" onclick="activateAdminPage(\'security\',\'system\')">Ver monitoramento</button>';
+  return '';
+}
+async function retryIfoodFromHealth(orderId){
+  if(!confirm('Executar uma nova tentativa de despacho deste pedido no iFood?'))return;
+  try{
+    await api(`/api/admin/ifood/orders/${encodeURIComponent(orderId)}/retry-dispatch`,{method:'POST'});
+    await Promise.all([loadHealthCenter(),loadIfoodStatus()]);
+  }catch(err){alert(err.message)}
+}
+async function retryAnotaAiFromHealth(orderId){
+  if(!confirm('Abrir um novo ciclo e tentar este despacho no Anota AI novamente?'))return;
+  try{
+    await api(`/api/admin/anotaai/orders/${encodeURIComponent(orderId)}/retry-dispatch`,{method:'POST'});
+    await Promise.all([loadHealthCenter(),loadAnotaAiStatus()]);
+  }catch(err){alert(err.message)}
+}
+async function syncIfoodFromHealth(){
+  try{await api('/api/admin/ifood/sync-now',{method:'POST'});await Promise.all([loadHealthCenter(),loadIfoodStatus()])}catch(err){alert(err.message)}
+}
+async function syncAnotaAiFromHealth(){
+  try{await api('/api/admin/anotaai/sync-now',{method:'POST'});await Promise.all([loadHealthCenter(),loadAnotaAiStatus()])}catch(err){alert(err.message)}
+}
+async function resolveConflictFromHealth(id){
+  try{await api('/api/admin/conflicts/'+id+'/resolve',{method:'POST'});await loadHealthCenter()}catch(err){alert(err.message)}
+}
+async function loadHealthCenter({silent=false}={}){
+  if(me?.role!=='admin')return;
+  try{
+    const d=await api('/api/admin/health-center');
+    const overall=healthStatusMeta(d.overall?.status);
+    const reasons=(d.overall?.criticalReasons?.length?d.overall.criticalReasons:d.overall?.attentionReasons)||[];
+    $('healthCenterOverall').className='health-overall '+String(d.overall?.status||'OPERATIONAL');
+    $('healthCenterOverall').innerHTML=`
+      <div>
+        <div class="health-overall-kicker">SAÚDE GERAL</div>
+        <div class="health-overall-title">${overall.icon} ${overall.label}</div>
+        <div class="small muted" style="margin-top:5px">${reasons.length?escapeHtml(reasons.slice(0,3).join(' • ')):'Nenhuma exceção operacional ativa.'}</div>
+      </div>
+      <span class="badge ${overall.badge}">${Number(d.overall?.exceptionCount||0)} EXCEÇÃO(ÕES)</span>`;
+
+    const i=d.components?.ifood||{},a=d.components?.anotaai||{},sv=d.components?.server||{},op=d.components?.operation||{};
+    $('healthCenterComponents').innerHTML=[
+      healthComponentCard('iFood',i.status,
+        `${Number(i.queue?.sent||0)} enviados`,
+        `Sync: ${i.syncAgeSeconds===null?'sem dado':'há '+healthSecondsLabel(i.syncAgeSeconds)} • ${Number(i.queue?.failed||0)} falha(s)`),
+      healthComponentCard('Anota AI',a.status,
+        `${Number(a.queue?.sent||0)} enviados`,
+        `Sync: ${a.syncAgeSeconds===null?'sem dado':'há '+healthSecondsLabel(a.syncAgeSeconds)} • ${Number(a.queue?.dead||0)} DEAD`),
+      healthComponentCard('Servidor / Banco',sv.status,
+        `${Number(sv.dbLatencyMs||0)} ms`,
+        `Uptime: ${healthUptimeLabel(sv.uptimeSeconds)} • DB ${sv.pool?.total||0}/${sv.pool?.max||0} • RAM ${sv.memory?.rssMb||0} MB`),
+      healthComponentCard('Operação',op.status,
+        `${Number(op.conflicts?.open||0)} conflito(s) atual(is)`,
+        `${Number(op.conflicts?.critical_open||0)} crítico(s) • ${Number(op.abnormalLocks||0)} lock(s) anormal(is) • backlog histórico: ${Number(op.conflicts?.backlog_open||0)}`)
+    ].join('');
+
+    $('healthQueueSummary').innerHTML=`
+      <div class="health-queue-panel">
+        <div class="health-queue-title"><span>iFood</span><span class="badge ${healthStatusMeta(i.status).badge}">${healthStatusMeta(i.status).label}</span></div>
+        <div class="health-queue-metrics">
+          ${healthQueueMetric(i.queue?.sent,'Enviados')}
+          ${healthQueueMetric(i.queue?.pending,'Pendentes')}
+          ${healthQueueMetric(i.queue?.retry,'Retry')}
+          ${healthQueueMetric(i.queue?.processing,'Processando')}
+          ${healthQueueMetric(i.queue?.failed,'Falhas')}
+        </div>
+      </div>
+      <div class="health-queue-panel">
+        <div class="health-queue-title"><span>Anota AI</span><span class="badge ${healthStatusMeta(a.status).badge}">${healthStatusMeta(a.status).label}</span></div>
+        <div class="health-queue-metrics">
+          ${healthQueueMetric(a.queue?.sent,'Enviados')}
+          ${healthQueueMetric(a.queue?.pending,'Pendentes')}
+          ${healthQueueMetric(a.queue?.retry,'Retry')}
+          ${healthQueueMetric(a.queue?.processing,'Processando')}
+          ${healthQueueMetric(a.queue?.dead,'DEAD')}
+        </div>
+      </div>`;
+
+    const exceptions=Array.isArray(d.exceptions)?d.exceptions:[];
+    $('healthExceptionCount').className='badge '+(exceptions.some(x=>x.severity==='CRITICAL')?'red':exceptions.length?'yellow':'green');
+    $('healthExceptionCount').textContent=exceptions.length;
+    $('healthExceptions').innerHTML=exceptions.length?exceptions.map(x=>{
+      const meta=healthStatusMeta(x.severity);
+      const when=x.updated_at?localDate(x.updated_at):'';
+      const courier=x.courier_name?` • ${escapeHtml(x.courier_name)}`:'';
+      const attempts=x.attempts? ` • tentativa ${Number(x.attempts)}`:'';
+      return `<div class="health-exception ${escapeHtml(x.severity||'ATTENTION')}">
+        <div class="health-exception-icon">${meta.icon}</div>
+        <div>
+          <div class="health-exception-title">${escapeHtml(x.title||'Exceção operacional')}</div>
+          <div class="health-exception-detail">${escapeHtml(x.detail||'')}</div>
+          <div class="health-exception-meta"><span class="badge ${meta.badge}">${escapeHtml(x.source||'SISTEMA')}</span><span class="small muted">${when}${courier}${attempts}</span></div>
+        </div>
+        <div class="health-exception-actions">${healthExceptionAction(x)}</div>
+      </div>`;
+    }).join(''):'<div class="empty">✓ Nenhuma exceção operacional ativa.</div>';
+
+    $('healthCenterFreshness').className='badge green';
+    $('healthCenterFreshness').textContent='AGORA';
+  }catch(err){
+    if(!silent){
+      $('healthCenterOverall').className='health-overall CRITICAL';
+      $('healthCenterOverall').innerHTML=`<div><div class="health-overall-kicker">SAÚDE GERAL</div><div class="health-overall-title">! Não foi possível ler a Central</div><div class="small muted" style="margin-top:5px">${escapeHtml(err.message)}</div></div><span class="badge red">ERRO</span>`;
+    }
+    $('healthCenterFreshness').className='badge red';
+    $('healthCenterFreshness').textContent='SEM DADOS';
+  }
+}
+
 async function loadIfoodStatus(){
   if(me?.role!=='admin')return;
+  loadHealthCenter({silent:true}).catch(()=>{});
 
   try{
     const d=await api('/api/admin/ifood/status');
@@ -5682,6 +5910,7 @@ socket.on('ifood:changed',d=>{
 });
 socket.on('anotaai:changed',()=>{
   if(me?.role==='admin'&&$('anotaai')?.classList.contains('active'))queueRealtimeRefresh('anotaai-status',loadAnotaAiStatus,750,{visibleOnly:true});
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),750,{visibleOnly:true});
 });
 socket.on('delivery:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});
@@ -5699,8 +5928,14 @@ socket.on('notification:new',n=>{
 });
 socket.on('notification:changed',()=>{if(me?.role==='admin')loadNotifications()});
 socket.on('notification:settings-changed',()=>{if(me?.role==='admin')loadNotificationSettings()});
-socket.on('conflict:new',()=>{if(me?.role==='admin')loadConflicts()});
-socket.on('conflict:changed',()=>{if(me?.role==='admin')loadConflicts()});
+socket.on('conflict:new',()=>{
+  if(me?.role==='admin')loadConflicts();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),500,{visibleOnly:true});
+});
+socket.on('conflict:changed',()=>{
+  if(me?.role==='admin')loadConflicts();
+  if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('health-center',()=>loadHealthCenter({silent:true}),500,{visibleOnly:true});
+});
 
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)return;
@@ -5710,6 +5945,10 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(()=>{if(document.hidden)return;document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
 // Telão/KDS desativado: polling de /api/admin/wallboard removido para evitar alto consumo de bandwidth.
 setInterval(()=>{heartbeat();},60000);
+setInterval(()=>{
+  if(document.hidden||me?.role!=='admin'||!$('ifood')?.classList.contains('active'))return;
+  loadHealthCenter({silent:true}).catch(()=>{});
+},30000);
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.querySelectorAll('#installBtnAdmin,#installBtnCourier').forEach(b=>b.classList.remove('hidden'))});
