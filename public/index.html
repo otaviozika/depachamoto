@@ -956,11 +956,17 @@
   #loginScreen .auth-box::before{background:linear-gradient(135deg,rgba(242,13,47,.8),rgba(255,255,255,.25) 65%,rgba(242,13,47,.3))}
 }
 /* LOGIN APPROVED INLINE END */
+.staging-banner{display:none;position:sticky;top:0;z-index:99999;padding:8px 14px;text-align:center;background:#f59e0b;color:#111827;font-size:12px;font-weight:950;letter-spacing:.55px;border-bottom:1px solid rgba(0,0,0,.22)}
+body.staging-mode .staging-banner{display:block}
+body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
 </style>
 <link rel="stylesheet" href="/courier-dark.css?v=3">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 </head>
 <body>
+<div id="stagingBanner" class="staging-banner" role="status">
+  HOMOLOGAÇÃO SEGURA <span>• banco isolado • iFood, Anota AI e Google Planilhas sem mutações externas</span>
+</div>
 <div id="sessionBoot" class="session-boot" role="status" aria-live="polite">
   <div class="session-boot-card">
     <img class="session-boot-logo" src="/brand-wordmark-light.png" alt="DespacheFull">
@@ -2193,6 +2199,11 @@ async function loadPublicConfig(){
     $('registrationNotice').textContent=d.registrationEnabled
       ? 'Cadastro aberto: novos acessos precisam de aprovação.'
       : 'Cadastro público temporariamente fechado.';
+    const staging=String(d.environment||'').toLowerCase()==='staging'||d.stagingSafeMode===true;
+    document.body.classList.toggle('staging-mode',staging);
+    if($('stagingBanner'))$('stagingBanner').title=staging
+      ? 'Este ambiente não executa mutações em integrações externas.'
+      : '';
   }catch{}
 }
 
