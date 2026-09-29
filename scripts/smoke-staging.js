@@ -45,6 +45,20 @@ const ifoodSync = await json("/api/admin/ifood/sync-now", {
 });
 assert(ifoodSync.res.status === 503, `iFood sync deveria ser bloqueado no staging, recebeu HTTP ${ifoodSync.res.status}`);
 
+const anotaSync = await json("/api/admin/anotaai/sync-now", {
+  method: "POST",
+  headers: { cookie, "content-type": "application/json" },
+  body: "{}"
+});
+assert(anotaSync.res.status === 503, `Anota AI sync deveria ser bloqueado no staging, recebeu HTTP ${anotaSync.res.status}`);
+
+const sheetsClose = await json("/api/admin/payments/close-day", {
+  method: "POST",
+  headers: { cookie, "content-type": "application/json" },
+  body: JSON.stringify({ date: "2026-09-28", shift_code: "DINNER" })
+});
+assert(sheetsClose.res.status === 503, `Google Sheets deveria ser bloqueado no staging, recebeu HTTP ${sheetsClose.res.status}`);
+
 console.log(JSON.stringify({
   result: "PASS",
   target: TARGET,
@@ -53,5 +67,7 @@ console.log(JSON.stringify({
   database: health.body.database,
   dbLatencyMs: health.body.dbLatencyMs,
   healthCenter: center.body?.overall?.status || null,
-  ifoodMutationBlocked: ifoodSync.res.status === 503
+  ifoodMutationBlocked: ifoodSync.res.status === 503,
+  anotaAiMutationBlocked: anotaSync.res.status === 503,
+  sheetsMutationBlocked: sheetsClose.res.status === 503
 }, null, 2));
