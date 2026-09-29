@@ -11,6 +11,11 @@ if(!shift.includes('export function dispatchShiftAt(')){
  */
 export function dispatchShiftAt(value=new Date()){
   const sp=spParts(value);
+  const stagingSafe=String(process.env.APP_ENV||'').trim().toLowerCase()==='staging'||['1','true','yes','on'].includes(String(process.env.STAGING_SAFE_MODE||'').trim().toLowerCase());
+  const forced=stagingSafe?normalizeShiftCode(process.env.STAGING_FORCE_SHIFT):null;
+  if(forced){
+    return {date:sp.date,operational_date:sp.date,shift_code:forced,shift_label:shiftLabel(forced),time_zone:SP_TIME_ZONE,source:'STAGING_FORCE_SHIFT'};
+  }
   const minutes=minutesOfDay(sp.time);
   const todayGroup=ruleGroupForWeekday(sp.weekday);
   if(minutes>=minutesOfDay(todayGroup?.LUNCH?.start||'11:30')&&minutes<18*60&&todayGroup?.LUNCH){
