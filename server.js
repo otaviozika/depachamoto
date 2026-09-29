@@ -10253,9 +10253,21 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     `),
     pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE resolved_at IS NULL)::int AS open,
-        COUNT(*) FILTER (WHERE resolved_at IS NULL AND severity='critical')::int AS critical_open,
-        COUNT(*) FILTER (WHERE resolved_at IS NULL AND severity='warning')::int AS warning_open
+        COUNT(*) FILTER (WHERE resolved_at IS NULL)::int AS backlog_open,
+        COUNT(*) FILTER (
+          WHERE resolved_at IS NULL
+            AND created_at >= NOW()-INTERVAL '3 hours'
+        )::int AS open,
+        COUNT(*) FILTER (
+          WHERE resolved_at IS NULL
+            AND severity='critical'
+            AND created_at >= NOW()-INTERVAL '3 hours'
+        )::int AS critical_open,
+        COUNT(*) FILTER (
+          WHERE resolved_at IS NULL
+            AND severity='warning'
+            AND created_at >= NOW()-INTERVAL '3 hours'
+        )::int AS warning_open
       FROM operational_conflicts
     `),
     pool.query(`
@@ -10265,6 +10277,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
       LEFT JOIN users au ON au.id=c.actor_user_id
       LEFT JOIN users cu ON cu.id=c.courier_id
       WHERE c.resolved_at IS NULL
+        AND c.created_at >= NOW()-INTERVAL '3 hours'
       ORDER BY
         CASE WHEN c.severity='critical' THEN 0
              WHEN c.severity='warning' THEN 1
