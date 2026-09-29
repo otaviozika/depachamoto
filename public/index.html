@@ -4800,6 +4800,15 @@ function anotaAiStatusBadge(code,status){
   return `<span class="badge ${item[0]}">${item[1]}</span>`;
 }
 
+function anotaAiDispatchBadge(value){
+  const s=String(value||'').toUpperCase();
+  if(s==='SENT')return '<span class="badge green">BAIXA ENVIADA</span>';
+  if(s==='PROCESSING')return '<span class="badge yellow">ENVIANDO</span>';
+  if(s==='PENDING'||s==='FAILED')return '<span class="badge yellow">TENTANDO NOVAMENTE</span>';
+  if(s==='DEAD')return '<span class="badge red">FALHA DEFINITIVA</span>';
+  return '';
+}
+
 async function loadAnotaAiStatus(){
   try{
     const d=await api('/api/admin/anotaai/status');
@@ -4831,7 +4840,14 @@ async function loadAnotaAiStatus(){
       const orderType=String(order.order_type||'').toUpperCase();
       let action='—';
       if(order.local_courier_name){
-        action=`<span class="badge green">Com ${escapeHtml(order.local_courier_name)}</span>`;
+        const dispatchBadge=anotaAiDispatchBadge(order.anotaai_dispatch_status);
+        const retry=String(order.anotaai_dispatch_status||'').toUpperCase()==='DEAD'
+          ? `<button class="btn outline" type="button" onclick='retryAnotaAiDispatch(${JSON.stringify(order.order_id)})'>Tentar novamente</button>`
+          : '';
+        const error=order.dispatch_last_error
+          ? `<div class="small muted" style="margin-top:5px">${escapeHtml(order.dispatch_last_error)}</div>`
+          : '';
+        action=`<span class="badge green">Com ${escapeHtml(order.local_courier_name)}</span> ${dispatchBadge} ${retry}${error}`;
       }else if(orderType==='DELIVERY'&&['PRODUCTION','READY','FINISHED'].includes(status)){
         action=`<button class="btn outline" type="button" onclick='openUnassignedAnotaAiOrder(${JSON.stringify(order.order_id)},${JSON.stringify(order.display_id||order.order_id)})'>Alocar</button>`;
       }
@@ -4896,6 +4912,17 @@ async function syncAnotaAiNow(){
   }catch(err){
     $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
   }finally{button.disabled=false}
+}
+
+async function retryAnotaAiDispatch(orderId){
+  if(!confirm('Reabrir a fila e tentar enviar este despacho ao Anota AI novamente?'))return;
+  try{
+    const d=await api(`/api/admin/anotaai/orders/${encodeURIComponent(orderId)}/retry-dispatch`,{method:'POST'});
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg ok">${escapeHtml(d.message||'Nova tentativa enfileirada.')}</div>`;
+    setTimeout(()=>loadAnotaAiStatus(),1200);
+  }catch(err){
+    $('anotaAiConnectionMsg').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
 }
 
 async function pauseIfoodDispatch(){

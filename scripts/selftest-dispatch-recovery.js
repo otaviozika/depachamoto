@@ -10,7 +10,11 @@ const checks = [
   ["Anota AI recovers stale PROCESSING jobs", server.includes("resetStaleAnotaAiDispatchJobs") && server.includes("processing_started_at < NOW() - INTERVAL '3 minutes'")],
   ["Anota AI worker invokes stale recovery before claiming", /runAnotaAiDispatchWorkerOnce[\s\S]*await resetStaleAnotaAiDispatchJobs\(\)/.test(server)],
   ["Anota AI retries durable FAILED jobs", server.includes("anotaai_dispatch_status IN ('PENDING','FAILED')")],
+  ["Anota AI caps automatic retries", server.includes("const ANOTAAI_DISPATCH_MAX_ATTEMPTS = 8") && server.includes('const nextStatus = retryAllowed ? "FAILED" : "DEAD"')],
+  ["Anota AI dead-letter jobs are terminal until manual replay", server.includes('anotaai_dispatch_status=$2') && server.includes('"ANOTAAI_DISPATCH_DEAD"') && !server.includes("anotaai_dispatch_status IN ('PENDING','FAILED','DEAD')")],
   ["Anota AI reconciles ambiguous remote finalize failures", server.includes("[400,404,409,412].includes(Number(error?.statusCode || 0))") && server.includes("remotelyFinished")],
+  ["Anota AI admin replay resets retry budget", /app\.post\("\/api\/admin\/anotaai\/orders\/:id\/retry-dispatch"[\s\S]{0,2200}attempts=0/.test(server) && server.includes('"ANOTAAI_DISPATCH_RETRY_REQUESTED"')],
+  ["iFood admin replay resets retry budget", /app\.post\("\/api\/admin\/ifood\/orders\/:id\/retry-dispatch"[\s\S]{0,1800}attempts=0/.test(server)],
   ["External workers run on intervals after restart", server.includes("Anota AI dispatch worker:") && server.includes("iFood dispatch interval:")]
 ];
 
