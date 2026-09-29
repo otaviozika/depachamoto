@@ -68,6 +68,9 @@ jobs:
       - name: Install
         run: npm install
 
+      - name: Security audit
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Static and regression gates
         run: |
           node --check server.js
