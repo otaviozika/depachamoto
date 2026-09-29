@@ -1,6 +1,8 @@
 name: Staging release gate
 
 on:
+  pull_request:
+    branches: [staging, main]
   push:
     branches: [staging]
   workflow_dispatch:
@@ -75,6 +77,7 @@ jobs:
       - name: Static and regression gates
         run: |
           node --check server.js
+          node --check scripts/e2e-staging-critical.js
           node scripts/selftest-staging-safety.js
           failed=0
           for test in scripts/selftest-*.js; do
@@ -118,8 +121,8 @@ jobs:
           tail -250 staging-server.log || true
           exit 1
 
-      - name: Critical-flow smoke under concurrency
-        run: node scripts/loadtest-staging-50.js
+      - name: Critical-flow E2E under concurrency
+        run: node scripts/e2e-staging-critical.js
 
       - name: Summary
         if: always()
@@ -129,13 +132,9 @@ jobs:
           echo "- APP_ENV=staging" >> "$GITHUB_STEP_SUMMARY"
           echo "- STAGING_SAFE_MODE=true" >> "$GITHUB_STEP_SUMMARY"
           echo "- External integrations forced off" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 8 concurrent couriers × 5 departures × 2 orders" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f full-staging-load-report.json ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo '~~~json' >> "$GITHUB_STEP_SUMMARY"
-            cat full-staging-load-report.json >> "$GITHUB_STEP_SUMMARY"
-            echo '~~~' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "- Fresh PostgreSQL bootstrap validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Authenticated critical-flow E2E validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Idempotency + simultaneous duplicate race validated" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload staging evidence
         if: always()
