@@ -25,6 +25,12 @@ const PgSession = connectPg(session);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const VERSION = "3.7.0";
+const APP_ENVIRONMENT = String(process.env.APP_ENV || process.env.NODE_ENV || "development").trim().toLowerCase();
+const STAGING_SAFE_MODE = String(process.env.STAGING_SAFE_MODE || "false").trim().toLowerCase() === "true";
+
+function externalIntegrationsBlocked() {
+  return STAGING_SAFE_MODE;
+}
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
@@ -1296,7 +1302,7 @@ const anotaAiClient = createAnotaAiClient({
 let anotaAiSyncRunning = false;
 
 function anotaAiConfigured() {
-  return anotaAiClient.configured();
+  return !externalIntegrationsBlocked() && anotaAiClient.configured();
 }
 
 function anotaAiAutoEnabled() {
@@ -1905,7 +1911,7 @@ let ifoodPreparationSyncLastResult = {
 };
 
 function ifoodConfigured() {
-  return Boolean(
+  return !externalIntegrationsBlocked() && Boolean(
     String(process.env.IFOOD_CLIENT_ID || "").trim() &&
     String(process.env.IFOOD_CLIENT_SECRET || "").trim()
   );
@@ -5779,7 +5785,9 @@ async function getAdminMonthlyPaymentRows(month) {
 app.get("/api/public/config", asyncRoute(async (req, res) => {
   res.json({
     registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
-    version: VERSION
+    version: VERSION,
+    environment: APP_ENVIRONMENT,
+    stagingSafeMode: STAGING_SAFE_MODE
   });
 }));
 
@@ -11673,6 +11681,9 @@ app.get("/api/health", async (req, res) => {
       dbLatencyMs: Date.now() - started,
       time: new Date().toISOString(),
       version: VERSION,
+      environment: APP_ENVIRONMENT,
+      stagingSafeMode: STAGING_SAFE_MODE,
+      externalIntegrationsBlocked: externalIntegrationsBlocked(),
       ifood: {
         configured: ifoodConfigured(),
         environment: ifoodEnvironment(),
