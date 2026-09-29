@@ -9305,14 +9305,15 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
   `, [orderId])).rows[0];
 
   if (!row) return res.status(404).json({ error: "Pedido/vínculo Anota AI não encontrado." });
-  if (row.anotaai_dispatch_status === "PROCESSING") {
-    return res.status(409).json({ error: "Esse despacho Anota AI já está sendo processado." });
-  }
-  if (row.anotaai_dispatch_status === "SENT") {
-    return res.status(409).json({ error: "Esse despacho já foi confirmado como enviado ao Anota AI." });
+  if (row.anotaai_dispatch_status !== "DEAD") {
+    return res.status(409).json({
+      error: row.anotaai_dispatch_status === "SENT"
+        ? "Esse despacho já foi confirmado como enviado ao Anota AI."
+        : "O replay manual só é permitido após uma falha definitiva."
+    });
   }
 
-  await pool.query(`
+  const replay = (await pool.query(`
     UPDATE anotaai_dispatch_links
     SET anotaai_dispatch_status='FAILED',
         attempts=0,
@@ -9322,7 +9323,15 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
         last_http_status=NULL,
         last_error=NULL
     WHERE anotaai_order_id=$1
-  `, [orderId]);
+      AND anotaai_dispatch_status='DEAD'
+    RETURNING retry_cycle
+  `, [orderId])).rows[0];
+
+  if (!replay) {
+    return res.status(409).json({
+      error: "O estado desse despacho mudou. Atualize a tela antes de tentar novamente."
+    });
+  }
 
   await auditBestEffort(
     req.session.user.id,
@@ -9336,7 +9345,7 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
       previous_status: row.anotaai_dispatch_status,
       previous_attempts: Number(row.attempts || 0),
       previous_retry_cycle: Math.max(1, Number(row.retry_cycle) || 1),
-      new_retry_cycle: Math.max(1, Number(row.retry_cycle) || 1) + 1
+      new_retry_cycle: Math.max(1, Number(replay.retry_cycle) || 1)
     }
   );
 
