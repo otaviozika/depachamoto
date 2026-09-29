@@ -10306,6 +10306,9 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
   const criticalReasons = [];
   const attentionReasons = [];
 
+  if (!ifoodConfigured()) criticalReasons.push("Credenciais iFood ausentes");
+  if (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) criticalReasons.push("Proteção de produção iFood incompleta");
+  if (anotaAiAutoEnabled() && !anotaAiConfigured()) criticalReasons.push("Anota AI automático sem credenciais válidas");
   if (Number(ifoodQueue.failed || 0) > 0) criticalReasons.push(`${ifoodQueue.failed} falha(s) definitiva(s) no iFood`);
   if (Number(anotaQueue.dead || 0) > 0) criticalReasons.push(`${anotaQueue.dead} falha(s) definitiva(s) no Anota AI`);
   if (Number(ifoodQueue.stale_processing || 0) > 0) criticalReasons.push(`${ifoodQueue.stale_processing} job(s) iFood travado(s)`);
@@ -10330,14 +10333,17 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     critical ? "CRITICAL" : attention ? "ATTENTION" : "OPERATIONAL";
 
   const ifoodStatus = componentStatus({
-    critical: Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
+    critical: !ifoodConfigured() ||
+      (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) ||
+      Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
     attention: ifoodSyncStale || runtimeControl.dispatch_paused ||
       Number(ifoodQueue.pending || 0) > 0 || Number(ifoodQueue.retry || 0) > 0 ||
       Number(ifoodQueue.overdue || 0) > 0
   });
 
   const anotaStatus = componentStatus({
-    critical: Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
+    critical: (anotaAiAutoEnabled() && !anotaAiConfigured()) ||
+      Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
     attention: anotaSyncStale || Number(anotaQueue.pending || 0) > 0 ||
       Number(anotaQueue.retry || 0) > 0 || Number(anotaQueue.overdue || 0) > 0
   });
@@ -10348,6 +10354,45 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
   });
 
   const exceptions = [];
+
+  if (!ifoodConfigured()) {
+    exceptions.push({
+      key: "ifood:credentials-missing",
+      source: "IFOOD",
+      severity: "CRITICAL",
+      kind: "CONFIGURATION",
+      title: "Credenciais iFood ausentes",
+      detail: "O servidor não consegue autenticar no iFood até as credenciais serem configuradas.",
+      updated_at: null,
+      action: "OPEN_MONITORING"
+    });
+  }
+
+  if (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) {
+    exceptions.push({
+      key: "ifood:production-safety",
+      source: "IFOOD",
+      severity: "CRITICAL",
+      kind: "CONFIGURATION",
+      title: "Proteção de produção iFood incompleta",
+      detail: "O despacho automático está ativo sem todas as proteções exigidas para produção.",
+      updated_at: null,
+      action: "OPEN_MONITORING"
+    });
+  }
+
+  if (anotaAiAutoEnabled() && !anotaAiConfigured()) {
+    exceptions.push({
+      key: "anotaai:credentials-missing",
+      source: "ANOTAAI",
+      severity: "CRITICAL",
+      kind: "CONFIGURATION",
+      title: "Anota AI automático sem credenciais",
+      detail: "A sincronização automática está habilitada, mas as credenciais do Anota AI estão incompletas.",
+      updated_at: null,
+      action: "OPEN_MONITORING"
+    });
+  }
 
   for (const row of ifoodIssuesQ.rows) {
     const stale = row.status === "PROCESSING";
