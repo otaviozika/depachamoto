@@ -1196,11 +1196,11 @@
 
 <section id="ifood" class="page">
   <h1 class="title">Integração iFood</h1>
-  <p class="muted">Fase 4: proteção operacional antes da produção — ambiente, allowlist de loja e pausa de emergência.</p>
+  <p class="muted">Integração iFood com diagnóstico operacional, fila persistente e proteções de produção.</p>
 
   <div class="warning" style="margin-top:18px">
-    <b>Modo seguro:</b> o botão <b>Registrar saída</b> do motoboy ainda não altera o pedido no iFood.
-    A saída é salva primeiro no DespacheFull. O iFood é atualizado depois, sem bloquear o motoboy.
+    <b>Modo seguro:</b> ao registrar a saída, o DespacheFull salva a operação primeiro.
+    O envio ao iFood acontece em segundo plano pela fila, sem bloquear o motoboy.
   </div>
 
   <div id="ifoodStatusCards" class="cards" style="margin-top:18px">
