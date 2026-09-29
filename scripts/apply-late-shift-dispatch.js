@@ -37,11 +37,23 @@ export function dispatchShiftAt(value=new Date()){
 if(!server.includes('dispatchShiftAt, resolveDispatchShift')){
  server=server.replace('operationalShiftAt, resolveDispatchShift,','operationalShiftAt, dispatchShiftAt, resolveDispatchShift,');
 }
-const original='const routeShift = getCurrentOperationalShift();';
-if(server.includes(original))server=server.replace(original,'const routeShift = dispatchShiftAt();');
-const departure='const departureShift = getCurrentOperationalShift();';
-let count=server.split(departure).length-1;
-if(count>0)server=server.split(departure).join('const departureShift = dispatchShiftAt();');
-if(!server.includes('const routeShift = dispatchShiftAt();')||server.split('const departureShift = dispatchShiftAt();').length!==3)throw Error('Departure replacements not verified');
+const routeCandidates=[
+  'const routeShift = currentOperationalShift();',
+  'const routeShift = getCurrentOperationalShift();'
+];
+for(const original of routeCandidates){
+  if(server.includes(original))server=server.replace(original,'const routeShift = dispatchShiftAt(runtimeNow());');
+}
+const departureCandidates=[
+  'const departureShift = currentOperationalShift();',
+  'const departureShift = getCurrentOperationalShift();'
+];
+for(const departure of departureCandidates){
+  if(server.includes(departure))server=server.split(departure).join('const departureShift = dispatchShiftAt(runtimeNow());');
+}
+if(!server.includes('const routeShift = dispatchShiftAt(runtimeNow());')||
+   server.split('const departureShift = dispatchShiftAt(runtimeNow());').length!==3){
+  throw Error('Departure replacements not verified');
+}
 fs.writeFileSync(serverFile,server);
 console.log('Late dispatch windows installed; lunch until 17:59, dinner until 01:59.');
