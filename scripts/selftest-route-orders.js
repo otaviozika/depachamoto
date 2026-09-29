@@ -7,6 +7,8 @@ import { PGlite } from '@electric-sql/pglite';
 // PGlite has one connection; the pool serializes transactions. This exercises
 // constraints and rollback, but is not a multi-instance advisory-lock load test.
 const source = fs.readFileSync(new URL('../server.js', import.meta.url),'utf8');
+// Keep the fixture independent from the caller's environment.
+process.env.IFOOD_MERCHANT_ID = 'shop';
 const db = new PGlite();
 const schema = source.split('await pool.query(`')[1].split('`);')[0];
 await db.exec(schema);
