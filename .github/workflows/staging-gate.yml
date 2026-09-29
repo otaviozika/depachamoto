@@ -119,7 +119,13 @@ jobs:
                 if(h.ifood.eventSyncEnabled!==false) throw new Error("iFood sync must be disabled in staging");
                 if(h.ifood.dispatchFlagEnabled!==false) throw new Error("iFood dispatch must be disabled in staging");
                 if(h.anotaai.automaticSyncEnabled!==false) throw new Error("Anota AI sync must be disabled in staging");
-                console.log("PASS - staging runtime safety");
+                if(h.status!=="healthy") throw new Error("clean staging health must be healthy: "+JSON.stringify(h));
+                if(h.components?.database?.status!=="healthy") throw new Error("database health must be healthy");
+                if(h.components?.queues?.status!=="healthy") throw new Error("queue health must be healthy");
+                if(h.components?.integrations?.status!=="protected") throw new Error("staging integrations must be protected");
+                if(h.components?.realtime?.status!=="healthy") throw new Error("realtime engine must be healthy");
+                if(!Array.isArray(h.criticalReasons)||h.criticalReasons.length!==0) throw new Error("unexpected critical health reasons");
+                console.log("PASS - staging runtime safety + operational health");
               '
               exit 0
             fi

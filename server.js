@@ -10394,10 +10394,12 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
 
   const criticalReasons = [];
   const attentionReasons = [];
+  const ifoodRequired = !STAGING_SAFE_MODE && (ifoodAutoEnabled() || ifoodDispatchEnabled());
+  const anotaRequired = !STAGING_SAFE_MODE && anotaAiAutoEnabled();
 
-  if (!ifoodConfigured()) criticalReasons.push("Credenciais iFood ausentes");
+  if (ifoodRequired && !ifoodConfigured()) criticalReasons.push("Credenciais iFood ausentes");
   if (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) criticalReasons.push("Proteção de produção iFood incompleta");
-  if (anotaAiAutoEnabled() && !anotaAiConfigured()) criticalReasons.push("Anota AI automático sem credenciais válidas");
+  if (anotaRequired && !anotaAiConfigured()) criticalReasons.push("Anota AI automático sem credenciais válidas");
   if (Number(ifoodQueue.failed || 0) > 0) criticalReasons.push(`${ifoodQueue.failed} falha(s) definitiva(s) no iFood`);
   if (Number(anotaQueue.dead || 0) > 0) criticalReasons.push(`${anotaQueue.dead} falha(s) definitiva(s) no Anota AI`);
   if (Number(ifoodQueue.stale_processing || 0) > 0) criticalReasons.push(`${ifoodQueue.stale_processing} job(s) iFood travado(s)`);
@@ -10422,7 +10424,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     critical ? "CRITICAL" : attention ? "ATTENTION" : "OPERATIONAL";
 
   const ifoodStatus = componentStatus({
-    critical: !ifoodConfigured() ||
+    critical: (ifoodRequired && !ifoodConfigured()) ||
       (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) ||
       Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
     attention: ifoodSyncStale || runtimeControl.dispatch_paused ||
@@ -10430,7 +10432,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
   });
 
   const anotaStatus = componentStatus({
-    critical: (anotaAiAutoEnabled() && !anotaAiConfigured()) ||
+    critical: (anotaRequired && !anotaAiConfigured()) ||
       Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
     attention: anotaSyncStale || Number(anotaQueue.retry || 0) > 0 ||
       Number(anotaQueue.overdue || 0) > 0
@@ -10443,7 +10445,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
 
   const exceptions = [];
 
-  if (!ifoodConfigured()) {
+  if (ifoodRequired && !ifoodConfigured()) {
     exceptions.push({
       key: "ifood:credentials-missing",
       source: "IFOOD",
@@ -10469,7 +10471,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     });
   }
 
-  if (anotaAiAutoEnabled() && !anotaAiConfigured()) {
+  if (anotaRequired && !anotaAiConfigured()) {
     exceptions.push({
       key: "anotaai:credentials-missing",
       source: "ANOTAAI",
@@ -11735,37 +11737,225 @@ app.get("/api/health", async (req, res) => {
   try {
     const started = Date.now();
     await pool.query("SELECT 1");
-    const ifoodControl = await getIfoodRuntimeControl().catch(() => ({ dispatch_paused: null }));
+    const dbLatencyMs = Date.now() - started;
+
+    const operational = (await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM ifood_dispatch_jobs WHERE status='FAILED') AS ifood_failed,
+        (SELECT COUNT(*)::int FROM ifood_dispatch_jobs WHERE status='RETRY') AS ifood_retry,
+        (SELECT COUNT(*)::int FROM ifood_dispatch_jobs
+          WHERE status='PROCESSING' AND locked_at < NOW()-INTERVAL '3 minutes') AS ifood_stale,
+        (SELECT COUNT(*)::int FROM ifood_dispatch_jobs
+          WHERE status IN ('PENDING','RETRY') AND next_attempt_at < NOW()-INTERVAL '2 minutes') AS ifood_overdue,
+        (SELECT COUNT(*)::int FROM anotaai_dispatch_links WHERE anotaai_dispatch_status='DEAD') AS anota_dead,
+        (SELECT COUNT(*)::int FROM anotaai_dispatch_links WHERE anotaai_dispatch_status='FAILED') AS anota_retry,
+        (SELECT COUNT(*)::int FROM anotaai_dispatch_links
+          WHERE anotaai_dispatch_status='PROCESSING'
+            AND processing_started_at < NOW()-INTERVAL '3 minutes') AS anota_stale,
+        (SELECT COUNT(*)::int FROM anotaai_dispatch_links
+          WHERE anotaai_dispatch_status IN ('PENDING','FAILED')
+            AND next_attempt_at < NOW()-INTERVAL '2 minutes') AS anota_overdue,
+        (SELECT COUNT(*)::int FROM system_errors
+          WHERE created_at >= NOW()-INTERVAL '15 minutes'
+            AND COALESCE(status_code,500) >= 500) AS errors_5xx_15m,
+        (SELECT COUNT(*)::int FROM operational_conflicts
+          WHERE resolved_at IS NULL AND severity='critical'
+            AND created_at >= NOW()-INTERVAL '3 hours') AS critical_conflicts,
+        (SELECT COUNT(*)::int FROM operational_conflicts
+          WHERE resolved_at IS NULL AND severity='warning'
+            AND created_at >= NOW()-INTERVAL '3 hours') AS warning_conflicts,
+        (SELECT COUNT(*)::int
+          FROM active_order_locks l
+          LEFT JOIN dispatches d ON d.id=l.dispatch_id
+          WHERE d.id IS NULL
+             OR (d.status='ON_ROAD' AND l.created_at < NOW()-INTERVAL '12 hours')
+             OR (
+               COALESCE(d.status,'') <> 'ON_ROAD'
+               AND COALESCE(d.return_source,'') NOT IN ('ADMIN_PENDING_DELIVERIES_OVERRIDE','LEGACY')
+             )) AS abnormal_locks,
+        COALESCE((SELECT dispatch_paused FROM ifood_runtime_control WHERE singleton=1),FALSE) AS ifood_dispatch_paused
+    `)).rows[0] || {};
+
+    const number = value => Number(value || 0);
+    const criticalReasons = [];
+    const degradedReasons = [];
+    const raise = (current, next) => {
+      const rank = { healthy: 0, degraded: 1, critical: 2 };
+      return rank[next] > rank[current] ? next : current;
+    };
+
+    const ifoodAuto = ifoodAutoEnabled();
+    const ifoodDispatch = ifoodDispatchEnabled();
+    const anotaAuto = anotaAiAutoEnabled();
+    const ifoodRequired = !STAGING_SAFE_MODE && (ifoodAuto || ifoodDispatch);
+    const anotaRequired = !STAGING_SAFE_MODE && anotaAuto;
+
+    let databaseStatus = "healthy";
+    if (dbLatencyMs >= 1500) {
+      databaseStatus = "critical";
+      criticalReasons.push(`Latência crítica do banco: ${dbLatencyMs} ms`);
+    } else if (dbLatencyMs > 250 || pool.waitingCount > 0) {
+      databaseStatus = "degraded";
+      if (dbLatencyMs > 250) degradedReasons.push(`Latência elevada do banco: ${dbLatencyMs} ms`);
+      if (pool.waitingCount > 0) degradedReasons.push(`${pool.waitingCount} conexão(ões) aguardando no pool`);
+    }
+
+    let queueStatus = "healthy";
+    const terminalQueue = number(operational.ifood_failed) + number(operational.anota_dead);
+    const staleQueue = number(operational.ifood_stale) + number(operational.anota_stale);
+    const delayedQueue = number(operational.ifood_retry) + number(operational.anota_retry) +
+      number(operational.ifood_overdue) + number(operational.anota_overdue);
+    if (terminalQueue > 0 || staleQueue > 0) {
+      queueStatus = "critical";
+      if (terminalQueue > 0) criticalReasons.push(`${terminalQueue} job(s) em falha terminal`);
+      if (staleQueue > 0) criticalReasons.push(`${staleQueue} job(s) travado(s) em processamento`);
+    } else if (delayedQueue > 0) {
+      queueStatus = "degraded";
+      degradedReasons.push(`${delayedQueue} job(s) em retry ou vencido(s)`);
+    }
+
+    let integrationStatus = STAGING_SAFE_MODE ? "protected" : "healthy";
+    if (!STAGING_SAFE_MODE) {
+      if (ifoodRequired && !ifoodConfigured()) {
+        integrationStatus = "critical";
+        criticalReasons.push("Integração iFood habilitada sem credenciais completas");
+      }
+      if (anotaRequired && !anotaAiConfigured()) {
+        integrationStatus = "critical";
+        criticalReasons.push("Integração Anota AI habilitada sem credenciais completas");
+      }
+      if (ifoodDispatch && !ifoodProductionSafetyReady()) {
+        integrationStatus = "critical";
+        criticalReasons.push("Proteção de produção iFood incompleta");
+      }
+      if (operational.ifood_dispatch_paused && integrationStatus !== "critical") {
+        integrationStatus = "degraded";
+        degradedReasons.push("Despacho iFood está pausado");
+      }
+    }
+
+    let applicationStatus = "healthy";
+    if (number(operational.critical_conflicts) > 0) {
+      applicationStatus = "critical";
+      criticalReasons.push(`${number(operational.critical_conflicts)} conflito(s) crítico(s) aberto(s)`);
+    } else if (
+      number(operational.errors_5xx_15m) > 0 ||
+      number(operational.warning_conflicts) > 0 ||
+      number(operational.abnormal_locks) > 0
+    ) {
+      applicationStatus = "degraded";
+      if (number(operational.errors_5xx_15m) > 0) degradedReasons.push(`${number(operational.errors_5xx_15m)} erro(s) 5xx nos últimos 15 min`);
+      if (number(operational.warning_conflicts) > 0) degradedReasons.push(`${number(operational.warning_conflicts)} conflito(s) em atenção`);
+      if (number(operational.abnormal_locks) > 0) degradedReasons.push(`${number(operational.abnormal_locks)} lock(s) operacional(is) anormal(is)`);
+    }
+
+    const realtimeStatus = io.engine ? "healthy" : "degraded";
+    if (realtimeStatus === "degraded") degradedReasons.push("Motor WebSocket indisponível");
+
+    let status = "healthy";
+    status = raise(status, databaseStatus);
+    status = raise(status, queueStatus);
+    status = raise(status, integrationStatus === "protected" ? "healthy" : integrationStatus);
+    status = raise(status, applicationStatus);
+    status = raise(status, realtimeStatus);
+
+    const mem = process.memoryUsage();
 
     res.json({
       ok: true,
+      status,
       database: "connected",
-      dbLatencyMs: Date.now() - started,
+      dbLatencyMs,
       time: new Date().toISOString(),
       version: VERSION,
       environment: APP_ENV,
       stagingSafeMode: STAGING_SAFE_MODE,
       externalMutationsAllowed: !STAGING_SAFE_MODE,
+      criticalReasons,
+      degradedReasons,
+      components: {
+        database: {
+          status: databaseStatus,
+          latencyMs: dbLatencyMs,
+          pool: {
+            total: pool.totalCount,
+            idle: pool.idleCount,
+            waiting: pool.waitingCount,
+            max: Number(process.env.DB_POOL_MAX || 20)
+          }
+        },
+        queues: {
+          status: queueStatus,
+          ifood: {
+            failed: number(operational.ifood_failed),
+            retry: number(operational.ifood_retry),
+            stale: number(operational.ifood_stale),
+            overdue: number(operational.ifood_overdue)
+          },
+          anotaai: {
+            dead: number(operational.anota_dead),
+            retry: number(operational.anota_retry),
+            stale: number(operational.anota_stale),
+            overdue: number(operational.anota_overdue)
+          }
+        },
+        integrations: {
+          status: integrationStatus,
+          externalMutationsAllowed: !STAGING_SAFE_MODE
+        },
+        application: {
+          status: applicationStatus,
+          errors5xxLast15m: number(operational.errors_5xx_15m),
+          criticalConflicts: number(operational.critical_conflicts),
+          warningConflicts: number(operational.warning_conflicts),
+          abnormalLocks: number(operational.abnormal_locks),
+          memory: {
+            rssMb: Math.round(mem.rss / 1024 / 1024),
+            heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024)
+          }
+        },
+        realtime: {
+          status: realtimeStatus,
+          connectedClients: Number(io.engine?.clientsCount || 0)
+        }
+      },
       ifood: {
         configured: ifoodConfigured(),
         environment: ifoodEnvironment(),
-        eventSyncEnabled: ifoodAutoEnabled(),
-        dispatchFlagEnabled: ifoodDispatchEnabled(),
-        dispatchPaused: ifoodControl.dispatch_paused,
+        eventSyncEnabled: ifoodAuto,
+        dispatchFlagEnabled: ifoodDispatch,
+        dispatchPaused: Boolean(operational.ifood_dispatch_paused),
         productionSafetyReady: ifoodProductionSafetyReady()
       },
       anotaai: {
         configured: anotaAiConfigured(),
-        automaticSyncEnabled: anotaAiAutoEnabled(),
+        automaticSyncEnabled: anotaAuto,
         syncing: anotaAiSyncRunning
       }
     });
   } catch (err) {
     res.status(503).json({
       ok: false,
+      status: "critical",
       database: "unavailable",
+      dbLatencyMs: null,
       time: new Date().toISOString(),
-      version: VERSION
+      version: VERSION,
+      environment: APP_ENV,
+      stagingSafeMode: STAGING_SAFE_MODE,
+      externalMutationsAllowed: !STAGING_SAFE_MODE,
+      criticalReasons: ["Banco de dados indisponível"],
+      degradedReasons: [],
+      components: {
+        database: { status: "critical", latencyMs: null },
+        queues: { status: "unknown" },
+        integrations: { status: STAGING_SAFE_MODE ? "protected" : "unknown" },
+        application: { status: "unknown" },
+        realtime: {
+          status: io.engine ? "healthy" : "degraded",
+          connectedClients: Number(io.engine?.clientsCount || 0)
+        }
+      }
     });
   }
 });
