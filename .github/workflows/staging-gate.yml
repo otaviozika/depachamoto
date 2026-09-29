@@ -1,6 +1,8 @@
 name: Staging release gate
 
 on:
+  pull_request:
+    branches: [staging, main]
   push:
     branches: [staging]
   workflow_dispatch:
