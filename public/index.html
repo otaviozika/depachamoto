@@ -12,6 +12,8 @@
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#718096;--line:#e5e7eb;--primary:#f59e0b;--dark:#111827;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--yellow:#ca8a04;--blue:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.08)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}button,input{font:inherit}.hidden{display:none!important}.muted{color:var(--muted)}.small{font-size:12px}
+.environment-banner{position:sticky;top:0;z-index:10001;padding:8px 14px;text-align:center;font-size:12px;font-weight:950;letter-spacing:.8px;text-transform:uppercase;background:#f59e0b;color:#111827;border-bottom:1px solid #d97706}
+.environment-banner strong{margin-right:7px}.environment-banner .safe{display:inline-block;margin-left:7px;padding:2px 6px;border-radius:999px;background:#111827;color:#fff;font-size:10px}
 .session-boot{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:#080b10;color:#f4f6f8}
 .session-boot-card{display:grid;justify-items:center;gap:16px;text-align:center}
 .session-boot-logo{width:min(230px,68vw);height:auto}
@@ -961,6 +963,7 @@
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 </head>
 <body>
+<div id="environmentBanner" class="environment-banner hidden" role="status" aria-live="polite"></div>
 <div id="sessionBoot" class="session-boot" role="status" aria-live="polite">
   <div class="session-boot-card">
     <img class="session-boot-logo" src="/brand-wordmark-light.png" alt="DespacheFull">
@@ -2193,6 +2196,15 @@ async function loadPublicConfig(){
     $('registrationNotice').textContent=d.registrationEnabled
       ? 'Cadastro aberto: novos acessos precisam de aprovação.'
       : 'Cadastro público temporariamente fechado.';
+
+    const env=String(d.environment||'').toLowerCase();
+    const isStaging=env==='staging'||d.stagingSafeMode===true;
+    if($('environmentBanner')){
+      $('environmentBanner').classList.toggle('hidden',!isStaging);
+      $('environmentBanner').innerHTML=isStaging
+        ? '<strong>AMBIENTE DE HOMOLOGAÇÃO</strong> dados isolados <span class="safe">INTEGRAÇÕES REAIS BLOQUEADAS</span>'
+        : '';
+    }
   }catch{}
 }
 
