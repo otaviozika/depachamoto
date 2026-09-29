@@ -4737,8 +4737,8 @@ async function loadHealthCenter({silent=false}={}){
         `${Number(sv.dbLatencyMs||0)} ms`,
         `Uptime: ${healthUptimeLabel(sv.uptimeSeconds)} • DB ${sv.pool?.total||0}/${sv.pool?.max||0} • RAM ${sv.memory?.rssMb||0} MB`),
       healthComponentCard('Operação',op.status,
-        `${Number(op.conflicts?.open||0)} conflito(s)`,
-        `${Number(op.conflicts?.critical_open||0)} crítico(s) • ${Number(op.abnormalLocks||0)} lock(s) anormal(is)`)
+        `${Number(op.conflicts?.open||0)} conflito(s) atual(is)`,
+        `${Number(op.conflicts?.critical_open||0)} crítico(s) • ${Number(op.abnormalLocks||0)} lock(s) anormal(is) • backlog histórico: ${Number(op.conflicts?.backlog_open||0)}`)
     ].join('');
 
     $('healthQueueSummary').innerHTML=`
