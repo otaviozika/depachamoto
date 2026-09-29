@@ -5058,9 +5058,11 @@ async function createDispatchTransaction({
 
     if (append && !activeDispatch.rowCount) throw Object.assign(new Error("Não há rota ativa. Atualize a tela."), { status: 409 });
     const existingRoute = (append || recovery) ? activeDispatch.rows[0] : null;
-    if (existingRoute && !existingRoute.trace_id) {
-      existingRoute.trace_id = normalizeTraceId(traceId);
-      await client.query("UPDATE dispatches SET trace_id=$2 WHERE id=$1 AND trace_id IS NULL", [existingRoute.id, existingRoute.trace_id]);
+    if (existingRoute && !existingRoute.trace_id && traceId) {
+      existingRoute.trace_id = String(traceId).trim().slice(0, 100) || null;
+      if (existingRoute.trace_id) {
+        await client.query("UPDATE dispatches SET trace_id=$2 WHERE id=$1 AND trace_id IS NULL", [existingRoute.id, existingRoute.trace_id]);
+      }
     }
     if (existingRoute && operationalStage(existingRoute.operational_stage) === 'RETURNING') {
       throw Object.assign(new Error("A rota está retornando. Não é possível adicionar pedidos."), { status: 409 });
@@ -5161,7 +5163,7 @@ async function createDispatchTransaction({
       adminReason || null,
       clientToken || null,
       effectiveDeparture,
-      normalizeTraceId(traceId),
+      traceId ? String(traceId).trim().slice(0, 100) || null : null,
       routeSlaMinutes,
       returnSlaMinutes
     ]);
