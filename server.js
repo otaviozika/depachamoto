@@ -285,7 +285,7 @@ ADD COLUMN IF NOT EXISTS operational_date DATE;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS shift_code TEXT;
 
-DO $
+DO $dispatch_shift_constraint$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -296,7 +296,7 @@ BEGIN
       ADD CONSTRAINT dispatches_shift_code_check
       CHECK (shift_code IS NULL OR shift_code IN ('LUNCH','DINNER'));
   END IF;
-END $;
+END $dispatch_shift_constraint$;
 
 CREATE INDEX IF NOT EXISTS dispatches_operational_shift_idx
 ON dispatches(operational_date,shift_code,courier_id);
