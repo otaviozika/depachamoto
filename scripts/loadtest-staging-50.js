@@ -114,7 +114,7 @@ async function seedIfoodFixture(orderNumber) {
       updated_at=NOW()
   `, [
     orderId,
-    orderNumber,
+    normalized,
     STAGING_MERCHANT_ID,
     JSON.stringify({ staging_fixture: true, run: RUN })
   ]);
