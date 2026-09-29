@@ -38,6 +38,9 @@ const statusCounts = {};
 let created = 0;
 let duplicateReplays = 0;
 let releases = 0;
+let sampleDispatchId = null;
+let sampleTraceId = null;
+let traceEventsVerified = 0;
 
 const headers = () => ({
   "content-type": "application/json",
@@ -103,6 +106,7 @@ async function cleanup() {
   if (!userIds.length) return;
   await pool.query("BEGIN");
   try {
+    await pool.query("DELETE FROM operational_events WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM operational_conflicts WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM notifications WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM active_order_locks WHERE courier_id=ANY($1::int[])", [userIds]);
@@ -176,6 +180,14 @@ try {
         failures.push(`manual-c${courierId}-n${cycle}:missing-dispatch`);
         return;
       }
+      if (!body.dispatch?.trace_id) {
+        failures.push(`manual-c${courierId}-n${cycle}:missing-trace-id`);
+        return;
+      }
+      if (!sampleDispatchId) {
+        sampleDispatchId = dispatchId;
+        sampleTraceId = String(body.dispatch.trace_id);
+      }
       created++;
 
       if (cycle === 1) {
@@ -203,6 +215,20 @@ try {
       else releases++;
     }));
   }
+
+  if (sampleDispatchId && sampleTraceId) {
+    const traceRes = await call(`/api/admin/trace?dispatch_id=${sampleDispatchId}`, adminCookie);
+    if (!traceRes.ok) failures.push(`trace-endpoint:HTTP${traceRes.status}:${await traceRes.text()}`);
+    else {
+      const traceBody = await traceRes.json();
+      const names = new Set((traceBody.events || []).map(event => event.event_name));
+      if (traceBody.trace_id !== sampleTraceId) failures.push("trace-id-mismatch");
+      if (!names.has("dispatch.created")) failures.push("trace-missing-dispatch-created");
+      if (!names.has("dispatch.released")) failures.push("trace-missing-dispatch-released");
+      if ((traceBody.events || []).some(event => JSON.stringify(event).includes(TEST_PASSWORD))) failures.push("trace-secret-leak");
+      traceEventsVerified = (traceBody.events || []).length;
+    }
+  } else failures.push("trace-sample-not-created");
 
   const raceOrder = `#7${RUN}77`;
   const race = await Promise.all(userIds.map(async courierId => {
@@ -251,6 +277,7 @@ try {
     },
     profile: { couriers: COURIERS, departuresPerCourier: DEPARTURES, expectedDepartures: expected },
     flow: { created, duplicateReplays, releases },
+    tracing: { sampleDispatchId, sampleTraceId, eventsVerified: traceEventsVerified },
     duplicateRace: {
       order: raceOrder,
       attempts: COURIERS,

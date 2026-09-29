@@ -79,7 +79,9 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
   req.requestId = crypto.randomUUID();
+  req.traceId = req.requestId;
   res.setHeader("X-Request-Id", req.requestId);
+  res.setHeader("X-Trace-Id", req.traceId);
   next();
 });
 
@@ -252,6 +254,10 @@ ADD COLUMN IF NOT EXISTS closed_reason TEXT;
 ALTER TABLE dispatches
 ADD COLUMN IF NOT EXISTS client_token TEXT;
 
+-- v3.8: correlação operacional persistente para atravessar requests e workers.
+ALTER TABLE dispatches
+ADD COLUMN IF NOT EXISTS trace_id TEXT;
+
 -- v2.7: ciclo operacional da rota e snapshots de SLA.
 -- Mantemos status ON_ROAD/RELEASED para compatibilidade com todas as versões anteriores.
 ALTER TABLE dispatches
@@ -391,6 +397,30 @@ CREATE TABLE IF NOT EXISTS system_errors (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE system_errors
+ADD COLUMN IF NOT EXISTS trace_id TEXT;
+
+CREATE TABLE IF NOT EXISTS operational_events (
+  id BIGSERIAL PRIMARY KEY,
+  trace_id TEXT NOT NULL,
+  request_id TEXT,
+  event_name TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'info',
+  source TEXT NOT NULL DEFAULT 'app',
+  platform TEXT,
+  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE SET NULL,
+  order_id TEXT,
+  order_number TEXT,
+  courier_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  attempt INTEGER,
+  status TEXT,
+  error_code TEXT,
+  message TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (level IN ('debug','info','warning','error','critical'))
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS dispatches_client_token_unique_idx
 ON dispatches(client_token) WHERE client_token IS NOT NULL;
 
@@ -411,6 +441,18 @@ CREATE INDEX IF NOT EXISTS audit_logs_created_idx
 ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS system_errors_created_idx
 ON system_errors(created_at DESC);
+CREATE INDEX IF NOT EXISTS system_errors_trace_idx
+ON system_errors(trace_id,created_at DESC) WHERE trace_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS dispatches_trace_idx
+ON dispatches(trace_id) WHERE trace_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS operational_events_trace_idx
+ON operational_events(trace_id,created_at,id);
+CREATE INDEX IF NOT EXISTS operational_events_dispatch_idx
+ON operational_events(dispatch_id,created_at,id) WHERE dispatch_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS operational_events_order_idx
+ON operational_events(order_number,created_at DESC) WHERE order_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS operational_events_created_idx
+ON operational_events(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_presence (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -1317,6 +1359,125 @@ async function audit(userId, action, entity, entityId, details = {}) {
   );
 }
 
+function normalizeTraceId(value = null) {
+  const raw = String(value || "").trim();
+  if (/^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(raw)) return raw;
+  return crypto.randomUUID();
+}
+
+function redactOperationalText(value, max = 800) {
+  let text = String(value ?? "");
+  const sensitive = Object.entries(process.env)
+    .filter(([key, secret]) =>
+      secret && String(secret).length >= 4 &&
+      /(SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY|DATABASE_URL|AUTH)/i.test(key)
+    )
+    .map(([, secret]) => String(secret))
+    .sort((a, b) => b.length - a.length);
+  for (const secret of sensitive) text = text.replaceAll(secret, "[REDACTED]");
+  return text.slice(0, max);
+}
+
+function sanitizeOperationalMetadata(value, depth = 0) {
+  if (depth > 4 || value == null) return value == null ? null : "[TRUNCATED]";
+  if (Array.isArray(value)) return value.slice(0, 20).map(item => sanitizeOperationalMetadata(item, depth + 1));
+  if (typeof value !== "object") return typeof value === "string" ? redactOperationalText(value, 500) : value;
+  const out = {};
+  for (const [key, item] of Object.entries(value).slice(0, 40)) {
+    if (/(password|secret|token|authorization|cookie|delivery.?code|address|customer|payment|payload|response|body)/i.test(key)) {
+      out[key] = "[REDACTED]";
+      continue;
+    }
+    out[key] = sanitizeOperationalMetadata(item, depth + 1);
+  }
+  return out;
+}
+
+async function getDispatchTraceContext(dispatchId, preferredTraceId = null) {
+  const id = Number(dispatchId);
+  if (!Number.isInteger(id) || id <= 0) return { traceId: normalizeTraceId(preferredTraceId), courierId: null };
+  let row = (await pool.query("SELECT trace_id,courier_id FROM dispatches WHERE id=$1", [id])).rows[0];
+  if (!row) return { traceId: normalizeTraceId(preferredTraceId), courierId: null };
+  if (!row.trace_id) {
+    const traceId = normalizeTraceId(preferredTraceId);
+    row = (await pool.query(
+      "UPDATE dispatches SET trace_id=$2 WHERE id=$1 AND trace_id IS NULL RETURNING trace_id,courier_id",
+      [id, traceId]
+    )).rows[0] || { ...row, trace_id: traceId };
+  }
+  return { traceId: row.trace_id, courierId: Number(row.courier_id) || null };
+}
+
+async function operationalEventBestEffort({
+  traceId = null, requestId = null, eventName, level = "info", source = "app",
+  platform = null, dispatchId = null, orderId = null, orderNumber = null,
+  courierId = null, attempt = null, status = null, errorCode = null,
+  message = null, metadata = {}
+}) {
+  const safeLevel = ["debug","info","warning","error","critical"].includes(String(level)) ? String(level) : "info";
+  try {
+    let resolvedTrace = traceId ? normalizeTraceId(traceId) : null;
+    let resolvedCourier = Number(courierId) || null;
+    if (dispatchId && (!resolvedTrace || !resolvedCourier)) {
+      const context = await getDispatchTraceContext(dispatchId, resolvedTrace);
+      resolvedTrace = resolvedTrace || context.traceId;
+      resolvedCourier = resolvedCourier || context.courierId;
+    }
+    resolvedTrace = resolvedTrace || normalizeTraceId();
+    const event = {
+      log_type: "operational_event",
+      trace_id: resolvedTrace,
+      request_id: requestId ? String(requestId).slice(0, 100) : null,
+      event_name: String(eventName || "unknown").slice(0, 120),
+      level: safeLevel,
+      source: String(source || "app").slice(0, 80),
+      platform: platform ? String(platform).slice(0, 30) : null,
+      dispatch_id: Number(dispatchId) || null,
+      order_id: orderId ? String(orderId).slice(0, 120) : null,
+      order_number: orderNumber ? String(orderNumber).slice(0, 60) : null,
+      courier_id: resolvedCourier,
+      attempt: Number.isFinite(Number(attempt)) ? Number(attempt) : null,
+      status: status ? String(status).slice(0, 80) : null,
+      error_code: errorCode ? String(errorCode).slice(0, 120) : null,
+      message: message ? redactOperationalText(message, 800) : null,
+      metadata: sanitizeOperationalMetadata(metadata),
+      timestamp: new Date().toISOString()
+    };
+    console.log(JSON.stringify(event));
+    await pool.query(`
+      INSERT INTO operational_events(
+        trace_id,request_id,event_name,level,source,platform,dispatch_id,
+        order_id,order_number,courier_id,attempt,status,error_code,message,metadata
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)
+    `, [
+      event.trace_id,event.request_id,event.event_name,event.level,event.source,event.platform,
+      event.dispatch_id,event.order_id,event.order_number,event.courier_id,event.attempt,
+      event.status,event.error_code,event.message,JSON.stringify(event.metadata || {})
+    ]);
+    return event;
+  } catch (err) {
+    console.error(JSON.stringify({
+      log_type: "operational_event_write_failed",
+      event_name: String(eventName || "unknown").slice(0, 120),
+      message: redactOperationalText(err?.message || err, 500),
+      timestamp: new Date().toISOString()
+    }));
+    return null;
+  }
+}
+
+async function cleanupOperationalEvents() {
+  try {
+    await pool.query("DELETE FROM operational_events WHERE created_at < NOW()-INTERVAL '30 days'");
+  } catch (err) {
+    console.error(JSON.stringify({
+      log_type: "operational_event_cleanup_failed",
+      message: redactOperationalText(err?.message || err, 500),
+      timestamp: new Date().toISOString()
+    }));
+  }
+}
+
 const anotaAiClient = createAnotaAiClient({
   clientId: process.env.ANOTAAI_CLIENT_ID,
   clientSecret: process.env.ANOTAAI_CLIENT_SECRET,
@@ -1709,6 +1870,18 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
     order_number: job.local_order_number,
     endpoint_action: "FINALIZE"
   });
+  await operationalEventBestEffort({
+    traceId: job.trace_id,
+    eventName: "anotaai.dispatch.sent",
+    source: "anotaai_worker",
+    platform: "anotaai",
+    dispatchId: job.dispatch_id,
+    orderId: job.order_id,
+    orderNumber: job.local_order_number,
+    courierId: job.courier_id,
+    attempt: job.attempts,
+    status: "SENT"
+  });
 
   emitRealtime("anotaai:changed", {
     change: "ANOTAAI_DISPATCH_SENT",
@@ -1784,7 +1957,7 @@ async function runAnotaAiDispatchWorkerOnce() {
         a.status AS order_status,
         a.status_code,
         a.order_type,
-        d.departed_at
+        d.departed_at,d.trace_id,d.courier_id
       FROM anotaai_dispatch_links l
       JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
       JOIN dispatches d ON d.id=l.dispatch_id
@@ -1813,6 +1986,18 @@ async function runAnotaAiDispatchWorkerOnce() {
 
       if (!claim) continue;
       const attempts = Number(claim.attempts || 1);
+      await operationalEventBestEffort({
+        traceId: job.trace_id,
+        eventName: "anotaai.dispatch.claimed",
+        source: "anotaai_worker",
+        platform: "anotaai",
+        dispatchId: job.dispatch_id,
+        orderId: job.order_id,
+        orderNumber: job.local_order_number,
+        courierId: job.courier_id,
+        attempt: attempts,
+        status: "PROCESSING"
+      });
 
       try {
         if (String(job.order_status || "").toUpperCase() === "FINISHED" || Number(job.status_code) === 3) {
@@ -1892,6 +2077,23 @@ async function runAnotaAiDispatchWorkerOnce() {
             error: errorText
           });
         }
+
+        await operationalEventBestEffort({
+          traceId: job.trace_id,
+          eventName: retryAllowed ? "anotaai.dispatch.retry" : "anotaai.dispatch.dead",
+          level: retryAllowed ? "warning" : "critical",
+          source: "anotaai_worker",
+          platform: "anotaai",
+          dispatchId: job.dispatch_id,
+          orderId: job.order_id,
+          orderNumber: job.local_order_number,
+          courierId: job.courier_id,
+          attempt: attempts,
+          status: nextStatus,
+          errorCode: error?.code || error?.statusCode || null,
+          message: errorText,
+          metadata: { retry_cycle: Math.max(1, Number(job.retry_cycle) || 1), retry_in_seconds: retryAllowed ? backoff : null }
+        });
 
         emitRealtime("anotaai:changed", {
           change: retryAllowed ? "ANOTAAI_DISPATCH_RETRY" : "ANOTAAI_DISPATCH_DEAD",
@@ -2298,6 +2500,15 @@ async function claimIfoodDispatchJob(orderId = null) {
 }
 
 async function markIfoodDispatchDone(orderId, lifecycleStatus = null) {
+  const context = (await pool.query(`
+    SELECT j.dispatch_id,j.attempts,d.trace_id,d.courier_id,l.local_order_number
+    FROM ifood_dispatch_jobs j
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
+    LEFT JOIN dispatches d ON d.id=j.dispatch_id
+    WHERE j.ifood_order_id=$1
+    LIMIT 1
+  `, [String(orderId)])).rows[0] || {};
+
   const linkStatus = lifecycleStatus === "DISPATCHED"
     ? "DISPATCHED"
     : ["CONCLUDED","DELIVERED"].includes(lifecycleStatus)
@@ -2320,10 +2531,33 @@ async function markIfoodDispatchDone(orderId, lifecycleStatus = null) {
     WHERE ifood_order_id=$1
   `, [String(orderId), linkStatus]);
 
+  await operationalEventBestEffort({
+    traceId: context.trace_id,
+    eventName: "ifood.dispatch.completed",
+    source: "ifood_worker",
+    platform: "ifood",
+    dispatchId: context.dispatch_id,
+    orderId: String(orderId),
+    orderNumber: context.local_order_number,
+    courierId: context.courier_id,
+    attempt: context.attempts,
+    status: linkStatus,
+    metadata: { lifecycle_status: lifecycleStatus }
+  });
+
   return { ok: true, alreadyDone: true, orderId: String(orderId), lifecycleStatus, linkStatus };
 }
 
 async function failIfoodDispatchJob(orderId, reason, httpStatus = null) {
+  const context = (await pool.query(`
+    SELECT j.dispatch_id,j.attempts,d.trace_id,d.courier_id,l.local_order_number
+    FROM ifood_dispatch_jobs j
+    LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
+    LEFT JOIN dispatches d ON d.id=j.dispatch_id
+    WHERE j.ifood_order_id=$1
+    LIMIT 1
+  `, [String(orderId)])).rows[0] || {};
+
   await pool.query(`
     UPDATE ifood_dispatch_jobs SET
       status='FAILED',
@@ -2340,6 +2574,22 @@ async function failIfoodDispatchJob(orderId, reason, httpStatus = null) {
     WHERE ifood_order_id=$1
   `, [String(orderId)]);
 
+  await operationalEventBestEffort({
+    traceId: context.trace_id,
+    eventName: "ifood.dispatch.failed",
+    level: "critical",
+    source: "ifood_worker",
+    platform: "ifood",
+    dispatchId: context.dispatch_id,
+    orderId: String(orderId),
+    orderNumber: context.local_order_number,
+    courierId: context.courier_id,
+    attempt: context.attempts,
+    status: "FAILED",
+    errorCode: httpStatus || null,
+    message: String(reason)
+  });
+
   emitRealtime("ifood:changed");
   return { ok: false, failed: true, orderId: String(orderId), error: String(reason) };
 }
@@ -2352,7 +2602,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       j.ifood_order_id,j.dispatch_id,j.status,j.attempts,
       o.display_id,o.merchant_id,o.status AS order_status,o.order_type,o.delivered_by,o.is_test,
       l.local_order_number,l.ifood_dispatch_status,
-      d.departed_at,u.name AS courier_name
+      d.departed_at,d.trace_id,d.courier_id,u.name AS courier_name
     FROM ifood_dispatch_jobs j
     JOIN ifood_orders o ON o.order_id=j.ifood_order_id
     JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
@@ -2365,6 +2615,19 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
   if (!data) {
     return failIfoodDispatchJob(job.ifood_order_id, "Vínculo iFood/local não encontrado.");
   }
+
+  await operationalEventBestEffort({
+    traceId: data.trace_id,
+    eventName: "ifood.dispatch.claimed",
+    source: "ifood_worker",
+    platform: "ifood",
+    dispatchId: data.dispatch_id,
+    orderId: job.ifood_order_id,
+    orderNumber: data.local_order_number,
+    courierId: data.courier_id,
+    attempt: job.attempts,
+    status: "PROCESSING"
+  });
 
   if (manualTest && data.is_test !== true) {
     await pool.query(`
@@ -2456,6 +2719,20 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       uniqueKey: `ifood-dispatch-accepted:${job.ifood_order_id}`
     }).catch(() => {});
 
+    await operationalEventBestEffort({
+      traceId: data.trace_id,
+      eventName: "ifood.dispatch.sent",
+      source: "ifood_worker",
+      platform: "ifood",
+      dispatchId: data.dispatch_id,
+      orderId: job.ifood_order_id,
+      orderNumber: data.local_order_number,
+      courierId: data.courier_id,
+      attempt: job.attempts,
+      status: "SENT",
+      metadata: { http_status: response.status }
+    });
+
     emitRealtime("ifood:changed");
 
     return {
@@ -2498,6 +2775,23 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
         SET ifood_dispatch_status='RETRY'
         WHERE ifood_order_id=$1
       `, [job.ifood_order_id]);
+
+      await operationalEventBestEffort({
+        traceId: data.trace_id,
+        eventName: "ifood.dispatch.retry",
+        level: "warning",
+        source: "ifood_worker",
+        platform: "ifood",
+        dispatchId: data.dispatch_id,
+        orderId: job.ifood_order_id,
+        orderNumber: data.local_order_number,
+        courierId: data.courier_id,
+        attempt: attempts,
+        status: "RETRY",
+        errorCode: err?.code || err?.statusCode || null,
+        message: errorText,
+        metadata: { retry_in_seconds: backoff, http_status: err?.statusCode || null }
+      });
 
       emitRealtime("ifood:changed");
 
@@ -4244,15 +4538,16 @@ function normalizeQueuedDepartureTime(value) {
 async function recordSystemError(req, statusCode, err) {
   try {
     await pool.query(`
-      INSERT INTO system_errors(request_id,method,path,status_code,message,stack_preview)
-      VALUES($1,$2,$3,$4,$5,$6)
+      INSERT INTO system_errors(request_id,trace_id,method,path,status_code,message,stack_preview)
+      VALUES($1,$2,$3,$4,$5,$6,$7)
     `, [
       req?.requestId || null,
+      req?.traceId || req?.requestId || null,
       req?.method || null,
       String(req?.originalUrl || req?.url || "").slice(0, 500),
       statusCode || 500,
-      String(err?.message || "Erro interno").slice(0, 1000),
-      String(err?.stack || "").slice(0, 3000)
+      redactOperationalText(err?.message || "Erro interno", 1000),
+      redactOperationalText(err?.stack || "", 3000)
     ]);
   } catch {}
 }
@@ -4714,7 +5009,8 @@ async function createDispatchTransaction({
   ifoodLinks = [],
   anotaAiLinks = [],
   append = false,
-  recovery = false
+  recovery = false,
+  traceId = null
 }) {
   const operationalSla = await getOperationalSlaSettings();
   const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
@@ -4726,6 +5022,7 @@ async function createDispatchTransaction({
     if (clientToken) {
       const existing = await client.query(`
         SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+               d.trace_id,d.courier_id,
                ${orderArraySql("d")}
         FROM dispatches d
         WHERE d.client_token=$1
@@ -4743,7 +5040,7 @@ async function createDispatchTransaction({
     await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
 
     const activeDispatch = await client.query(`
-      SELECT id,dispatch_code,departed_at,operational_date,shift_code,operational_stage,returning_at
+      SELECT id,dispatch_code,departed_at,operational_date,shift_code,operational_stage,returning_at,trace_id,courier_id
       FROM dispatches
       WHERE courier_id=$1 AND status='ON_ROAD'
       ORDER BY departed_at DESC,id DESC
@@ -4761,6 +5058,10 @@ async function createDispatchTransaction({
 
     if (append && !activeDispatch.rowCount) throw Object.assign(new Error("Não há rota ativa. Atualize a tela."), { status: 409 });
     const existingRoute = (append || recovery) ? activeDispatch.rows[0] : null;
+    if (existingRoute && !existingRoute.trace_id) {
+      existingRoute.trace_id = normalizeTraceId(traceId);
+      await client.query("UPDATE dispatches SET trace_id=$2 WHERE id=$1 AND trace_id IS NULL", [existingRoute.id, existingRoute.trace_id]);
+    }
     if (existingRoute && operationalStage(existingRoute.operational_stage) === 'RETURNING') {
       throw Object.assign(new Error("A rota está retornando. Não é possível adicionar pedidos."), { status: 409 });
     }
@@ -4844,13 +5145,13 @@ async function createDispatchTransaction({
     const result = existingRoute ? { rows: [existingRoute] } : await client.query(`
       INSERT INTO dispatches(
         dispatch_code,order_number,courier_id,
-        registered_by,registration_source,admin_reason,client_token,departed_at,
+        registered_by,registration_source,admin_reason,client_token,departed_at,trace_id,
         operational_stage,route_sla_minutes,return_sla_minutes
       )
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,'EN_ROUTE',$9,$10)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9,'EN_ROUTE',$10,$11)
       RETURNING id,dispatch_code,order_number,departed_at,status,operational_stage,
                 route_sla_minutes,return_sla_minutes,
-                registered_by,registration_source,admin_reason
+                registered_by,registration_source,admin_reason,trace_id,courier_id
     `, [
       code,
       orders[0],
@@ -4860,6 +5161,7 @@ async function createDispatchTransaction({
       adminReason || null,
       clientToken || null,
       effectiveDeparture,
+      normalizeTraceId(traceId),
       routeSlaMinutes,
       returnSlaMinutes
     ]);
@@ -4952,6 +5254,7 @@ async function createDispatchTransaction({
     ) {
       const existing = await client.query(`
         SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+               d.trace_id,d.courier_id,
                ${orderArraySql("d")}
         FROM dispatches d
         WHERE d.client_token=$1
@@ -5230,6 +5533,15 @@ async function markDispatchReturning(dispatchId, { actorUserId = null, source = 
   if (actorUserId) {
     await auditBestEffort(actorUserId, "DISPATCH_RETURN_STARTED", "dispatch", dispatchId, { source, reason });
   }
+  await operationalEventBestEffort({
+    traceId: q.rows[0].trace_id,
+    eventName: "dispatch.returning",
+    source,
+    dispatchId: q.rows[0].id,
+    courierId: q.rows[0].courier_id,
+    status: "RETURNING",
+    metadata: { reason }
+  });
   emitRealtime("dispatch:changed", { courier_id: q.rows[0].courier_id, dispatch_id: q.rows[0].id, change: "RETURNING" });
   return q.rows[0];
 }
@@ -5319,6 +5631,15 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
     }
     await client.query("COMMIT");
     await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
+    await operationalEventBestEffort({
+      traceId: q.rows[0]?.trace_id,
+      eventName: "dispatch.released",
+      source,
+      dispatchId: q.rows[0]?.id || dispatchId,
+      courierId: q.rows[0]?.courier_id,
+      status: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "RELEASED_WITH_PENDING" : "COMPLETED",
+      metadata: { reason }
+    });
     emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
@@ -6641,7 +6962,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
     SELECT
       a.order_id,a.display_id,a.status AS order_status,
       l.dispatch_id,l.local_order_number,
-      d.courier_id,d.departed_at,d.status AS dispatch_status,
+      d.courier_id,d.departed_at,d.status AS dispatch_status,d.trace_id,
       c.confirmed_at
     FROM anotaai_dispatch_links l
     JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
@@ -6692,6 +7013,18 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
     anotaai_order_id: row.order_id,
     order_number: row.local_order_number,
     confirmation_mode: "NO_CODE"
+  });
+  await operationalEventBestEffort({
+    traceId: row.trace_id,
+    requestId: req.requestId,
+    eventName: "anotaai.delivery.confirmed",
+    source: "courier",
+    platform: "anotaai",
+    dispatchId: row.dispatch_id,
+    orderId: row.order_id,
+    orderNumber: row.local_order_number,
+    courierId: req.session.user.id,
+    status: "CONFIRMED"
   });
 
   emitRealtime("dispatch:changed", {
@@ -6752,7 +7085,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     SELECT
       o.order_id,o.display_id,o.merchant_id,o.status AS order_status,o.order_type,o.delivered_by,
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
-      d.courier_id,d.departed_at,d.status AS dispatch_status,
+      d.courier_id,d.departed_at,d.status AS dispatch_status,d.trace_id,
       c.status AS confirmation_status,c.attempts,c.verified_at,c.concluded_at,
       c.processing_started_at
     FROM ifood_dispatch_links l
@@ -6882,6 +7215,20 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     });
   }
 
+  await operationalEventBestEffort({
+    traceId: row.trace_id,
+    requestId: req.requestId,
+    eventName: "ifood.delivery.verify.started",
+    source: "courier",
+    platform: "ifood",
+    dispatchId: row.dispatch_id,
+    orderId: row.order_id,
+    orderNumber: row.local_order_number,
+    courierId: req.session.user.id,
+    attempt: claim.rows[0]?.attempts,
+    status: "PROCESSING"
+  });
+
   try {
     assertExternalMutationAllowed("verificação de código de entrega no iFood");
     const { response, body } = await ifoodApi(
@@ -6910,6 +7257,23 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
         WHERE ifood_order_id=$1
       `, [row.order_id,response.status,JSON.stringify(body || {})]);
 
+      await operationalEventBestEffort({
+        traceId: row.trace_id,
+        requestId: req.requestId,
+        eventName: "ifood.delivery.verify.rejected",
+        level: "warning",
+        source: "courier",
+        platform: "ifood",
+        dispatchId: row.dispatch_id,
+        orderId: row.order_id,
+        orderNumber: row.local_order_number,
+        courierId: req.session.user.id,
+        attempt: claim.rows[0]?.attempts,
+        status: "FAILED",
+        errorCode: "DELIVERY_CODE_INVALID",
+        message: "Código não validado pelo iFood."
+      });
+
       return res.status(422).json({
         error: "Código incorreto. Confira com o cliente e tente novamente.",
         code: "DELIVERY_CODE_INVALID"
@@ -6927,6 +7291,21 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
           updated_at=NOW()
       WHERE ifood_order_id=$1
     `, [row.order_id,response.status,JSON.stringify(body || { valid: true })]);
+
+    await operationalEventBestEffort({
+      traceId: row.trace_id,
+      requestId: req.requestId,
+      eventName: "ifood.delivery.verified",
+      source: "courier",
+      platform: "ifood",
+      dispatchId: row.dispatch_id,
+      orderId: row.order_id,
+      orderNumber: row.local_order_number,
+      courierId: req.session.user.id,
+      attempt: claim.rows[0]?.attempts,
+      status: "VERIFIED",
+      metadata: { http_status: response.status }
+    });
 
     await auditBestEffort(
       req.session.user.id,
@@ -6972,6 +7351,9 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     const status = Number(err?.statusCode || 0);
     const userCodeError = status === 400 || status === 422;
 
+    const confirmationError = userCodeError
+      ? "Código não validado pelo iFood."
+      : ifoodSafeError(err);
     await pool.query(`
       UPDATE ifood_delivery_confirmations
       SET status='FAILED',
@@ -6983,10 +7365,24 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     `, [
       row.order_id,
       status || null,
-      userCodeError
-        ? "Código não validado pelo iFood."
-        : ifoodSafeError(err)
+      confirmationError
     ]);
+    await operationalEventBestEffort({
+      traceId: row.trace_id,
+      requestId: req.requestId,
+      eventName: "ifood.delivery.verify.failed",
+      level: userCodeError ? "warning" : "error",
+      source: "courier",
+      platform: "ifood",
+      dispatchId: row.dispatch_id,
+      orderId: row.order_id,
+      orderNumber: row.local_order_number,
+      courierId: req.session.user.id,
+      attempt: claim.rows[0]?.attempts,
+      status: "FAILED",
+      errorCode: err?.code || status || null,
+      message: confirmationError
+    });
 
     emitRealtime("delivery:changed", {
       courier_id: req.session.user.id,
@@ -7758,6 +8154,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   if (clientToken) {
     const replay = await pool.query(`
       SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+             d.trace_id,d.courier_id,
              ${orderArraySql("d")}
       FROM dispatches d
       WHERE d.client_token=$1
@@ -7773,6 +8170,19 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
         orders,
         details: { client_token: clientToken }
       });
+      for (const order of orders) {
+        await operationalEventBestEffort({
+          traceId: replay.rows[0].trace_id || req.traceId,
+          requestId: req.requestId,
+          eventName: "dispatch.replayed",
+          source: "courier",
+          platform: platformResolution.selections?.find(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))?.platform || null,
+          dispatchId: replay.rows[0].id,
+          orderNumber: order,
+          courierId: req.session.user.id,
+          status: "duplicate"
+        });
+      }
       return res.json({
         dispatch: replay.rows[0],
         duplicate: true,
@@ -7874,7 +8284,8 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       clientToken,
       departedAt: queuedDeparture,
       ifoodLinks,
-      anotaAiLinks
+      anotaAiLinks,
+      traceId: req.traceId
     });
   } catch (e) {
     if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
@@ -7909,6 +8320,25 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       });
     }
     throw e;
+  }
+
+  const dispatchTraceId = result.dispatch.trace_id || req.traceId;
+  for (const order of orders) {
+    const selection = platformResolution.selections?.find(x =>
+      plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order)
+    );
+    await operationalEventBestEffort({
+      traceId: dispatchTraceId,
+      requestId: req.requestId,
+      eventName: result.duplicate ? "dispatch.replayed" : "dispatch.created",
+      source: "courier",
+      platform: selection?.platform || null,
+      dispatchId: result.dispatch.id,
+      orderNumber: order,
+      courierId: req.session.user.id,
+      status: result.duplicate ? "duplicate" : "created",
+      metadata: { order_count: orders.length, registration_source: "COURIER" }
+    });
   }
 
   if (!result.duplicate) {
@@ -8720,9 +9150,21 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
   if (clientToken) {
-    const replay = await pool.query("SELECT id FROM dispatches WHERE client_token=$1 LIMIT 1", [clientToken]);
+    const replay = await pool.query("SELECT id,trace_id,courier_id FROM dispatches WHERE client_token=$1 LIMIT 1", [clientToken]);
     if (replay.rowCount) {
-      return res.json({ duplicate: true, dispatch: { id: replay.rows[0].id } });
+      for (const order of orders) {
+        await operationalEventBestEffort({
+          traceId: replay.rows[0].trace_id || req.traceId,
+          requestId: req.requestId,
+          eventName: "dispatch.replayed",
+          source: "admin",
+          dispatchId: replay.rows[0].id,
+          orderNumber: order,
+          courierId: replay.rows[0].courier_id || courierId,
+          status: "duplicate"
+        });
+      }
+      return res.json({ duplicate: true, dispatch: { id: replay.rows[0].id, trace_id: replay.rows[0].trace_id } });
     }
   }
 
@@ -8787,7 +9229,8 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
       source: "ADMIN",
       adminReason: reason || "Registro manual pelo administrador",
       clientToken,
-      ifoodLinks: ifoodInspection.accepted
+      ifoodLinks: ifoodInspection.accepted,
+      traceId: req.traceId
     });
   } catch (e) {
     if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
@@ -8818,6 +9261,22 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     }
 
     throw e;
+  }
+
+  const adminDispatchTraceId = result.dispatch.trace_id || req.traceId;
+  for (const order of orders) {
+    await operationalEventBestEffort({
+      traceId: adminDispatchTraceId,
+      requestId: req.requestId,
+      eventName: result.duplicate ? "dispatch.replayed" : "dispatch.created",
+      source: "admin",
+      platform: ifoodInspection.accepted.some(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order)) ? "ifood" : "manual",
+      dispatchId: result.dispatch.id,
+      orderNumber: order,
+      courierId,
+      status: result.duplicate ? "duplicate" : "created",
+      metadata: { order_count: orders.length, registration_source: "ADMIN" }
+    });
   }
 
   if (!result.duplicate) {
@@ -10673,6 +11132,64 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
   });
 }));
 
+app.get("/api/admin/trace", auth, adminOnly, asyncRoute(async (req, res) => {
+  const requestedTrace = String(req.query.trace_id || "").trim().slice(0,100) || null;
+  const dispatchId = /^\d+$/.test(String(req.query.dispatch_id || "")) ? Number(req.query.dispatch_id) : null;
+  let orderNumber = String(req.query.order_number || "").trim().slice(0,60) || null;
+  if (orderNumber && !orderNumber.startsWith("#")) orderNumber = "#" + orderNumber;
+  const limit = parsePositiveInt(req.query.limit, 100, 300);
+
+  if (!requestedTrace && !dispatchId && !orderNumber) {
+    return res.status(400).json({ error: "Informe trace_id, dispatch_id ou order_number.", code: "TRACE_FILTER_REQUIRED" });
+  }
+
+  let resolvedTrace = requestedTrace;
+  if (!resolvedTrace && dispatchId) {
+    resolvedTrace = (await pool.query("SELECT trace_id FROM dispatches WHERE id=$1", [dispatchId])).rows[0]?.trace_id || null;
+  }
+  if (!resolvedTrace && orderNumber) {
+    resolvedTrace = (await pool.query(`
+      SELECT trace_id FROM operational_events
+      WHERE LOWER(order_number)=LOWER($1)
+      ORDER BY created_at DESC,id DESC LIMIT 1
+    `, [orderNumber])).rows[0]?.trace_id || null;
+  }
+
+  const events = (await pool.query(`
+    SELECT id,trace_id,request_id,event_name,level,source,platform,dispatch_id,
+           order_id,order_number,courier_id,attempt,status,error_code,message,metadata,created_at
+    FROM operational_events
+    WHERE ($1::text IS NOT NULL AND trace_id=$1)
+       OR ($2::bigint IS NOT NULL AND dispatch_id=$2)
+       OR ($3::text IS NOT NULL AND LOWER(order_number)=LOWER($3))
+    ORDER BY created_at,id
+    LIMIT $4
+  `, [resolvedTrace, dispatchId, orderNumber, limit])).rows;
+
+  const dispatch = dispatchId
+    ? (await pool.query(`
+        SELECT d.id,d.dispatch_code,d.trace_id,d.courier_id,d.status,d.operational_stage,
+               d.departed_at,d.returning_at,d.released_at,${orderArraySql("d")}
+        FROM dispatches d WHERE d.id=$1 LIMIT 1
+      `, [dispatchId])).rows[0] || null
+    : resolvedTrace
+      ? (await pool.query(`
+          SELECT d.id,d.dispatch_code,d.trace_id,d.courier_id,d.status,d.operational_stage,
+                 d.departed_at,d.returning_at,d.released_at,${orderArraySql("d")}
+          FROM dispatches d WHERE d.trace_id=$1 ORDER BY d.id DESC LIMIT 1
+        `, [resolvedTrace])).rows[0] || null
+      : null;
+
+  const errors = resolvedTrace
+    ? (await pool.query(`
+        SELECT id,request_id,trace_id,method,path,status_code,message,created_at
+        FROM system_errors WHERE trace_id=$1 ORDER BY created_at,id LIMIT 50
+      `, [resolvedTrace])).rows
+    : [];
+
+  res.json({ trace_id: resolvedTrace, dispatch, events, errors, event_count: events.length, server_now: new Date().toISOString() });
+}));
+
 app.get("/api/admin/payments", auth, adminOnly, asyncRoute(async (req,res)=>{
   const date=validDate(req.query.date)?String(req.query.date):await getSPDate();
   const requested=String(req.query.shift_code||req.query.shift||'').trim()||null;
@@ -12042,6 +12559,8 @@ setInterval(() => emitRealtime("server:time", { now: new Date().toISOString() })
 
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
+setInterval(() => cleanupOperationalEvents(), 6 * 60 * 60 * 1000).unref?.();
+setTimeout(() => cleanupOperationalEvents(), 60 * 1000).unref?.();
 
 // Envia a baixa dos pedidos Anota AI vinculados a uma saída.
 // A fila é durável: falhas externas não desfazem a saída do motoboy e são reprocessadas.
@@ -12120,6 +12639,17 @@ setTimeout(() => {
 app.use((err, req, res, next) => {
   const status = err.status || 500;
   console.error(`[${req.requestId || "-"}]`, err);
+  operationalEventBestEffort({
+    traceId: req.traceId || req.requestId,
+    requestId: req.requestId,
+    eventName: "http.error",
+    level: status >= 500 ? "error" : "warning",
+    source: "http",
+    status: String(status),
+    errorCode: err?.code || null,
+    message: err?.message || "Erro interno do servidor.",
+    metadata: { method: req.method, path: String(req.originalUrl || req.url || "").slice(0,500) }
+  }).catch(() => {});
   recordSystemError(req, status, err).catch(() => {});
   res.status(status).json({
     error: err.message || "Erro interno do servidor.",
