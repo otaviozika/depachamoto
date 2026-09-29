@@ -40,6 +40,7 @@ jobs:
       NODE_ENV: test
       APP_ENV: staging
       STAGING_SAFE_MODE: "true"
+      STAGING_FORCE_SHIFT: "DINNER"
       IFOOD_ENABLED: "true"
       IFOOD_DISPATCH_ENABLED: "true"
       IFOOD_CLIENT_ID: "must-never-be-used"
@@ -93,11 +94,7 @@ jobs:
       - name: Authenticated staging smoke
         run: node scripts/smoke-staging.js
       - name: Mini E2E operational flow
-        env:
-          COURIERS: "4"
-          DEPARTURES_PER_COURIER: "4"
-          ORDERS_PER_DEPARTURE: "2"
-        run: node scripts/loadtest-staging-50.js
+        run: node scripts/e2e-staging-critical.js
       - name: Save diagnostic artifact
         if: always()
         uses: actions/upload-artifact@v4
