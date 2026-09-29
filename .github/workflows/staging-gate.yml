@@ -37,6 +37,7 @@ jobs:
       NODE_ENV: test
       APP_ENV: staging
       STAGING_SAFE_MODE: "true"
+      STAGING_FORCE_SHIFT: "DINNER"
       IFOOD_ENABLED: "true"
       IFOOD_DISPATCH_ENABLED: "true"
       IFOOD_ENVIRONMENT: production
