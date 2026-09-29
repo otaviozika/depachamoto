@@ -32,6 +32,14 @@ function externalIntegrationsBlocked() {
   return STAGING_SAFE_MODE;
 }
 
+function assertExternalMutationAllowed(service = "integração externa") {
+  if (!externalIntegrationsBlocked()) return;
+  const error = new Error(`Ação bloqueada no ambiente de homologação: ${service}.`);
+  error.status = 503;
+  error.code = "STAGING_SAFE_MODE";
+  throw error;
+}
+
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
   process.exit(1);
@@ -1739,6 +1747,7 @@ async function resetStaleAnotaAiDispatchJobs() {
 }
 
 async function runAnotaAiDispatchWorkerOnce() {
+  if (externalIntegrationsBlocked()) return { ok: true, skipped: true, reason: "staging_safe_mode" };
   if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
   anotaAiDispatchWorkerRunning = true;
 
@@ -2528,6 +2537,7 @@ async function processIfoodDispatchByOrder(orderId, options = {}) {
 }
 
 async function runIfoodDispatchWorkerOnce() {
+  if (externalIntegrationsBlocked()) return { ok: true, skipped: true, reason: "staging_safe_mode" };
   if (ifoodDispatchWorkerRunning) return;
 
   const gate = await ifoodAutomaticDispatchAllowed();
@@ -10329,15 +10339,15 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
   };
   const ifoodSyncAgeSeconds = ageSeconds(ifoodState.last_success_at);
   const anotaSyncAgeSeconds = ageSeconds(anotaState.last_success_at);
-  const ifoodSyncStale = ifoodAutoEnabled() && (ifoodSyncAgeSeconds === null || ifoodSyncAgeSeconds > 120);
-  const anotaSyncStale = anotaAiAutoEnabled() && (anotaSyncAgeSeconds === null || anotaSyncAgeSeconds > 120);
+  const ifoodSyncStale = !STAGING_SAFE_MODE && ifoodAutoEnabled() && (ifoodSyncAgeSeconds === null || ifoodSyncAgeSeconds > 120);
+  const anotaSyncStale = !STAGING_SAFE_MODE && anotaAiAutoEnabled() && (anotaSyncAgeSeconds === null || anotaSyncAgeSeconds > 120);
 
   const criticalReasons = [];
   const attentionReasons = [];
 
-  if (!ifoodConfigured()) criticalReasons.push("Credenciais iFood ausentes");
-  if (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) criticalReasons.push("Proteção de produção iFood incompleta");
-  if (anotaAiAutoEnabled() && !anotaAiConfigured()) criticalReasons.push("Anota AI automático sem credenciais válidas");
+  if (!STAGING_SAFE_MODE && !ifoodConfigured()) criticalReasons.push("Credenciais iFood ausentes");
+  if (!STAGING_SAFE_MODE && ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) criticalReasons.push("Proteção de produção iFood incompleta");
+  if (!STAGING_SAFE_MODE && anotaAiAutoEnabled() && !anotaAiConfigured()) criticalReasons.push("Anota AI automático sem credenciais válidas");
   if (Number(ifoodQueue.failed || 0) > 0) criticalReasons.push(`${ifoodQueue.failed} falha(s) definitiva(s) no iFood`);
   if (Number(anotaQueue.dead || 0) > 0) criticalReasons.push(`${anotaQueue.dead} falha(s) definitiva(s) no Anota AI`);
   if (Number(ifoodQueue.stale_processing || 0) > 0) criticalReasons.push(`${ifoodQueue.stale_processing} job(s) iFood travado(s)`);
@@ -10362,15 +10372,15 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     critical ? "CRITICAL" : attention ? "ATTENTION" : "OPERATIONAL";
 
   const ifoodStatus = componentStatus({
-    critical: !ifoodConfigured() ||
-      (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) ||
+    critical: (!STAGING_SAFE_MODE && !ifoodConfigured()) ||
+      (!STAGING_SAFE_MODE && ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) ||
       Number(ifoodQueue.failed || 0) > 0 || Number(ifoodQueue.stale_processing || 0) > 0,
     attention: ifoodSyncStale || runtimeControl.dispatch_paused ||
       Number(ifoodQueue.retry || 0) > 0 || Number(ifoodQueue.overdue || 0) > 0
   });
 
   const anotaStatus = componentStatus({
-    critical: (anotaAiAutoEnabled() && !anotaAiConfigured()) ||
+    critical: (!STAGING_SAFE_MODE && anotaAiAutoEnabled() && !anotaAiConfigured()) ||
       Number(anotaQueue.dead || 0) > 0 || Number(anotaQueue.stale_processing || 0) > 0,
     attention: anotaSyncStale || Number(anotaQueue.retry || 0) > 0 ||
       Number(anotaQueue.overdue || 0) > 0
@@ -10383,7 +10393,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
 
   const exceptions = [];
 
-  if (!ifoodConfigured()) {
+  if (!STAGING_SAFE_MODE && !ifoodConfigured()) {
     exceptions.push({
       key: "ifood:credentials-missing",
       source: "IFOOD",
@@ -10396,7 +10406,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     });
   }
 
-  if (ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) {
+  if (!STAGING_SAFE_MODE && ifoodDispatchEnabled() && !ifoodProductionSafetyReady()) {
     exceptions.push({
       key: "ifood:production-safety",
       source: "IFOOD",
@@ -10409,7 +10419,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
     });
   }
 
-  if (anotaAiAutoEnabled() && !anotaAiConfigured()) {
+  if (!STAGING_SAFE_MODE && anotaAiAutoEnabled() && !anotaAiConfigured()) {
     exceptions.push({
       key: "anotaai:credentials-missing",
       source: "ANOTAAI",
@@ -10656,6 +10666,7 @@ app.put("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res
 }));
 
 app.post("/api/admin/payments/close-day", auth, adminOnly, asyncRoute(async (req,res)=>{
+  assertExternalMutationAllowed("envio para Google Sheets");
   const date=String(req.body?.date||'').trim(),shift=String(req.body?.shift_code||'').trim().toUpperCase();
   if(!validDate(date))return res.status(400).json({error:'Data inválida.'});
   if(!['LUNCH','DINNER'].includes(shift))return res.status(400).json({error:'Selecione Almoço ou Janta antes de fechar o dia.',code:'PAYMENT_SHIFT_REQUIRED'});
@@ -10676,6 +10687,7 @@ app.get("/api/admin/payments/drive/status", auth, adminOnly, asyncRoute(async (r
 }));
 
 app.post("/api/admin/payments/drive/sync", auth, adminOnly, asyncRoute(async (req,res)=>{
+  assertExternalMutationAllowed("sincronização do Google Sheets");
   const month=String(req.body?.month||'').trim();
   const data=await getAdminMonthlyPaymentRows(month);
   const result=await syncPaymentsToGoogleSheets({month,rows:data.rows});
