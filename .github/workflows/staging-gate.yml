@@ -1,0 +1,103 @@
+name: Staging promotion gate
+
+on:
+  pull_request:
+    branches: [staging, main]
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: despachefull_staging
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d despachefull_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachefull_staging
+      SESSION_SECRET: staging-ci-session-secret-2026-safe-and-long
+      ADMIN_USERNAME: stagingadmin
+      ADMIN_PASSWORD: StagingAdmin-987654
+      ADMIN_NAME: Administrador Homologacao
+      STAGING_ADMIN_USERNAME: stagingadmin
+      STAGING_ADMIN_PASSWORD: StagingAdmin-987654
+      NODE_ENV: test
+      APP_ENV: staging
+      STAGING_SAFE_MODE: "true"
+      IFOOD_ENABLED: "true"
+      IFOOD_DISPATCH_ENABLED: "true"
+      IFOOD_CLIENT_ID: "must-never-be-used"
+      IFOOD_CLIENT_SECRET: "must-never-be-used"
+      ANOTAAI_ENABLED: "true"
+      ANOTAAI_CLIENT_ID: "must-never-be-used"
+      ANOTAAI_CLIENT_SECRET: "must-never-be-used"
+      TARGET_URL: http://127.0.0.1:3000
+      PORT: "3000"
+      DB_POOL_MAX: "10"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install
+        run: npm install
+      - name: Syntax and static regression
+        run: |
+          node --check server.js
+          node --check scripts/smoke-staging.js
+          failed=0
+          for test in scripts/selftest-*.js; do
+            echo "::group::$test"
+            node "$test" || failed=$((failed+1))
+            echo "::endgroup::"
+          done
+          test "$failed" -eq 0
+      - name: Start isolated staging app
+        run: |
+          npm start > staging-server.log 2>&1 &
+          echo $! > staging-server.pid
+      - name: Wait for health
+        run: |
+          for i in {1..60}; do
+            CODE=$(curl -sS -o staging-health.json -w "%{http_code}" --max-time 5 "$TARGET_URL/api/health" || true)
+            if [ "$CODE" = "200" ]; then
+              cat staging-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -300 staging-server.log || true
+          exit 1
+      - name: Authenticated staging smoke
+        run: node scripts/smoke-staging.js
+      - name: Save diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-gate-diagnostics
+          path: |
+            staging-server.log
+            staging-health.json
+          if-no-files-found: ignore
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f staging-server.pid ]; then kill "$(cat staging-server.pid)" || true; fi
