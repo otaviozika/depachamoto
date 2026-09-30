@@ -14,7 +14,7 @@ for(const p of profiles){
  console.log(`=== ${p.level} START: ${p.couriers} couriers x ${p.departures} departures x ${p.orders} orders ===`);
  const code=await new Promise(resolve=>{
   const child=spawn(process.execPath,["scripts/loadtest-staging-50.js"],{stdio:"inherit",env:{...process.env,
-    TARGET_URL:"http://127.0.0.1:"+String(process.env.PORT||10000),
+    TARGET_URL:"https://despachefull-staging.onrender.com",
     LOADTEST_ADMIN_USERNAME:process.env.ADMIN_USERNAME||"stagingadmin",
     LOADTEST_ADMIN_PASSWORD:process.env.ADMIN_PASSWORD||"",
     LOAD_TEST_CONFIRM:"STAGING_ONLY_I_UNDERSTAND",
