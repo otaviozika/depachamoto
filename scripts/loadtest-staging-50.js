@@ -10,6 +10,9 @@ const ADMIN_USERNAME = process.env.LOADTEST_ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.LOADTEST_ADMIN_PASSWORD;
 const LOAD_TEST_KEY = process.env.LOAD_TEST_KEY || "";
 const CONFIRM = process.env.LOAD_TEST_CONFIRM;
+const LEVEL = process.env.LOADTEST_LEVEL || "L1";
+const STATE_FILE = process.env.LOADTEST_STATE_FILE || "/tmp/despachefull-loadtest-state.json";
+const LEVEL_STARTED = Date.now();
 
 const COURIERS = Math.max(1, Number(process.env.COURIERS || 50));
 const DEPARTURES = Math.max(1, Number(process.env.DEPARTURES_PER_COURIER || 40));
@@ -28,7 +31,7 @@ if (!TARGET || !DATABASE_URL || !ADMIN_USERNAME || !ADMIN_PASSWORD) {
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: false,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
   max: 15
 });
 
@@ -41,6 +44,20 @@ let createdOrders = 0;
 let adminConcurrentChecks = 0;
 let replayRequests = 0;
 let replayAccepted = 0;
+let measuredRequests = 0;
+function writeLiveState(extra={}) {
+  const sorted=[...latencies].sort((a,b)=>a-b);
+  const pct=p=>sorted.length?sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*p))]:0;
+  const elapsed=Math.max(.001,(Date.now()-LEVEL_STARTED)/1000);
+  const fiveXx=Object.entries(statusCounts).reduce((n,[k,v])=>n+(Number(k)>=500?Number(v):0),0);
+  fs.writeFileSync(STATE_FILE,JSON.stringify({
+    active:true,state:"EXECUTANDO",level:LEVEL,couriers:COURIERS,
+    requests:measuredRequests,rps:Number((measuredRequests/elapsed).toFixed(1)),
+    p50:round(pct(.5)),p95:round(pct(.95)),p99:round(pct(.99)),http5xx:fiveXx,
+    lost:0,duplicates:0,orphanLocks:0,corruption:0,integrity:failures.length?"VERIFICANDO":"100%",
+    ...extra,updatedAt:new Date().toISOString()
+  }));
+}
 
 const headers = () => ({
   "content-type": "application/json",
@@ -49,6 +66,8 @@ const headers = () => ({
 
 function addStatus(status) {
   statusCounts[String(status)] = (statusCounts[String(status)] || 0) + 1;
+  measuredRequests++;
+  if (measuredRequests % 20 === 0) writeLiveState();
 }
 
 function cookieFrom(res) {
@@ -140,7 +159,9 @@ function writeReport(report) {
   console.log(JSON.stringify(report, null, 2));
 }
 
+writeLiveState({state:"PREPARANDO"});
 await seedCouriers();
+writeLiveState();
 
 let running = true;
 let watcher = null;
@@ -400,6 +421,9 @@ try {
   };
 
   writeReport(report);
+  writeLiveState({state:failures.length?"FALHOU":"NÍVEL CONCLUÍDO",active:false,
+    duplicates:duplicateActiveAfterRace.rowCount,lost:Math.max(0,expectedDepartures-createdDepartures),
+    integrity:failures.length?"FALHOU":"100%"});
 
   if (failures.length) process.exitCode = 1;
 } catch (err) {
