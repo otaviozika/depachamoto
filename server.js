@@ -5669,7 +5669,7 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
 }
 
 async function completeDispatchReturn({ dispatchId, courierId = null, actorUserId, source = "COURIER_ARRIVAL", reason = "ARRIVED_AT_STORE" }) {
-  const client = await pool.connect();
+  let client = await pool.connect();
   try {
     await client.query("BEGIN");
     const params = [dispatchId];
