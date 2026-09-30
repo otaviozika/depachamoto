@@ -190,6 +190,63 @@ async function seedCouriers() {
   }
 }
 
+function l1OrderCount(index){
+  return index % 10 < 3 ? 1 : 2;
+}
+function buildL1Plan(){
+  return Array.from({length:L1_TOTAL_DEPARTURES},(_,index)=>{
+    const items=Array.from({length:l1OrderCount(index)},(_,j)=>({
+      display:`#${RUN.toUpperCase()}-${String(index+1).padStart(3,"0")}-${j+1}`,
+      orderId:`${RUN}-order-${index+1}-${j+1}`
+    }));
+    return {index,items};
+  });
+}
+const l1Plan=buildL1Plan();
+const l1RaceOrder={display:`#${RUN.toUpperCase()}-RACE`,orderId:`${RUN}-race-order`};
+const l1ExpectedOrders=l1Plan.reduce((n,x)=>n+x.items.length,0);
+
+async function seedL1Orders(){
+  for(const item of [...l1Plan.flatMap(x=>x.items),l1RaceOrder]){
+    await pool.query(`
+      INSERT INTO anotaai_orders(
+        order_id,page_id,display_id,status,order_type,remote_created_at,remote_updated_at,payload
+      )
+      VALUES($1,$2,$3,'READY','DELIVERY',NOW(),NOW(),'{}'::jsonb)
+      ON CONFLICT(order_id) DO NOTHING
+    `,[item.orderId,RUN,item.display]);
+  }
+}
+
+async function sampleHealth(label){
+  const res=await call("/api/health","",{},"telemetry");
+  if(!res.ok){
+    failures.push(`telemetry-${label}:HTTP${res.status}`);
+    return null;
+  }
+  const body=await res.json();
+  const sample={
+    at:new Date().toISOString(),label,
+    status:body.status,
+    stagingSafeMode:body.stagingSafeMode,
+    externalMutationsAllowed:body.externalMutationsAllowed,
+    dbLatencyMs:Number(body.dbLatencyMs||0),
+    pool:body.components?.database?.pool||null,
+    memory:body.components?.application?.memory||null,
+    eventLoopLagMs:Number(body.components?.application?.eventLoopLagMs||0),
+    connectedClients:Number(body.components?.realtime?.connectedClients||0)
+  };
+  telemetrySamples.push(sample);
+  if(sample.stagingSafeMode!==true||sample.externalMutationsAllowed!==false){
+    failures.push(`safe-mode-${label}:invalid`);
+  }
+  return sample;
+}
+
+async function waitUntil(epoch){
+  while(Date.now()<epoch) await new Promise(r=>setTimeout(r,Math.min(1000,epoch-Date.now())));
+}
+
 async function cleanup() {
   if (!userIds.length) return;
   await pool.query("BEGIN");
