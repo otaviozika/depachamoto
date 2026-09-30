@@ -31,3 +31,7 @@ services:
         value: "true"
       - key: DB_POOL_MAX
         value: "10"
+      - key: LOADTEST_48_AUTORUN
+        value: "0"
+      - key: LOADTEST_LEVEL_ONLY
+        value: "L1"
