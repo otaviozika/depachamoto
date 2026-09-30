@@ -8129,6 +8129,29 @@ async function addRouteOrder(req, res, recovery) {
 app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
 app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
 
+app.get("/api/courier/depart/reconcile/:clientToken", auth, courierOnly, asyncRoute(async (req, res) => {
+  const clientToken = String(req.params.clientToken || "").trim().slice(0, 100);
+  if (!clientToken || !/^[A-Za-z0-9._:-]{8,100}$/.test(clientToken)) {
+    return res.status(400).json({ error: "Token de operação inválido.", code: "INVALID_CLIENT_TOKEN" });
+  }
+
+  const dispatch = (await pool.query(`
+    SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.operational_stage,
+           d.registration_source,d.trace_id,d.courier_id,${orderArraySql("d")}
+    FROM dispatches d
+    WHERE d.client_token=$1
+      AND d.courier_id=$2
+      AND d.registration_source='COURIER'
+    LIMIT 1
+  `, [clientToken, req.session.user.id])).rows[0] || null;
+
+  res.json({
+    found: Boolean(dispatch),
+    dispatch,
+    server_now: new Date().toISOString()
+  });
+}));
+
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
   validateDepartureCount(req.body);
   await touchPresence(req.session.user.id, "COURIER_WEB");
