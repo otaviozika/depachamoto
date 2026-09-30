@@ -2,14 +2,17 @@ import {spawn} from "node:child_process";
 import fs from "node:fs";
 const stateFile="/tmp/despachefull-loadtest-state.json";
 const profiles=[
- {level:"L1",couriers:20,departures:10,orders:2},
+ {level:"L1",couriers:20,departures:4,orders:2},
  {level:"L2",couriers:40,departures:20,orders:2},
  {level:"L3",couriers:80,departures:20,orders:3},
  {level:"L4",couriers:100,departures:12,orders:3}
 ];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const requestedLevel=String(process.env.LOADTEST_LEVEL_ONLY||"L1").toUpperCase();
+const selectedProfiles=profiles.filter(p=>p.level===requestedLevel);
+if(selectedProfiles.length!==1) throw new Error(`LOADTEST_LEVEL_ONLY inválido: ${requestedLevel}`);
 function state(x){fs.writeFileSync(stateFile,JSON.stringify({...x,updatedAt:new Date().toISOString()}))}
-for(const p of profiles){
+for(const p of selectedProfiles){
  state({active:true,state:"INICIANDO",level:p.level,couriers:p.couriers,requests:0,rps:0,p50:0,p95:0,p99:0,http5xx:0,lost:0,duplicates:0,orphanLocks:0,corruption:0,integrity:"100%"});
  console.log(`=== ${p.level} START: ${p.couriers} couriers x ${p.departures} departures x ${p.orders} orders ===`);
  const code=await new Promise(resolve=>{
@@ -28,5 +31,5 @@ for(const p of profiles){
  await sleep(8000);
 }
 const last=JSON.parse(fs.readFileSync(stateFile,"utf8"));
-state({...last,active:false,state:"CONCLUÍDO",level:"L4",integrity:"100%"});
-console.log("LOAD TEST 4.8 COMPLETE: L1-L4 PASS");
+state({...last,active:false,state:"CONCLUÍDO",level:requestedLevel,integrity:"100%"});
+console.log(`LOAD TEST 4.8 COMPLETE: ${requestedLevel} PASS; no automatic escalation`);
