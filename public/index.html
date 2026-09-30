@@ -2240,6 +2240,39 @@ async function loadPublicConfig(){
   }catch{}
 }
 
+async function reconcileCourierDeparture(clientToken){
+  if(!clientToken||!me||me.role!=='courier'||!navigator.onLine)return null;
+  try{
+    const d=await api('/api/courier/depart/reconcile/'+encodeURIComponent(clientToken));
+    return d?.found&&d.dispatch?d.dispatch:null;
+  }catch(err){
+    if(err?.code==='NETWORK_ERROR')return null;
+    throw err;
+  }
+}
+async function recoverAfterConnectivityChange(){
+  if(!me||!navigator.onLine||document.hidden)return;
+  ensureRealtimeConnected();
+  heartbeat({force:true});
+  if(me.role==='courier'){
+    let uncertain=null;
+    try{uncertain=JSON.parse(sessionStorage.getItem('dm_uncertain_departure')||'null')}catch{}
+    if(uncertain?.client_token){
+      const dispatch=await reconcileCourierDeparture(uncertain.client_token).catch(()=>null);
+      if(dispatch){
+        try{sessionStorage.removeItem('dm_uncertain_departure')}catch{}
+        showDepartureConfirmation(dispatch.order_numbers||uncertain.orders||[],dispatch.departed_at||new Date().toISOString(),false);
+        message('departureMsg','Reconexão concluída: o servidor confirmou a saída pendente. Nenhuma duplicação foi criada.','ok');
+      }
+    }
+    await loadCourier({related:false}).catch(()=>{});
+    await loadCourierDeliveries().catch(()=>{});
+    flushOfflineQueue();
+  }else if(me.role==='admin'){
+    await refreshAdminCore().catch(()=>{});
+    if($('recovery-center')?.classList.contains('active'))loadRecoveryCenter?.({silent:true}).catch(()=>{});
+  }
+}
 function queueKey(){return OFFLINE_QUEUE_PREFIX+(me?.id||'guest')}
 function getOfflineQueue(){
   try{return JSON.parse(localStorage.getItem(queueKey())||'[]')}catch{return[]}
@@ -2349,7 +2382,7 @@ async function flushOfflineQueue(){
     renderOfflineQueueStatus();
   }
 }
-window.addEventListener('online',()=>{updateConnectionState();flushOfflineQueue()});
+window.addEventListener('online',()=>{updateConnectionState();recoverAfterConnectivityChange().catch(()=>{})});
 window.addEventListener('offline',updateConnectionState);
 
 
@@ -4254,8 +4287,20 @@ async function depart(e){
       throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
     }
   }catch(err){
-    if(!navigator.onLine||err instanceof TypeError){
-      message('departureMsg','Conexão perdida. A saída NÃO foi registrada. Reconecte para validar os pedidos no iFood/Anota AI, ou peça ao Admin para fazer a saída manual.','err');
+    if(!navigator.onLine||err instanceof TypeError||err?.code==='NETWORK_ERROR'){
+      message('departureMsg','Conexão perdida durante a confirmação. Verificando se a saída foi registrada...','err');
+      let reconciled=null;
+      if(navigator.onLine)reconciled=await reconcileCourierDeparture(payload.client_token).catch(()=>null);
+      if(reconciled){
+        resetOrderFields();
+        showDepartureConfirmation(orders,reconciled.departed_at||new Date().toISOString(),false);
+        message('departureMsg','A resposta se perdeu, mas o servidor confirmou que a saída foi registrada. Nenhum novo despacho foi criado.','ok');
+        await loadCourier().catch(()=>{});
+        activateCourierTab('route',null,true);
+      }else{
+        try{sessionStorage.setItem('dm_uncertain_departure',JSON.stringify({client_token:payload.client_token,orders,created_at:Date.now()}))}catch{}
+        message('departureMsg','Conexão perdida. Não repita a saída agora: o aplicativo vai conferir automaticamente com o servidor quando a internet voltar.','err');
+      }
     }else{
       message('departureMsg',err.message,'err');
     }
@@ -5949,18 +5994,19 @@ socket.on('connect',()=>{
   updateConnectionState();
   if(me?.role==='courier'){
     flushOfflineQueue();
-    queueRealtimeRefresh('courier-reconnect',()=>loadCourier(),250,{visibleOnly:true});
+    queueRealtimeRefresh('courier-reconnect',async()=>{await loadCourier({related:false});await loadCourierDeliveries()},250,{visibleOnly:true});
+  }else if(me?.role==='admin'){
+    queueRealtimeRefresh('admin-reconnect',refreshAdminCore,250,{visibleOnly:true});
   }
 });
 socket.on('connect_error',err=>{
   if(me&&err?.data?.code==='SOCKET_AUTH_REQUIRED'){
-    me=null;
-    location.reload();
+    redirectExpiredSession();
   }
 });
 socket.on('disconnect',reason=>{
   if(reason==='io server disconnect'){
-    if(me){me=null;location.reload();}
+    if(me)heartbeat({force:true});
     return;
   }
   if(!navigator.onLine)setConnectionState('offline');
@@ -6034,7 +6080,7 @@ socket.on('conflict:changed',()=>{
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)return;
   flushVisibleRealtimeRefreshes();
-  heartbeat({force:true});
+  recoverAfterConnectivityChange().catch(()=>{});
 });
 setInterval(()=>{if(document.hidden)return;document.querySelectorAll('.live').forEach(x=>x.textContent=elapsedFromMs(x.dataset.startMs));if($('dashboard')?.classList.contains('active'))renderDashboardClock();if($('wallboard')?.classList.contains('active')){renderKdsClock();updateKdsPreparationStates();}if($('attendance')?.classList.contains('active'))updateAttendanceQrCountdown();},1000);
 // Telão/KDS desativado: polling de /api/admin/wallboard removido para evitar alto consumo de bandwidth.
