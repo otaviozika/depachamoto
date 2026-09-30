@@ -375,6 +375,13 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at TIMESTAMPTZ
 );
 
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS resolution_reason TEXT;
+
+CREATE INDEX IF NOT EXISTS notifications_active_operational_idx
+ON notifications(type,created_at DESC) WHERE resolved_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id BIGSERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -980,6 +987,9 @@ CREATE TABLE IF NOT EXISTS ifood_delivery_confirmations (
   concluded_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE ifood_dispatch_jobs
+ADD COLUMN IF NOT EXISTS retry_cycle INTEGER NOT NULL DEFAULT 1;
 
 CREATE INDEX IF NOT EXISTS ifood_delivery_confirmations_courier_idx
 ON ifood_delivery_confirmations(courier_id,updated_at DESC);
@@ -2455,6 +2465,20 @@ async function resetStaleIfoodDispatchJobs() {
         attempts: Number(row.attempts || 0),
         reason: "stale_processing_retry_limit_reached"
       });
+      const alertContext = (await pool.query(`
+        SELECT j.retry_cycle,l.local_order_number
+        FROM ifood_dispatch_jobs j
+        LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
+        WHERE j.ifood_order_id=$1 LIMIT 1
+      `, [String(row.ifood_order_id)])).rows[0] || {};
+      await createNotification({
+        type: "IFOOD_DISPATCH_FAILED",
+        severity: "error",
+        title: "Falha definitiva no despacho iFood",
+        message: `#${alertContext.local_order_number || row.ifood_order_id} após ${Number(row.attempts || 0)} tentativa(s)`,
+        dispatchId: row.dispatch_id,
+        uniqueKey: `ifood-dispatch-failed:${row.ifood_order_id}:cycle:${Math.max(1,Number(alertContext.retry_cycle)||1)}`
+      }).catch(() => {});
     }
   }
 
@@ -2516,7 +2540,7 @@ async function claimIfoodDispatchJob(orderId = null) {
 
 async function markIfoodDispatchDone(orderId, lifecycleStatus = null) {
   const context = (await pool.query(`
-    SELECT j.dispatch_id,j.attempts,d.trace_id,d.courier_id,l.local_order_number
+    SELECT j.dispatch_id,j.attempts,j.retry_cycle,d.trace_id,d.courier_id,l.local_order_number
     FROM ifood_dispatch_jobs j
     LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
     LEFT JOIN dispatches d ON d.id=j.dispatch_id
@@ -2604,6 +2628,16 @@ async function failIfoodDispatchJob(orderId, reason, httpStatus = null) {
     errorCode: httpStatus || null,
     message: String(reason)
   });
+
+  const cycle = Math.max(1, Number(context.retry_cycle) || 1);
+  await createNotification({
+    type: "IFOOD_DISPATCH_FAILED",
+    severity: "error",
+    title: "Falha definitiva no despacho iFood",
+    message: `#${context.local_order_number || orderId} após ${Number(context.attempts || 0)} tentativa(s)`,
+    dispatchId: context.dispatch_id,
+    uniqueKey: `ifood-dispatch-failed:${orderId}:cycle:${cycle}`
+  }).catch(() => {});
 
   emitRealtime("ifood:changed");
   return { ok: false, failed: true, orderId: String(orderId), error: String(reason) };
@@ -5012,6 +5046,31 @@ async function createNotification({
     });
   }
   return notification;
+}
+
+async function resolveOperationalNotifications({ uniqueKeys = [], uniqueKeyPrefixes = [], actorUserId = null, reason = "incident_resolved" } = {}) {
+  const keys = [...new Set((uniqueKeys || []).map(x => String(x || "").trim()).filter(Boolean))];
+  const prefixes = [...new Set((uniqueKeyPrefixes || []).map(x => String(x || "").trim()).filter(Boolean))];
+  if (!keys.length && !prefixes.length) return 0;
+
+  const clauses = [];
+  const params = [actorUserId || null, String(reason || "incident_resolved").slice(0,180)];
+  if (keys.length) { params.push(keys); clauses.push(`unique_key = ANY(${params.length}::text[])`); }
+  for (const prefix of prefixes) { params.push(prefix + "%"); clauses.push(`unique_key LIKE ${params.length}`); }
+
+  const q = await pool.query(`
+    UPDATE notifications
+    SET resolved_at=COALESCE(resolved_at,NOW()),
+        resolved_by=COALESCE(resolved_by,$1),
+        resolution_reason=COALESCE(resolution_reason,$2),
+        read_at=COALESCE(read_at,NOW())
+    WHERE resolved_at IS NULL
+      AND (${clauses.join(" OR ")})
+    RETURNING id
+  `, params);
+
+  if (q.rowCount) emitRealtime("notification:changed", { resolved: q.rowCount });
+  return q.rowCount;
 }
 
 async function createDispatchTransaction({
@@ -9336,7 +9395,7 @@ app.get("/api/admin/notifications", auth, adminOnly, asyncRoute(async (req, res)
 
   const rows = (await pool.query(`
     SELECT n.id,n.type,n.severity,n.title,n.message,n.courier_id,n.dispatch_id,
-           n.created_at,n.read_at,u.name AS courier_name
+           n.created_at,n.read_at,n.resolved_at,n.resolution_reason,u.name AS courier_name
     FROM notifications n
     LEFT JOIN users u ON u.id=n.courier_id
     ${where}
@@ -9344,13 +9403,20 @@ app.get("/api/admin/notifications", auth, adminOnly, asyncRoute(async (req, res)
     LIMIT $1
   `, params)).rows;
 
-  const countQ = await pool.query(
-    "SELECT COUNT(*)::int AS unread FROM notifications WHERE read_at IS NULL"
-  );
+  const countQ = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE read_at IS NULL)::int AS unread,
+      COUNT(*) FILTER (
+        WHERE resolved_at IS NULL
+          AND type IN ('IFOOD_DISPATCH_FAILED','ANOTAAI_DISPATCH_FAILED')
+      )::int AS active_operational
+    FROM notifications
+  `);
 
   res.json({
     rows,
     unread: countQ.rows[0].unread,
+    active_operational: countQ.rows[0].active_operational,
     server_now: new Date().toISOString()
   });
 }));
@@ -9875,6 +9941,12 @@ app.post("/api/admin/anotaai/orders/:id/retry-dispatch", auth, adminOnly, asyncR
       error: "O estado desse despacho mudou. Atualize a tela antes de tentar novamente."
     });
   }
+
+  await resolveOperationalNotifications({
+    uniqueKeyPrefixes: [`anotaai-dispatch-dead:${orderId}:cycle:`],
+    actorUserId: req.session.user.id,
+    reason: "admin_started_new_retry_cycle"
+  });
 
   await auditBestEffort(
     req.session.user.id,
@@ -10588,6 +10660,7 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
     UPDATE ifood_dispatch_jobs SET
       status='RETRY',
       attempts=0,
+      retry_cycle=retry_cycle+1,
       locked_at=NULL,
       next_attempt_at=NOW(),
       last_http_status=NULL,
@@ -10601,6 +10674,12 @@ app.post("/api/admin/ifood/orders/:id/retry-dispatch", auth, adminOnly, asyncRou
   if (!replay) {
     return res.status(409).json({ error: "O estado desse despacho mudou. Atualize a tela antes de tentar novamente." });
   }
+
+  await resolveOperationalNotifications({
+    uniqueKeyPrefixes: [`ifood-dispatch-failed:${orderId}:cycle:`],
+    actorUserId: req.session.user.id,
+    reason: "admin_started_new_retry_cycle"
+  });
 
   const result = await processIfoodDispatchByOrder(orderId);
 
@@ -11260,6 +11339,18 @@ app.post("/api/admin/recovery-center/:platform/:id/recover-stale", auth, adminOn
     orderId,status: recovered.status,attempt: Number(recovered.attempts || 0),
     message: "Administrador recuperou job PROCESSING obsoleto."
   });
+
+  if (platform === "ifood" && recovered.status === "FAILED") {
+    const ctx = (await pool.query(`SELECT retry_cycle FROM ifood_dispatch_jobs WHERE ifood_order_id=$1`, [orderId])).rows[0] || {};
+    await createNotification({
+      type:"IFOOD_DISPATCH_FAILED",severity:"error",title:"Falha definitiva no despacho iFood",
+      message:`Pedido ${orderId} atingiu o limite de tentativas.`,dispatchId:recovered.dispatch_id,
+      uniqueKey:`ifood-dispatch-failed:${orderId}:cycle:${Math.max(1,Number(ctx.retry_cycle)||1)}`
+    }).catch(()=>{});
+  } else if (platform === "anotaai" && recovered.status === "DEAD") {
+    const ctx = (await pool.query(`SELECT local_order_number,retry_cycle FROM anotaai_dispatch_links WHERE anotaai_order_id=$1`, [orderId])).rows[0] || {};
+    await notifyAnotaAiDispatchDead({orderId,dispatchId:recovered.dispatch_id,orderNumber:ctx.local_order_number||orderId,attempts:recovered.attempts,retryCycle:ctx.retry_cycle,reason:"admin_stale_recovery_retry_limit_reached"});
+  }
 
   emitRealtime(platform + ":changed", { change: "RECOVERY_STALE_JOB", dispatch_id: recovered.dispatch_id, order_id: orderId });
   res.json({ ok:true,platform,order_id:orderId,status:recovered.status,message:"Job travado recuperado com segurança." });
