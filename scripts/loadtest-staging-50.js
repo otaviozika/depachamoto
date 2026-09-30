@@ -36,6 +36,25 @@ const pool = new Pool({
   max: LEVEL === "L1" ? 2 : 15
 });
 
+let loadGuardClient=null;
+async function acquireLoadGuard(){
+  loadGuardClient=await pool.connect();
+  const locked=Boolean((await loadGuardClient.query(
+    "SELECT pg_try_advisory_lock(480048) AS locked"
+  )).rows[0]?.locked);
+  if(!locked){
+    loadGuardClient.release();
+    loadGuardClient=null;
+    throw new Error("Já existe uma execução 4.8 ativa no staging.");
+  }
+}
+async function releaseLoadGuard(){
+  if(!loadGuardClient)return;
+  try{await loadGuardClient.query("SELECT pg_advisory_unlock(480048)")}catch{}
+  loadGuardClient.release();
+  loadGuardClient=null;
+}
+
 const userIds = [];
 let adminId = null;
 const latencies = [];
@@ -298,6 +317,7 @@ function writeReport(report) {
 }
 
 writeLiveState({state:"PREPARANDO"});
+await acquireLoadGuard();
 adminId=Number((await pool.query(
   "SELECT id FROM users WHERE username=$1 AND role='admin' LIMIT 1",
   [ADMIN_USERNAME.toLowerCase()]
@@ -834,6 +854,7 @@ try{
     cleanup:{ok:cleanupOk,error:cleanupError}
   });
 
+  await releaseLoadGuard();
   await pool.end();
   if(finalReport.result!=="PASS")process.exitCode=1;
 }
