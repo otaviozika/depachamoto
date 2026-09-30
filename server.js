@@ -5106,6 +5106,11 @@ async function createDispatchTransaction({
   try {
     await client.query("BEGIN");
 
+    // v2.8/v3.9: serialize the courier before the idempotency recheck.
+    // Two concurrent retries with the same client_token must not both pass the
+    // preflight lookup and then have the loser rejected as a pending delivery.
+    await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
+
     if (clientToken) {
       const existing = await client.query(`
         SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
@@ -5113,18 +5118,27 @@ async function createDispatchTransaction({
                ${orderArraySql("d")}
         FROM dispatches d
         WHERE d.client_token=$1
+          AND d.courier_id=$2
+          AND d.registration_source='COURIER'
         LIMIT 1
-      `, [clientToken]);
+      `, [clientToken,courierId]);
       if (existing.rowCount) {
+        const requestedIdentity = orders.map(plainLocalOrderNumber).sort();
+        const existingIdentity = (Array.isArray(existing.rows[0].order_numbers)
+          ? existing.rows[0].order_numbers
+          : [existing.rows[0].order_number]
+        ).map(plainLocalOrderNumber).sort();
+        if (JSON.stringify(requestedIdentity) !== JSON.stringify(existingIdentity)) {
+          const err = new Error("Este identificador de operação já foi usado com outro conjunto de pedidos.");
+          err.code = "IDEMPOTENCY_TOKEN_MISMATCH";
+          err.status = 409;
+          throw err;
+        }
         await client.query("ROLLBACK");
         return { dispatch: existing.rows[0], closedPrevious: null, duplicate: true };
       }
     }
 
-    // v2.8: uma nova saída NUNCA encerra a anterior automaticamente.
-    // O advisory lock serializa saídas do mesmo motoboy inclusive entre
-    // múltiplas instâncias do Render, evitando duas saídas simultâneas.
-    await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
 
     const activeDispatch = await client.query(`
       SELECT id,dispatch_code,departed_at,operational_date,shift_code,operational_stage,returning_at,trace_id,courier_id
@@ -8217,6 +8231,26 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     `, [clientToken, req.session.user.id]);
 
     if (replay.rowCount) {
+      const requestedIdentity = orders.map(plainLocalOrderNumber).sort();
+      const replayIdentity = (Array.isArray(replay.rows[0].order_numbers)
+        ? replay.rows[0].order_numbers
+        : [replay.rows[0].order_number]
+      ).map(plainLocalOrderNumber).sort();
+      if (JSON.stringify(requestedIdentity) !== JSON.stringify(replayIdentity)) {
+        await logOperationalConflict({
+          type: "IDEMPOTENCY_TOKEN_MISMATCH",
+          severity: "warning",
+          actorUserId: req.session.user.id,
+          courierId: req.session.user.id,
+          orders,
+          details: { client_token: clientToken, dispatch_id: replay.rows[0].id }
+        });
+        return res.status(409).json({
+          error: "Este identificador de operação já foi usado com outro conjunto de pedidos.",
+          code: "IDEMPOTENCY_TOKEN_MISMATCH",
+          server_now: new Date().toISOString()
+        });
+      }
       await logOperationalConflict({
         type: "IDEMPOTENT_REPLAY",
         severity: "info",
@@ -8417,7 +8451,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
         server_now: new Date().toISOString()
       });
     }
-    if (["IFOOD_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_CHANGED"].includes(e.code)) {
+    if (["IFOOD_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_ALREADY_LINKED","ANOTAAI_ORDER_CHANGED","IDEMPOTENCY_TOKEN_MISMATCH"].includes(e.code)) {
       return res.status(409).json({
         error: e.message,
         code: e.code
