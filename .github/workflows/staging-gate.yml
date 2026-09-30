@@ -149,6 +149,7 @@ jobs:
           echo "- 8 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
           echo "- Idempotência do client_token validada" >> "$GITHUB_STEP_SUMMARY"
           echo "- Corrida concorrente do mesmo pedido validada" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fault injection F01-F18 executada com evidência por cenário" >> "$GITHUB_STEP_SUMMARY"
           if [ -f staging-smoke-report.json ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '~~~json' >> "$GITHUB_STEP_SUMMARY"
@@ -164,6 +165,9 @@ jobs:
           path: |
             health.json
             staging-smoke-report.json
+            fault-injection-f01-f08.json
+            fault-injection-f09-f15.json
+            fault-injection-f16-f18.json
             staging-server.log
           if-no-files-found: ignore
 
