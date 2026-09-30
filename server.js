@@ -8203,6 +8203,48 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
   const orders = normalizeOrders(req.body);
   const clientToken = String(req.body.client_token || "").trim().slice(0, 100) || null;
 
+  // Resolve a known client token before external platform inspection. A retry may arrive
+  // after the first request has already linked the external order; it must return the
+  // authoritative dispatch instead of being rejected as a new attempt.
+  if (clientToken) {
+    const replay = await pool.query(`
+      SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
+             d.trace_id,d.courier_id,
+             ${orderArraySql("d")}
+      FROM dispatches d
+      WHERE d.client_token=$1 AND d.courier_id=$2 AND d.registration_source='COURIER'
+      LIMIT 1
+    `, [clientToken, req.session.user.id]);
+
+    if (replay.rowCount) {
+      await logOperationalConflict({
+        type: "IDEMPOTENT_REPLAY",
+        severity: "info",
+        actorUserId: req.session.user.id,
+        courierId: req.session.user.id,
+        orders,
+        details: { client_token: clientToken }
+      });
+      for (const order of orders) {
+        await operationalEventBestEffort({
+          traceId: replay.rows[0].trace_id || req.traceId,
+          requestId: req.requestId,
+          eventName: "dispatch.replayed",
+          source: "courier",          dispatchId: replay.rows[0].id,
+          orderNumber: order,
+          courierId: req.session.user.id,
+          status: "duplicate"
+        });
+      }
+      return res.json({
+        dispatch: replay.rows[0],
+        duplicate: true,
+        server_now: new Date().toISOString()
+      });
+    }
+  }
+
+
   // v2.9: o motoboy precisa estar online para validar o pedido no iFood no
   // momento da saída. A saída manual/offline fica exclusiva do administrador.
   if (req.body.offline_queued === true) {
@@ -8269,45 +8311,6 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     });
   }
 
-  if (clientToken) {
-    const replay = await pool.query(`
-      SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,
-             d.trace_id,d.courier_id,
-             ${orderArraySql("d")}
-      FROM dispatches d
-      WHERE d.client_token=$1
-      LIMIT 1
-    `, [clientToken]);
-
-    if (replay.rowCount) {
-      await logOperationalConflict({
-        type: "IDEMPOTENT_REPLAY",
-        severity: "info",
-        actorUserId: req.session.user.id,
-        courierId: req.session.user.id,
-        orders,
-        details: { client_token: clientToken }
-      });
-      for (const order of orders) {
-        await operationalEventBestEffort({
-          traceId: replay.rows[0].trace_id || req.traceId,
-          requestId: req.requestId,
-          eventName: "dispatch.replayed",
-          source: "courier",
-          platform: platformResolution.selections?.find(x => plainLocalOrderNumber(x.order_number) === plainLocalOrderNumber(order))?.platform || null,
-          dispatchId: replay.rows[0].id,
-          orderNumber: order,
-          courierId: req.session.user.id,
-          status: "duplicate"
-        });
-      }
-      return res.json({
-        dispatch: replay.rows[0],
-        duplicate: true,
-        server_now: new Date().toISOString()
-      });
-    }
-  }
 
   const inspection = await inspectOrders(orders, ifoodLinks, anotaAiLinks);
 
