@@ -178,7 +178,15 @@ async function seedCouriers() {
     `, [`Load Test ${i}`, `${RUN}_c${i}`, hash]);
     userIds.push(q.rows[0].id);
     const dates=(await pool.query("SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS today, ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1) AS yesterday")).rows[0];
-    for(const d of [dates.today,dates.yesterday]){
+    const attendanceDates=new Set([String(dates.today),String(dates.yesterday)]);
+    const clockOverride=String(process.env.OPERATIONAL_NOW_OVERRIDE||"").trim();
+    if(clockOverride && !Number.isNaN(Date.parse(clockOverride))){
+      const overrideDate=new Intl.DateTimeFormat("en-CA",{
+        timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"
+      }).format(new Date(clockOverride));
+      attendanceDates.add(overrideDate);
+    }
+    for(const d of attendanceDates){
       for(const shiftCode of ["LUNCH","DINNER"]){
         await pool.query(`
           INSERT INTO courier_attendance(courier_id,attendance_date,shift_code,checked_in_at,checkin_method,checked_in_by,admin_reason)
@@ -537,7 +545,6 @@ try{
     await waitUntil(runStartEpoch+Math.floor(state.index*(L1_RAMP_MS/COURIERS)));
     state.cookie=await login(RUN+"_c"+(state.index+1),TEST_PASSWORD,"login");
   });
-  await Promise.all(loginTasks);
 
   watcher=(async()=>{
     while(running){
@@ -562,6 +569,8 @@ try{
       await new Promise(r=>setTimeout(r,5000));
     }
   })();
+
+  await Promise.all(loginTasks);
 
   const schedule=buildSchedule();
   for(const event of schedule){
