@@ -3002,6 +3002,7 @@ function showApp(){
 }
 
 async function loadAdmin(){
+  startLoadTestPolling();
   dashboard=await api('/api/admin/dashboard');
   alertSettings=dashboard.alerts||alertSettings;
   operationalSla=dashboard.operationalSla||operationalSla;
@@ -5918,6 +5919,18 @@ async function showRecoveryTrace(dispatchId,label){
     host.innerHTML=events.length?events.map(e=>`<div class="recovery-trace-row"><div><b>${recoveryEsc(e.event_name)}</b><div class="small muted">${recoveryEsc(e.message||e.status||'')}</div></div><div class="small muted">${recoveryWhen(e.created_at)}</div></div>`).join(''):'<div class="empty">Nenhum evento rastreado para esta saída.</div>';
   }catch(err){host.innerHTML=`<div class="empty">Falha ao carregar histórico: ${recoveryEsc(err.message)}</div>`}
 }
+
+let loadTestPollTimer=null;
+function applyLoadTestState(d={}){
+ const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};
+ set('ltState',d.state||'AGUARDANDO INÍCIO');set('ltCouriers',d.couriers||0);set('ltRequests',d.requests||0);set('ltRps',d.rps||0);
+ set('ltP50',d.p50?d.p50+' ms':'—');set('ltP95',d.p95?d.p95+' ms':'—');set('ltP99',d.p99?d.p99+' ms':'—');set('lt5xx',d.http5xx||0);
+ set('ltLost',d.lost||0);set('ltDuplicates',d.duplicates||0);set('ltOrphanLocks',d.orphanLocks||0);set('ltCorruption',d.corruption||0);set('ltIntegrity',d.integrity||'100%');
+ set('ltHealth',(d.state==='FALHOU'||d.integrity==='FALHOU')?'FAILED':(d.active?'TESTANDO':d.state==='CONCLUÍDO'?'PASS':'PRONTO'));
+ ['L1','L2','L3','L4'].forEach(x=>{const e=$('lt'+x);if(e)e.classList.toggle('current',x===d.level)});
+}
+async function pollLoadTestStatus(){if(me?.role!=='admin'||!document.body.classList.contains('staging-mode'))return;try{applyLoadTestState(await api('/api/admin/load-test-status'))}catch{}}
+function startLoadTestPolling(){if(loadTestPollTimer)return;pollLoadTestStatus();loadTestPollTimer=setInterval(pollLoadTestStatus,1500)}
 
 const adminGroups={
   dashboard:{label:'Dashboard',defaultPage:'dashboard',tabs:[]},
