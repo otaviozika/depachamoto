@@ -1,6 +1,7 @@
 import pg from "pg";
 import bcrypt from "bcryptjs";
 import fs from "node:fs";
+import { classifyLoadResponse, RESPONSE_CLASSIFICATION } from "./k6-response-classifier.js";
 
 const { Pool } = pg;
 
@@ -366,14 +367,49 @@ try {
   );
 
   const raceElapsed = performance.now() - raceStarted;
-  const raceSuccess = raceResponses.filter(r => r.ok).length;
-  const raceBlocked = raceResponses.filter(r => r.status === 409).length;
-  const raceOther = raceResponses.length - raceSuccess - raceBlocked;
+  const raceClassifications = [];
+  for (const response of raceResponses) {
+    let body = null;
+    try { body = await response.clone().json(); } catch {}
+    raceClassifications.push(classifyLoadResponse({
+      status: response.status,
+      body,
+      tags: {
+        operation: "concurrency_race",
+        scenario: LEVEL.toLowerCase() + "_race",
+        conflict_context: "expected"
+      }
+    }));
+  }
+
+  const raceSuccess = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.SUCCESS
+  ).length;
+  const raceBlocked = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.EXPECTED_409
+  ).length;
+  const raceUnexpected409 = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.UNEXPECTED_409
+  ).length;
+  const raceServerErrors = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.SERVER_ERROR
+  ).length;
+  const raceTimeouts = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.TIMEOUT
+  ).length;
+  const raceAuthFailures = raceClassifications.filter(
+    r => r.classification === RESPONSE_CLASSIFICATION.AUTH_FAILURE
+  ).length;
+  const raceOther = raceClassifications.length - raceSuccess - raceBlocked;
 
   if (raceSuccess !== 1) failures.push(`race-success:${raceSuccess}/1`);
   if (raceBlocked !== COURIERS - 1) {
-    failures.push(`race-blocked:${raceBlocked}/${COURIERS - 1}`);
+    failures.push(`race-expected-409:${raceBlocked}/${COURIERS - 1}`);
   }
+  if (raceUnexpected409 !== 0) failures.push(`race-unexpected-409:${raceUnexpected409}`);
+  if (raceServerErrors !== 0) failures.push(`race-server-errors:${raceServerErrors}`);
+  if (raceTimeouts !== 0) failures.push(`race-timeouts:${raceTimeouts}`);
+  if (raceAuthFailures !== 0) failures.push(`race-auth-failures:${raceAuthFailures}`);
   if (raceOther !== 0) failures.push(`race-unexpected-http:${raceOther}`);
 
   const raceRows = await pool.query(`
@@ -429,7 +465,11 @@ try {
       sameOrder: raceOrder,
       simultaneousAttempts: COURIERS,
       successful: raceSuccess,
-      blockedWith409: raceBlocked,
+      blockedWithExpected409: raceBlocked,
+      unexpected409: raceUnexpected409,
+      serverErrors: raceServerErrors,
+      timeouts: raceTimeouts,
+      authFailures: raceAuthFailures,
       unexpectedResponses: raceOther,
       activeLocksForSameOrder: raceRows.rows[0].c,
       elapsedMs: round(raceElapsed)
