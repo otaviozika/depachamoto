@@ -12979,7 +12979,7 @@ server.listen(port, () => {
   console.log(`DespacheFull ${VERSION} rodando na porta ${port}`);
   if(STAGING_SAFE_MODE && String(process.env.LOADTEST_48_AUTORUN||"")==="1"){
     setTimeout(()=>{
-      console.log("LOAD TEST 4.8 AUTORUN: iniciando L1-L4");
+      console.log("LOAD TEST 4.8 AUTORUN: iniciando L1 isolado");
       const child=spawn(process.execPath,["scripts/loadtest-48-orchestrator.js"],{cwd:__dirname,env:process.env,stdio:"inherit"});
       child.on("exit",code=>console.log("LOAD TEST 4.8 AUTORUN: finalizado com código",code));
     },10000).unref?.();
