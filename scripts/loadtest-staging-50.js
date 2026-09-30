@@ -140,7 +140,7 @@ async function cleanup() {
       [userIds]
     );
     await pool.query("DELETE FROM notifications WHERE courier_id=ANY($1::int[])", [userIds]);
-    await pool.query("DELETE FROM audit_logs WHERE user_id=ANY($1::int[]) OR (entity='dispatch' AND entity_id IN (SELECT id::text FROM dispatches WHERE courier_id=ANY($1::int[])))", [userIds]);
+    await pool.query("DELETE FROM audit_logs WHERE user_id=ANY($1::int[]) OR (entity='dispatch' AND entity_id::text IN (SELECT id::text FROM dispatches WHERE courier_id=ANY($1::int[])))", [userIds]);
     await pool.query("DELETE FROM active_order_locks WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM dispatches WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM user_presence WHERE user_id=ANY($1::int[])", [userIds]);
