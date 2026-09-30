@@ -208,6 +208,21 @@
 #adminApp .notification-head,#adminApp .notification-item{border-bottom-color:#252b33}
 #adminApp .notification-item.unread{background:#211a07}
 #adminApp .notification-item:hover{background:#0f141a}
+#adminApp .loadtest-live{display:none;margin:0 0 16px;border:1px solid #3f4650;border-radius:14px;background:linear-gradient(135deg,#11161d,#090d12);overflow:hidden}
+body.staging-mode #adminApp .loadtest-live{display:block}
+#adminApp .loadtest-head{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:13px 16px;border-bottom:1px solid #252b33}
+#adminApp .loadtest-title{display:flex;align-items:center;gap:10px;font-weight:950;letter-spacing:.25px}
+#adminApp .loadtest-state{padding:6px 10px;border-radius:999px;border:1px solid #854d0e;background:#2a2108;color:#fbbf24;font-size:11px;font-weight:950}
+#adminApp .loadtest-levels{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px}
+#adminApp .loadtest-level{padding:9px 10px;border:1px solid #2b323c;border-radius:9px;color:#697586;background:#0a0e13;font-size:11px;font-weight:850;text-align:center}
+#adminApp .loadtest-level.current{border-color:#854d0e;color:#fbbf24;background:#211a07}
+#adminApp .loadtest-kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;padding:0 16px 14px}
+#adminApp .loadtest-kpi{border:1px solid #252b33;border-radius:10px;padding:10px;background:#0a0e13;min-width:0}
+#adminApp .loadtest-kpi span{display:block;color:#7f8b9b;font-size:10px;margin-bottom:5px}
+#adminApp .loadtest-kpi b{display:block;color:#e5e7eb;font-size:17px;font-variant-numeric:tabular-nums}
+#adminApp .loadtest-integrity{display:flex;gap:18px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid #252b33;background:#080c10;color:#8b98aa;font-size:11px}
+#adminApp .loadtest-integrity b{color:#22c55e}
+@media(max-width:1100px){#adminApp .loadtest-kpis{grid-template-columns:repeat(4,1fr)}}
 #adminApp .dashboard-page{min-height:calc(100vh - 120px)}
 #adminApp .dashboard-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:6px}
 #adminApp .dashboard-heading .title{font-size:30px;letter-spacing:-.5px}
@@ -1076,6 +1091,35 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div id="adminPasswordWarning" class="warning hidden"><b>Atenção:</b> sua senha administrativa ainda é a senha padrão. Troque no menu <b>Administrador &gt; Alterar minha senha</b>.</div>
 
       <section id="dashboard" class="page active dashboard-page">
+        <div id="loadTestLive" class="loadtest-live" aria-label="Teste de carga 4.8">
+          <div class="loadtest-head">
+            <div class="loadtest-title"><span>TESTE DE CARGA 4.8</span><small class="muted">• staging</small></div>
+            <span id="ltState" class="loadtest-state">AGUARDANDO INÍCIO</span>
+          </div>
+          <div class="loadtest-levels">
+            <div id="ltL1" class="loadtest-level current">L1 • NORMAL • 20 MOTOBOYS</div>
+            <div id="ltL2" class="loadtest-level">L2 • PICO REAL • 40</div>
+            <div id="ltL3" class="loadtest-level">L3 • STRESS • 60–80</div>
+            <div id="ltL4" class="loadtest-level">L4 • BURST</div>
+          </div>
+          <div class="loadtest-kpis">
+            <div class="loadtest-kpi"><span>Motoboys simulados</span><b id="ltCouriers">0</b></div>
+            <div class="loadtest-kpi"><span>Requisições</span><b id="ltRequests">0</b></div>
+            <div class="loadtest-kpi"><span>Req/s</span><b id="ltRps">0</b></div>
+            <div class="loadtest-kpi"><span>P50</span><b id="ltP50">—</b></div>
+            <div class="loadtest-kpi"><span>P95</span><b id="ltP95">—</b></div>
+            <div class="loadtest-kpi"><span>P99</span><b id="ltP99">—</b></div>
+            <div class="loadtest-kpi"><span>HTTP 5xx</span><b id="lt5xx">0</b></div>
+            <div class="loadtest-kpi"><span>Status</span><b id="ltHealth">PRONTO</b></div>
+          </div>
+          <div class="loadtest-integrity">
+            <span>Pedidos perdidos <b id="ltLost">0</b></span>
+            <span>Dispatches duplicados <b id="ltDuplicates">0</b></span>
+            <span>Locks órfãos <b id="ltOrphanLocks">0</b></span>
+            <span>Corrupções <b id="ltCorruption">0</b></span>
+            <span>Integridade <b id="ltIntegrity">100%</b></span>
+          </div>
+        </div>
         <div class="dashboard-heading">
           <div><h1 class="title">Central de despacho</h1><p class="muted">Acompanhe a operação em tempo real.</p></div>
           <div class="dashboard-clock-card"><span class="dashboard-clock-icon">◷</span><div><b id="dashboardClockTime">--:--:--</b><small id="dashboardClockDate">--/--/----</small></div></div>
