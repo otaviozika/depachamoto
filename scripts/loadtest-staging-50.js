@@ -290,349 +290,541 @@ function writeReport(report) {
 }
 
 writeLiveState({state:"PREPARANDO"});
-adminId=Number((await pool.query("SELECT id FROM users WHERE username=$1 AND role='admin' LIMIT 1",[ADMIN_USERNAME.toLowerCase()])).rows[0]?.id||0);
+adminId=Number((await pool.query(
+  "SELECT id FROM users WHERE username=$1 AND role='admin' LIMIT 1",
+  [ADMIN_USERNAME.toLowerCase()]
+)).rows[0]?.id||0);
 if(!adminId)throw new Error("Admin staging não encontrado para presença de carga.");
+
+if(LEVEL!=="L1" || COURIERS!==20){
+  throw new Error("Executor 4.8 bloqueado: somente L1 com 20 motoboys é permitido nesta etapa.");
+}
+if(String(process.env.APP_ENV||"").toLowerCase()!=="staging" ||
+   !["1","true","yes","on"].includes(String(process.env.STAGING_SAFE_MODE||"").toLowerCase())){
+  throw new Error("Executor 4.8 bloqueado fora do staging protegido.");
+}
+if(!TARGET.includes("despachefull-staging.onrender.com")){
+  throw new Error("Executor 4.8 bloqueado: TARGET_URL não é o staging hospedado.");
+}
+
 await seedCouriers();
-writeLiveState();
+await seedL1Orders();
+writeLiveState({state:"PRE-CHECK"});
 
-let running = true;
-let watcher = null;
+let running=true;
+let watcher=null;
+let telemetryWatcher=null;
+let runStartEpoch=0;
+let maxActiveCouriers=0;
+let confirmedOrders=0;
+let raceSummary=null;
+let integrityAudit=null;
+let baselineHealth=null;
+let recoveryEndHealth=null;
+let finalReport=null;
+let cleanupOk=false;
+let cleanupError=null;
 
-try {
-  const adminCookie = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
+function failureBodyCode(res){
+  try{return res?._loadBody?.code||null}catch{return null}
+}
 
-  // 50 logins acontecem de forma concorrente.
-  const courierCookies = await Promise.all(
-    Array.from({ length: COURIERS }, (_, i) =>
-      login(`${RUN}_c${i + 1}`, TEST_PASSWORD)
-    )
+async function readResponseBody(res){
+  if(!res)return null;
+  if(res._loadBody!==undefined)return res._loadBody;
+  try{
+    const body=await res.clone().json();
+    res._loadBody=body;
+    return body;
+  }catch{
+    res._loadBody=null;
+    return null;
+  }
+}
+
+async function expectNormalSuccess(res,label){
+  const body=await readResponseBody(res);
+  if(res.status===0){
+    failures.push(label+":TIMEOUT");
+    return false;
+  }
+  if(res.status===401||res.status===403){
+    failures.push(label+":AUTH_"+res.status);
+    return false;
+  }
+  if(res.status>=500){
+    failures.push(label+":HTTP"+res.status);
+    return false;
+  }
+  if(res.status===409){
+    failures.push(label+":UNEXPECTED_409:"+(body?.code||"NO_CODE"));
+    return false;
+  }
+  if(!res.ok){
+    failures.push(label+":HTTP"+res.status);
+    return false;
+  }
+  return true;
+}
+
+function currentActive(states){
+  return states.filter(x=>x.active).length;
+}
+
+function pickIdleCourier(states){
+  return states
+    .filter(x=>x.cookie&&!x.active)
+    .sort((a,b)=>a.departures-b.departures||a.index-b.index)[0]||null;
+}
+
+async function waitForIdleCourier(states,timeoutMs=30000){
+  const deadline=Date.now()+timeoutMs;
+  while(Date.now()<deadline){
+    const found=pickIdleCourier(states);
+    if(found)return found;
+    await new Promise(r=>setTimeout(r,250));
+  }
+  return null;
+}
+
+function buildSchedule(){
+  const out=[];
+  const normalStart=runStartEpoch+L1_RAMP_MS;
+  const normalStep=L1_NORMAL_MS/L1_NORMAL_DEPARTURES;
+  for(let i=0;i<L1_NORMAL_DEPARTURES;i++){
+    out.push({plan:l1Plan[i],at:normalStart+Math.floor(i*normalStep),phase:"NORMAL"});
+  }
+  const peakStart=normalStart+L1_NORMAL_MS;
+  const peakStep=L1_PEAK_MS/L1_PEAK_DEPARTURES;
+  for(let i=0;i<L1_PEAK_DEPARTURES;i++){
+    const index=L1_NORMAL_DEPARTURES+i;
+    out.push({plan:l1Plan[index],at:peakStart+Math.floor(i*peakStep),phase:"PICO"});
+  }
+  return out;
+}
+
+async function confirmLifecycle(state,plan,holdMs){
+  await new Promise(r=>setTimeout(r,holdMs));
+  for(const item of plan.items){
+    const res=await call(
+      "/api/courier/anotaai/orders/"+encodeURIComponent(item.orderId)+"/confirm-delivery",
+      state.cookie,
+      {method:"POST",body:"{}"},
+      "confirm"
+    );
+    if(await expectNormalSuccess(res,"confirm:"+item.display))confirmedOrders++;
+    await new Promise(r=>setTimeout(r,350));
+  }
+  state.active=false;
+  state.activeDispatchId=null;
+}
+
+function all5xxCount(){
+  return Object.entries(statusCounts).reduce(
+    (n,[status,count])=>n+(Number(status)>=500?Number(count):0),0
   );
+}
 
-  // Admin usa o sistema durante todo o pico.
-  watcher = (async () => {
-    while (running) {
-      try {
-        const responses = await Promise.all([
-          call("/api/admin/dashboard", adminCookie),
-          call("/api/admin/peak", adminCookie),
-          call("/api/admin/history?page=1&page_size=25", adminCookie),
-          call("/api/admin/conflicts?limit=30", adminCookie)
-        ]);
+function statusZeroCount(){
+  return Number(statusCounts["0"]||0);
+}
 
-        adminConcurrentChecks += responses.length;
+function evaluatePerformance(){
+  const dispatch=operationSummary("dispatch");
+  const confirm=operationSummary("confirm");
+  const dashboard=operationSummary("dashboard");
 
-        for (const r of responses) {
-          if (!r.ok) failures.push(`admin-check:${r.status}`);
-        }
-      } catch (err) {
-        failures.push(`admin-check:${err.message}`);
+  if(dispatch.p50!==null&&dispatch.p50>300)failures.push("perf:dispatch:p50:"+dispatch.p50+">300");
+  if(dispatch.p95!==null&&dispatch.p95>1000)failures.push("perf:dispatch:p95:"+dispatch.p95+">1000");
+  if(dispatch.p99!==null&&dispatch.p99>2000)failures.push("perf:dispatch:p99:"+dispatch.p99+">2000");
+
+  for(const pair of [["confirm",confirm],["dashboard",dashboard]]){
+    const name=pair[0],summary=pair[1];
+    if(summary.p95!==null&&summary.p95>1000)failures.push("perf:"+name+":p95:"+summary.p95+">1000");
+    if(summary.p99!==null&&summary.p99>2000)failures.push("perf:"+name+":p99:"+summary.p99+">2000");
+  }
+  return {dispatch,confirm,dashboard};
+}
+
+function evaluateTelemetry(){
+  let consecutiveWaiting=0,maxConsecutiveWaiting=0,maxWaiting=0;
+  let maxDbLatencyMs=0,maxRssMb=0,maxEventLoopLagMs=0,safeModeViolations=0;
+  for(const sample of telemetrySamples){
+    const waiting=Number(sample.pool?.waiting||0);
+    maxWaiting=Math.max(maxWaiting,waiting);
+    maxDbLatencyMs=Math.max(maxDbLatencyMs,Number(sample.dbLatencyMs||0));
+    maxRssMb=Math.max(maxRssMb,Number(sample.memory?.rssMb||0));
+    maxEventLoopLagMs=Math.max(maxEventLoopLagMs,Number(sample.eventLoopLagMs||0));
+    if(waiting>0)consecutiveWaiting++;else consecutiveWaiting=0;
+    maxConsecutiveWaiting=Math.max(maxConsecutiveWaiting,consecutiveWaiting);
+    if(sample.stagingSafeMode!==true||sample.externalMutationsAllowed!==false)safeModeViolations++;
+  }
+  if(maxConsecutiveWaiting>=3)failures.push("pool:waiting-sustained:"+maxConsecutiveWaiting+"-samples");
+  if(safeModeViolations)failures.push("safe-mode:violations:"+safeModeViolations);
+  return {
+    samples:telemetrySamples.length,maxWaiting,maxConsecutiveWaiting,
+    maxDbLatencyMs,maxRssMb,maxEventLoopLagMs,safeModeViolations
+  };
+}
+
+async function runIntegrityAudit(expectedRaceSuccess){
+  const sql=[
+    "SELECT",
+    " (SELECT COUNT(*)::int FROM dispatches WHERE courier_id=ANY($1::int[])) AS dispatches,",
+    " (SELECT COUNT(*)::int FROM dispatch_orders o JOIN dispatches d ON d.id=o.dispatch_id",
+    "  WHERE d.courier_id=ANY($1::int[])) AS orders,",
+    " (SELECT COUNT(*)::int FROM (",
+    "   SELECT o.order_number,COUNT(*) c",
+    "   FROM dispatch_orders o JOIN dispatches d ON d.id=o.dispatch_id",
+    "   WHERE d.courier_id=ANY($1::int[])",
+    "   GROUP BY o.order_number HAVING COUNT(*)>1",
+    " ) x) AS duplicates,",
+    " (SELECT COUNT(*)::int FROM active_order_locks l LEFT JOIN dispatches d ON d.id=l.dispatch_id",
+    "  WHERE l.courier_id=ANY($1::int[]) AND (d.id IS NULL OR d.status<>'ON_ROAD')) AS orphan_locks,",
+    " (SELECT COUNT(*)::int FROM dispatches d",
+    "  WHERE d.courier_id=ANY($1::int[])",
+    "  AND NOT EXISTS(SELECT 1 FROM dispatch_orders o WHERE o.dispatch_id=d.id)) AS corruption,",
+    " (SELECT COUNT(*)::int FROM active_order_locks WHERE courier_id=ANY($1::int[])) AS active_locks,",
+    " (SELECT COUNT(*)::int FROM anotaai_dispatch_links l JOIN dispatches d ON d.id=l.dispatch_id",
+    "  WHERE d.courier_id=ANY($1::int[])) AS anota_links"
+  ].join("\n");
+  const row=(await pool.query(sql,[userIds])).rows[0];
+  const expectedDispatches=L1_TOTAL_DEPARTURES+(expectedRaceSuccess?1:0);
+  const expectedOrders=l1ExpectedOrders+(expectedRaceSuccess?1:0);
+  const audit={
+    expectedDispatches,
+    databaseDispatches:Number(row.dispatches||0),
+    expectedOrders,
+    databaseOrders:Number(row.orders||0),
+    duplicateOrders:Number(row.duplicates||0),
+    orphanLocks:Number(row.orphan_locks||0),
+    corruption:Number(row.corruption||0),
+    activeLocks:Number(row.active_locks||0),
+    anotaAiLinks:Number(row.anota_links||0)
+  };
+  audit.lostDispatches=Math.max(0,audit.expectedDispatches-audit.databaseDispatches);
+  audit.lostOrders=Math.max(0,audit.expectedOrders-audit.databaseOrders);
+
+  if(audit.databaseDispatches!==audit.expectedDispatches)failures.push("audit:dispatches:"+audit.databaseDispatches+"/"+audit.expectedDispatches);
+  if(audit.databaseOrders!==audit.expectedOrders)failures.push("audit:orders:"+audit.databaseOrders+"/"+audit.expectedOrders);
+  if(audit.duplicateOrders!==0)failures.push("audit:duplicates:"+audit.duplicateOrders);
+  if(audit.orphanLocks!==0)failures.push("audit:orphanLocks:"+audit.orphanLocks);
+  if(audit.corruption!==0)failures.push("audit:corruption:"+audit.corruption);
+  if(audit.activeLocks!==0)failures.push("audit:activeLocks:"+audit.activeLocks);
+  if(audit.anotaAiLinks!==audit.expectedOrders)failures.push("audit:anotaLinks:"+audit.anotaAiLinks+"/"+audit.expectedOrders);
+  return audit;
+}
+
+try{
+  baselineHealth=await sampleHealth("BASELINE");
+  if(!baselineHealth)throw new Error("Health baseline indisponível.");
+  if(Number(baselineHealth.pool?.waiting||0)!==0){
+    throw new Error("Baseline PostgreSQL já possui waiting no pool.");
+  }
+  if(baselineHealth.stagingSafeMode!==true||baselineHealth.externalMutationsAllowed!==false){
+    throw new Error("Safe Mode não confirmado no staging.");
+  }
+
+  const adminCookie=await login(ADMIN_USERNAME,ADMIN_PASSWORD,"admin_login");
+  runStartEpoch=Date.now();
+  const states=userIds.map((id,index)=>({
+    id:Number(id),index,cookie:"",active:false,departures:0,activeDispatchId:null
+  }));
+
+  writeLiveState({state:"RAMP"});
+
+  const loginTasks=states.map(async state=>{
+    await waitUntil(runStartEpoch+Math.floor(state.index*(L1_RAMP_MS/COURIERS)));
+    state.cookie=await login(RUN+"_c"+(state.index+1),TEST_PASSWORD,"login");
+  });
+  await Promise.all(loginTasks);
+
+  watcher=(async()=>{
+    while(running){
+      try{
+        const res=await call("/api/admin/dashboard",adminCookie,{},"dashboard");
+        adminConcurrentChecks++;
+        await expectNormalSuccess(res,"dashboard");
+      }catch(err){
+        failures.push("dashboard:"+err.message);
       }
-
-      await new Promise(resolve => setTimeout(resolve, LEVEL === "L1" ? 5000 : 150));
+      await new Promise(r=>setTimeout(r,5000));
     }
   })();
 
-  const started = performance.now();
+  telemetryWatcher=(async()=>{
+    while(running){
+      await sampleHealth("RUN");
+      const active=currentActive(states);
+      activeSamples.push({at:new Date().toISOString(),active});
+      maxActiveCouriers=Math.max(maxActiveCouriers,active);
+      writeLiveState({state:"EXECUTANDO",activeCouriers:active,maxActiveCouriers});
+      await new Promise(r=>setTimeout(r,5000));
+    }
+  })();
 
-  // L1: motoboys conectados, mas ações distribuídas. Níveis superiores preservam o stress legado.
-  await Promise.all(courierCookies.map(async (cookie, courierIndex) => {
-    if (LEVEL === "L1") await new Promise(resolve => setTimeout(resolve, courierIndex * 1500));
-    for (let n = 1; n <= DEPARTURES; n++) {
-      if (LEVEL === "L1" && n > 1) await new Promise(resolve => setTimeout(resolve, 12000 + ((courierIndex * 977 + n * 613) % 9000)));
-      const orders = Array.from(
-        { length: ORDERS_PER_DEPARTURE },
-        (_, j) => `#${RUN.toUpperCase()}-${courierIndex + 1}-${n}-${j + 1}`
-      );
+  const schedule=buildSchedule();
+  for(const event of schedule){
+    await waitUntil(event.at);
+    writeLiveState({state:event.phase});
+    const state=await waitForIdleCourier(states,30000);
+    if(!state){
+      failures.push("dispatch-"+(event.plan.index+1)+":NO_IDLE_COURIER");
+      continue;
+    }
 
-      const token = `${RUN}-${courierIndex + 1}-${n}`;
-      for(let j=0;j<orders.length;j++){
-        await pool.query(`
-          INSERT INTO anotaai_orders(order_id,page_id,display_id,status,order_type,remote_created_at,remote_updated_at,payload)
-          VALUES($1,$2,$3,'READY','DELIVERY',NOW(),NOW(),'{}'::jsonb)
-          ON CONFLICT(order_id) DO NOTHING
-        `,[`${RUN}-order-${courierIndex+1}-${n}-${j+1}`,RUN,orders[j]]);
-      }
-      const payload = {
-        order_numbers: orders,
-        order_count: orders.length,
-        platform_selections: orders.map(order_number=>({order_number,platform:"anotaai"})),
-        confirm_recent_orders: true,
-        client_token: token
-      };
+    state.active=true;
+    maxActiveCouriers=Math.max(maxActiveCouriers,currentActive(states));
 
-      const res = await call("/api/courier/depart", cookie, {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
+    const orders=event.plan.items.map(x=>x.display);
+    const token=RUN+"-depart-"+(event.plan.index+1);
+    const payload={
+      order_numbers:orders,
+      order_count:orders.length,
+      platform_selections:orders.map(order_number=>({order_number,platform:"anotaai"})),
+      confirm_recent_orders:true,
+      client_token:token
+    };
 
-      let departure = null;
-      if (res.ok) {
-        const body = await res.json();
-        departure = body.dispatch || null;
-        createdDepartures++;
-        createdOrders += orders.length;
-      } else {
-        failures.push(
-          `depart-c${courierIndex + 1}-n${n}:HTTP${res.status}:${await res.text()}`
-        );
-      }
+    const res=await call("/api/courier/depart",state.cookie,{
+      method:"POST",body:JSON.stringify(payload)
+    },"dispatch");
 
-      // 10% recebem replay deliberado do MESMO client_token.
-      if (n % 10 === 0) {
-        replayRequests++;
-        const replay = await call("/api/courier/depart", cookie, {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
+    if(!(await expectNormalSuccess(res,"dispatch:"+(event.plan.index+1)))){
+      state.active=false;
+      continue;
+    }
 
-        if (replay.ok) replayAccepted++;
-        else failures.push(`idempotent-replay:HTTP${replay.status}`);
-      }
+    const body=await readResponseBody(res);
+    const dispatch=body?.dispatch;
+    if(!dispatch?.id){
+      failures.push("dispatch:"+(event.plan.index+1)+":NO_DISPATCH_ID");
+      state.active=false;
+      continue;
+    }
 
-      // Entre ciclos, o admin libera a rota de teste para permitir o próximo despacho.
-      if (departure && n < DEPARTURES) {
-        const released = await call(`/api/admin/dispatches/${departure.id}/release`, adminCookie, {
-          method:"POST",body:JSON.stringify({reason:"Load test 4.8 - ciclo concluído"})
-        });
-        if(!released.ok)failures.push(`release-c${courierIndex+1}-n${n}:HTTP${released.status}`);
+    createdDepartures++;
+    createdOrders+=orders.length;
+    state.departures++;
+    state.activeDispatchId=Number(dispatch.id);
+
+    if([9,24,39,54].includes(event.plan.index)){
+      replayRequests++;
+      const replay=await call("/api/courier/depart",state.cookie,{
+        method:"POST",body:JSON.stringify(payload)
+      },"idempotency");
+      const replayBody=await readResponseBody(replay);
+      if(replay.ok&&replayBody?.duplicate===true&&Number(replayBody?.dispatch?.id)===Number(dispatch.id)){
+        replayAccepted++;
+      }else{
+        failures.push("idempotency:"+(event.plan.index+1)+":HTTP"+replay.status+":"+(replayBody?.code||"NO_CODE"));
       }
     }
-  }));
 
-  const mainElapsed = performance.now() - started;
-
-  // Validação após pico principal.
-  const expectedDepartures = COURIERS * DEPARTURES;
-  const activeBeforeRace = await pool.query(`
-    SELECT COUNT(*)::int AS c
-    FROM dispatches
-    WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
-  `, [userIds]);
-
-  const duplicateActiveBeforeRace = await pool.query(`
-    SELECT o.order_number,COUNT(*)::int AS c
-    FROM dispatch_orders o
-    JOIN dispatches d ON d.id=o.dispatch_id
-    WHERE d.courier_id=ANY($1::int[]) AND d.status='ON_ROAD'
-    GROUP BY o.order_number
-    HAVING COUNT(*)>1
-  `, [userIds]);
-
-  const totalDispatchRows = await pool.query(`
-    SELECT COUNT(*)::int AS c
-    FROM dispatches
-    WHERE courier_id=ANY($1::int[])
-  `, [userIds]);
-
-  const totalOrderRows = await pool.query(`
-    SELECT COUNT(*)::int AS c
-    FROM dispatch_orders o
-    JOIN dispatches d ON d.id=o.dispatch_id
-    WHERE d.courier_id=ANY($1::int[])
-  `, [userIds]);
-
-  if (createdDepartures !== expectedDepartures) {
-    failures.push(`created-departures:${createdDepartures}/${expectedDepartures}`);
-  }
-  if (activeBeforeRace.rows[0].c !== COURIERS) {
-    failures.push(`active-before-race:${activeBeforeRace.rows[0].c}/${COURIERS}`);
-  }
-  if (duplicateActiveBeforeRace.rowCount !== 0) {
-    failures.push(`duplicate-active-before-race:${duplicateActiveBeforeRace.rowCount}`);
-  }
-  if (totalDispatchRows.rows[0].c !== expectedDepartures) {
-    failures.push(`db-dispatch-count:${totalDispatchRows.rows[0].c}/${expectedDepartures}`);
-  }
-  if (totalOrderRows.rows[0].c !== expectedDepartures * ORDERS_PER_DEPARTURE) {
-    failures.push(
-      `db-order-count:${totalOrderRows.rows[0].c}/${expectedDepartures * ORDERS_PER_DEPARTURE}`
-    );
+    const drainEnd=runStartEpoch+L1_RAMP_MS+L1_NORMAL_MS+L1_PEAK_MS+L1_DRAIN_MS;
+    const baseHold=90000+((event.plan.index*7919)%40000);
+    const remaining=Math.max(20000,drainEnd-Date.now()-15000);
+    const holdMs=Math.min(baseHold,remaining);
+    lifecycleTasks.push(confirmLifecycle(state,event.plan,holdMs));
   }
 
-  // Libera o último ciclo de cada motoboy antes da corrida compartilhada.
-  const finalActives = (await pool.query(`
-    SELECT id,courier_id FROM dispatches
-    WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
-    ORDER BY courier_id
-  `, [userIds])).rows;
-  for (const row of finalActives) {
-    const released=await call(`/api/admin/dispatches/${row.id}/release`,adminCookie,{
-      method:"POST",body:JSON.stringify({reason:"Load test 4.8 - pré corrida"})
-    });
-    if(!released.ok)failures.push(`pre-race-release:${row.courier_id}:${released.status}`);
-  }
+  writeLiveState({state:"DRENAGEM"});
+  await waitUntil(runStartEpoch+L1_RAMP_MS+L1_NORMAL_MS+L1_PEAK_MS+L1_DRAIN_MS);
+  await Promise.all(lifecycleTasks);
 
-  // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
-  const raceOrder = `#${RUN.toUpperCase()}-RACE-SAME-ORDER`;
-  await pool.query(`
-    INSERT INTO anotaai_orders(order_id,page_id,display_id,status,order_type,remote_created_at,remote_updated_at,payload)
-    VALUES($1,$2,$3,'READY','DELIVERY',NOW(),NOW(),'{}'::jsonb)
-  `,[`${RUN}-race-order`,RUN,raceOrder]);
-  const raceStarted = performance.now();
+  const activeAfterDrain=currentActive(states);
+  if(activeAfterDrain!==0)failures.push("drain:active-couriers:"+activeAfterDrain);
 
-  const raceResponses = await Promise.all(
-    courierCookies.map((cookie, i) =>
-      call("/api/courier/depart", cookie, {
-        method: "POST",
-        body: JSON.stringify({
-          order_numbers: [raceOrder],
-          order_count: 1,
-          platform_selections: [{order_number:raceOrder,platform:"anotaai"}],
-          confirm_recent_orders: true,
-          client_token: `${RUN}-race-${i + 1}`
-        })
+  writeLiveState({state:"RACE"});
+  const raceResponses=await Promise.all(states.map((state,index)=>
+    call("/api/courier/depart",state.cookie,{
+      method:"POST",
+      body:JSON.stringify({
+        order_numbers:[l1RaceOrder.display],
+        order_count:1,
+        platform_selections:[{order_number:l1RaceOrder.display,platform:"anotaai"}],
+        confirm_recent_orders:true,
+        client_token:RUN+"-race-"+(index+1)
       })
-    )
-  );
+    },"race")
+  ));
 
-  const raceElapsed = performance.now() - raceStarted;
-  const raceClassifications = [];
-  for (const response of raceResponses) {
-    let body = null;
-    try { body = await response.clone().json(); } catch {}
+  const raceClassifications=[];
+  for(const response of raceResponses){
+    const body=await readResponseBody(response);
     raceClassifications.push(classifyLoadResponse({
-      status: response.status,
+      status:response.status,
       body,
-      tags: {
-        operation: "concurrency_race",
-        scenario: LEVEL.toLowerCase() + "_race",
-        conflict_context: "expected"
-      }
+      transportError:response.transportError,
+      tags:{operation:"concurrency_race",scenario:"l1_race",conflict_context:"expected"}
     }));
   }
+  const countClass=kind=>raceClassifications.filter(x=>x.classification===kind).length;
+  const raceSuccess=countClass(RESPONSE_CLASSIFICATION.SUCCESS);
+  const raceBlocked=countClass(RESPONSE_CLASSIFICATION.EXPECTED_409);
+  const raceUnexpected409=countClass(RESPONSE_CLASSIFICATION.UNEXPECTED_409);
+  const raceServerErrors=countClass(RESPONSE_CLASSIFICATION.SERVER_ERROR);
+  const raceTimeouts=countClass(RESPONSE_CLASSIFICATION.TIMEOUT);
+  const raceAuthFailures=countClass(RESPONSE_CLASSIFICATION.AUTH_FAILURE);
+  const raceKnown=raceSuccess+raceBlocked+raceUnexpected409+raceServerErrors+raceTimeouts+raceAuthFailures;
+  const raceOther=raceClassifications.length-raceKnown;
 
-  const raceSuccess = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.SUCCESS
-  ).length;
-  const raceBlocked = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.EXPECTED_409
-  ).length;
-  const raceUnexpected409 = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.UNEXPECTED_409
-  ).length;
-  const raceServerErrors = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.SERVER_ERROR
-  ).length;
-  const raceTimeouts = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.TIMEOUT
-  ).length;
-  const raceAuthFailures = raceClassifications.filter(
-    r => r.classification === RESPONSE_CLASSIFICATION.AUTH_FAILURE
-  ).length;
-  const raceOther = raceClassifications.length - raceSuccess - raceBlocked;
+  if(raceSuccess!==1)failures.push("race-success:"+raceSuccess+"/1");
+  if(raceBlocked!==COURIERS-1)failures.push("race-expected-409:"+raceBlocked+"/"+(COURIERS-1));
+  if(raceUnexpected409)failures.push("race-unexpected-409:"+raceUnexpected409);
+  if(raceServerErrors)failures.push("race-server-errors:"+raceServerErrors);
+  if(raceTimeouts)failures.push("race-timeouts:"+raceTimeouts);
+  if(raceAuthFailures)failures.push("race-auth-failures:"+raceAuthFailures);
+  if(raceOther)failures.push("race-other:"+raceOther);
 
-  if (raceSuccess !== 1) failures.push(`race-success:${raceSuccess}/1`);
-  if (raceBlocked !== COURIERS - 1) {
-    failures.push(`race-expected-409:${raceBlocked}/${COURIERS - 1}`);
-  }
-  if (raceUnexpected409 !== 0) failures.push(`race-unexpected-409:${raceUnexpected409}`);
-  if (raceServerErrors !== 0) failures.push(`race-server-errors:${raceServerErrors}`);
-  if (raceTimeouts !== 0) failures.push(`race-timeouts:${raceTimeouts}`);
-  if (raceAuthFailures !== 0) failures.push(`race-auth-failures:${raceAuthFailures}`);
-  if (raceOther !== 0) failures.push(`race-unexpected-http:${raceOther}`);
+  const raceDb=(await pool.query([
+    "SELECT",
+    " (SELECT COUNT(*)::int FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id",
+    "  WHERE d.courier_id=ANY($1::int[]) AND o.order_number=$2) AS dispatches,",
+    " (SELECT COUNT(*)::int FROM active_order_locks",
+    "  WHERE courier_id=ANY($1::int[]) AND order_number=$2) AS locks"
+  ].join("\n"),[userIds,l1RaceOrder.display])).rows[0];
+  const raceDbDispatches=Number(raceDb.dispatches||0);
+  const raceDbLocks=Number(raceDb.locks||0);
+  if(raceDbDispatches!==1)failures.push("race-db-dispatches:"+raceDbDispatches+"/1");
+  if(raceDbLocks!==1)failures.push("race-db-locks:"+raceDbLocks+"/1");
 
-  const raceRows = await pool.query(`
-    SELECT COUNT(*)::int AS c
-    FROM active_order_locks
-    WHERE order_number=$1
-  `, [raceOrder]);
-
-  if (raceRows.rows[0].c !== 1) {
-    failures.push(`race-db-locks:${raceRows.rows[0].c}/1`);
-  }
-
-  const duplicateActiveAfterRace = await pool.query(`
-    SELECT order_number,COUNT(*)::int AS c
-    FROM active_order_locks
-    WHERE courier_id=ANY($1::int[])
-    GROUP BY order_number,order_date
-    HAVING COUNT(*)>1
-  `, [userIds]);
-
-  if (duplicateActiveAfterRace.rowCount !== 0) {
-    failures.push(`duplicate-active-after-race:${duplicateActiveAfterRace.rowCount}`);
+  const winnerIndex=raceResponses.findIndex(x=>x.status>=200&&x.status<300);
+  if(winnerIndex>=0){
+    const winner=states[winnerIndex];
+    const clean=await call(
+      "/api/courier/anotaai/orders/"+encodeURIComponent(l1RaceOrder.orderId)+"/confirm-delivery",
+      winner.cookie,
+      {method:"POST",body:"{}"},
+      "race_cleanup"
+    );
+    await expectNormalSuccess(clean,"race-cleanup");
   }
 
-  running = false;
-  await watcher;
-
-  const report = {
-    result: failures.length ? "FAIL" : "PASS",
-    profile: {
-      couriers: COURIERS,
-      departuresPerCourier: DEPARTURES,
-      ordersPerDeparture: ORDERS_PER_DEPARTURE,
-      requestedDepartures: COURIERS * DEPARTURES,
-      requestedOrders: COURIERS * DEPARTURES * ORDERS_PER_DEPARTURE
-    },
-    mainLoad: {
-      createdDepartures,
-      createdOrders,
-      databaseDispatchRows: totalDispatchRows.rows[0].c,
-      databaseOrderRows: totalOrderRows.rows[0].c,
-      activeCouriersAtEnd: activeBeforeRace.rows[0].c,
-      duplicateActiveOrders: duplicateActiveBeforeRace.rowCount,
-      idempotentReplayRequests: replayRequests,
-      idempotentReplaysAcceptedWithoutDuplicate: replayAccepted,
-      adminConcurrentChecks,
-      elapsedSeconds: Number((mainElapsed / 1000).toFixed(2)),
-      throughputDeparturesPerSecond: Number(
-        (createdDepartures / (mainElapsed / 1000)).toFixed(2)
-      )
-    },
-    deliberateDatabaseRace: {
-      sameOrder: raceOrder,
-      simultaneousAttempts: COURIERS,
-      successful: raceSuccess,
-      blockedWithExpected409: raceBlocked,
-      unexpected409: raceUnexpected409,
-      serverErrors: raceServerErrors,
-      timeouts: raceTimeouts,
-      authFailures: raceAuthFailures,
-      unexpectedResponses: raceOther,
-      activeLocksForSameOrder: raceRows.rows[0].c,
-      elapsedMs: round(raceElapsed)
-    },
-    http: {
-      totalMeasuredRequests: latencies.length,
-      statusCounts,
-      latencyMs: {
-        p50: round(percentile(0.50)),
-        p95: round(percentile(0.95)),
-        p99: round(percentile(0.99)),
-        max: round(Math.max(...latencies))
-      }
-    },
-    failures: failures.slice(0, 50)
+  raceSummary={
+    attempts:COURIERS,successful:raceSuccess,expected409:raceBlocked,
+    unexpected409:raceUnexpected409,serverErrors:raceServerErrors,
+    timeouts:raceTimeouts,authFailures:raceAuthFailures,other:raceOther,
+    authoritativeDispatches:raceDbDispatches,authoritativeLocks:raceDbLocks
   };
 
-  writeReport(report);
-  writeLiveState({state:failures.length?"FALHOU":"NÍVEL CONCLUÍDO",active:false,
-    duplicates:duplicateActiveAfterRace.rowCount,lost:Math.max(0,expectedDepartures-createdDepartures),
-    integrity:failures.length?"FALHOU":"100%"});
+  writeLiveState({state:"RECUPERAÇÃO"});
+  await sampleHealth("RECOVERY_START");
+  await new Promise(r=>setTimeout(r,L1_RECOVERY_MS));
+  recoveryEndHealth=await sampleHealth("RECOVERY_END");
 
-  if (failures.length) process.exitCode = 1;
-} catch (err) {
-  running = false;
-  if (watcher) {
-    try { await watcher; } catch {}
+  running=false;
+  await Promise.all([watcher,telemetryWatcher]);
+
+  if(createdDepartures!==L1_TOTAL_DEPARTURES)failures.push("created-departures:"+createdDepartures+"/"+L1_TOTAL_DEPARTURES);
+  if(createdOrders!==l1ExpectedOrders)failures.push("created-orders:"+createdOrders+"/"+l1ExpectedOrders);
+  if(confirmedOrders!==l1ExpectedOrders)failures.push("confirmed-orders:"+confirmedOrders+"/"+l1ExpectedOrders);
+  if(replayRequests!==4||replayAccepted!==4)failures.push("idempotency-replays:"+replayAccepted+"/"+replayRequests);
+  if(all5xxCount()!==0)failures.push("http5xx:"+all5xxCount());
+  if(statusZeroCount()!==0)failures.push("timeouts:"+statusZeroCount());
+
+  if(maxActiveCouriers<8||maxActiveCouriers>16){
+    warnings.push("concurrency-window:max-active="+maxActiveCouriers+" target=8-16");
   }
 
-  failures.push(`fatal:${err.message}`);
+  const performance=evaluatePerformance();
+  const telemetry=evaluateTelemetry();
 
-  writeReport({
-    result: "FAIL",
-    fatal: err.message,
-    failures: failures.slice(0, 50)
+  writeLiveState({state:"AUDITORIA"});
+  integrityAudit=await runIntegrityAudit(raceSuccess===1);
+
+  const baselineRss=Number(baselineHealth?.memory?.rssMb||0);
+  const recoveryRss=Number(recoveryEndHealth?.memory?.rssMb||0);
+  if(baselineRss&&recoveryRss>baselineRss+128&&recoveryRss>baselineRss*1.5){
+    failures.push("memory:not-recovered:"+baselineRss+"->"+recoveryRss+"MB");
+  }
+
+  finalReport={
+    result:failures.length?"FAIL":"PASS",
+    profile:{
+      name:"L1_REALISTIC_15M",
+      couriers:COURIERS,
+      rampMinutes:2,
+      normalMinutes:10,
+      peakMinutes:2,
+      drainMinutes:1,
+      recoverySeconds:60,
+      requestedDepartures:L1_TOTAL_DEPARTURES,
+      requestedOrders:l1ExpectedOrders,
+      orderMix:"19 departures with 1 order / 45 with 2 orders",
+      requestTimeoutMs:REQUEST_TIMEOUT_MS
+    },
+    mainLoad:{
+      createdDepartures,createdOrders,confirmedOrders,
+      idempotentReplayRequests:replayRequests,
+      idempotentReplaysAcceptedWithoutDuplicate:replayAccepted,
+      adminDashboardChecks:adminConcurrentChecks,
+      maxActiveCouriers
+    },
+    operationMetrics:{
+      login:operationSummary("login"),
+      adminLogin:operationSummary("admin_login"),
+      dispatch:operationSummary("dispatch"),
+      confirm:operationSummary("confirm"),
+      dashboard:operationSummary("dashboard"),
+      telemetry:operationSummary("telemetry"),
+      idempotency:operationSummary("idempotency"),
+      race:operationSummary("race")
+    },
+    performance,
+    telemetry,
+    race:raceSummary,
+    integrity:integrityAudit,
+    baseline:baselineHealth,
+    recoveryEnd:recoveryEndHealth,
+    warnings:[...warnings],
+    failures:[...failures]
+  };
+}catch(err){
+  running=false;
+  failures.push("fatal:"+err.message);
+  if(watcher){try{await watcher}catch{}}
+  if(telemetryWatcher){try{await telemetryWatcher}catch{}}
+  finalReport={
+    result:"FAIL",
+    fatal:err.message,
+    warnings:[...warnings],
+    failures:[...failures]
+  };
+}finally{
+  writeLiveState({state:"CLEANUP"});
+  try{
+    await cleanup();
+    cleanupOk=true;
+  }catch(err){
+    cleanupError=err.message;
+    failures.push("cleanup:"+err.message);
+    cleanupOk=false;
+  }
+
+  finalReport=finalReport||{result:"FAIL"};
+  finalReport.cleanup={ok:cleanupOk,error:cleanupError};
+  finalReport.failures=[...new Set([...(finalReport.failures||[]),...failures])];
+  finalReport.warnings=[...new Set([...(finalReport.warnings||[]),...warnings])];
+  finalReport.result=finalReport.failures.length?"FAIL":"PASS";
+  finalReport.completedAt=new Date().toISOString();
+
+  writeReport(finalReport);
+  writeLiveState({
+    active:false,
+    state:finalReport.result==="PASS"?"CONCLUÍDO":"FALHOU",
+    p50:finalReport.operationMetrics?.dispatch?.p50??null,
+    p95:finalReport.operationMetrics?.dispatch?.p95??null,
+    p99:finalReport.operationMetrics?.dispatch?.p99??null,
+    http5xx:all5xxCount(),
+    lost:integrityAudit?integrityAudit.lostDispatches+integrityAudit.lostOrders:null,
+    duplicates:integrityAudit?.duplicateOrders??null,
+    orphanLocks:integrityAudit?.orphanLocks??null,
+    corruption:integrityAudit?.corruption??null,
+    integrity:finalReport.result==="PASS"?"100%":"FALHOU",
+    cleanup:{ok:cleanupOk,error:cleanupError}
   });
 
-  process.exitCode = 1;
-} finally {
-  try {
-    await cleanup();
-  } catch (err) {
-    console.error("Falha ao limpar dados temporários:", err);
-    process.exitCode = 1;
-  }
   await pool.end();
+  if(finalReport.result!=="PASS")process.exitCode=1;
 }
