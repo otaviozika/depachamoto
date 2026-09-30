@@ -191,7 +191,9 @@ async function seedCouriers() {
 }
 
 function l1OrderCount(index){
-  return index % 10 < 3 ? 1 : 2;
+  // Exactly 19/64 departures with one order (~30%) and 45/64 with two (~70%),
+  // distributed deterministically across the whole run.
+  return ((index * 7) % L1_TOTAL_DEPARTURES) < 19 ? 1 : 2;
 }
 function buildL1Plan(){
   return Array.from({length:L1_TOTAL_DEPARTURES},(_,index)=>{
