@@ -39,7 +39,22 @@ const pool = new Pool({
 const userIds = [];
 let adminId = null;
 const latencies = [];
+const operationLatencies = new Map();
+const operationStatuses = new Map();
 const failures = [];
+const warnings = [];
+const telemetrySamples = [];
+const activeSamples = [];
+const lifecycleTasks = [];
+const REQUEST_TIMEOUT_MS = 10000;
+const L1_TOTAL_DEPARTURES = 64;
+const L1_NORMAL_DEPARTURES = 48;
+const L1_PEAK_DEPARTURES = 16;
+const L1_RAMP_MS = 2 * 60 * 1000;
+const L1_NORMAL_MS = 10 * 60 * 1000;
+const L1_PEAK_MS = 2 * 60 * 1000;
+const L1_DRAIN_MS = 60 * 1000;
+const L1_RECOVERY_MS = 60 * 1000;
 const statusCounts = {};
 let createdDepartures = 0;
 let createdOrders = 0;
@@ -56,7 +71,7 @@ function writeLiveState(extra={}) {
     active:true,state:"EXECUTANDO",level:LEVEL,couriers:COURIERS,
     requests:measuredRequests,rps:Number((measuredRequests/elapsed).toFixed(1)),
     p50:round(pct(.5)),p95:round(pct(.95)),p99:round(pct(.99)),http5xx:fiveXx,
-    lost:0,duplicates:0,orphanLocks:0,corruption:0,integrity:failures.length?"VERIFICANDO":"100%",
+    lost:null,duplicates:null,orphanLocks:null,corruption:null,integrity:"PENDENTE",
     ...extra,updatedAt:new Date().toISOString()
   }));
 }
@@ -76,15 +91,47 @@ function cookieFrom(res) {
   return (res.headers.get("set-cookie") || "").split(";")[0];
 }
 
-async function login(username, password) {
+function recordOperation(operation,status,elapsed){
+  if(!operationLatencies.has(operation)) operationLatencies.set(operation,[]);
+  operationLatencies.get(operation).push(elapsed);
+  if(!operationStatuses.has(operation)) operationStatuses.set(operation,{});
+  const statuses=operationStatuses.get(operation);
+  statuses[String(status)]=(statuses[String(status)]||0)+1;
+}
+function operationPercentile(operation,p){
+  const values=operationLatencies.get(operation)||[];
+  if(!values.length)return null;
+  const sorted=[...values].sort((a,b)=>a-b);
+  return sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*p))];
+}
+function operationSummary(operation){
+  const values=operationLatencies.get(operation)||[];
+  return {
+    requests:values.length,
+    statusCounts:operationStatuses.get(operation)||{},
+    p50:values.length?round(operationPercentile(operation,.50)):null,
+    p95:values.length?round(operationPercentile(operation,.95)):null,
+    p99:values.length?round(operationPercentile(operation,.99)):null,
+    max:values.length?round(Math.max(...values)):null
+  };
+}
+async function login(username, password, operation="login") {
   const started = performance.now();
-  const res = await fetch(`${TARGET}/api/login`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({ username, password })
-  });
-  latencies.push(performance.now() - started);
-  addStatus(res.status);
+  let res;
+  try {
+    res = await fetch(`${TARGET}/api/login`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ username, password }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+  } catch (err) {
+    const elapsed=performance.now()-started;
+    latencies.push(elapsed); recordOperation(operation,0,elapsed); addStatus(0);
+    throw new Error(`login ${username}: TIMEOUT ${err?.name||"network"}`);
+  }
+  const elapsed=performance.now()-started;
+  latencies.push(elapsed); recordOperation(operation,res.status,elapsed); addStatus(res.status);
 
   if (!res.ok) {
     throw new Error(`login ${username}: HTTP ${res.status} ${await res.text()}`);
@@ -92,19 +139,30 @@ async function login(username, password) {
   return cookieFrom(res);
 }
 
-async function call(path, cookie, opt = {}) {
+async function call(path, cookie, opt = {}, operation="other") {
   const started = performance.now();
-  const res = await fetch(`${TARGET}${path}`, {
-    ...opt,
-    headers: {
-      ...headers(),
-      cookie,
-      ...(opt.headers || {})
-    }
-  });
-  latencies.push(performance.now() - started);
-  addStatus(res.status);
-  return res;
+  try {
+    const res = await fetch(`${TARGET}${path}`, {
+      ...opt,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: {
+        ...headers(),
+        cookie,
+        ...(opt.headers || {})
+      }
+    });
+    const elapsed=performance.now()-started;
+    latencies.push(elapsed); recordOperation(operation,res.status,elapsed); addStatus(res.status);
+    return res;
+  } catch (err) {
+    const elapsed=performance.now()-started;
+    latencies.push(elapsed); recordOperation(operation,0,elapsed); addStatus(0);
+    const synthetic={ok:false,status:0,statusText:"TIMEOUT",transportError:err,
+      async text(){return String(err?.message||"timeout")},
+      async json(){return {code:"TIMEOUT",error:String(err?.message||"timeout")}},
+      clone(){return this}};
+    return synthetic;
+  }
 }
 
 async function seedCouriers() {
