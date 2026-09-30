@@ -16,8 +16,8 @@ const STATE_FILE = process.env.LOADTEST_STATE_FILE || "/tmp/despachefull-loadtes
 const LEVEL_STARTED = Date.now();
 
 const COURIERS = Math.max(1, Number(process.env.COURIERS || 50));
-const DEPARTURES = Math.max(1, Number(process.env.DEPARTURES_PER_COURIER || 40));
-const ORDERS_PER_DEPARTURE = Math.min(5, Math.max(1, Number(process.env.ORDERS_PER_DEPARTURE || 3)));
+const DEPARTURES = Math.max(1, Number(process.env.DEPARTURES_PER_COURIER || (LEVEL === "L1" ? 4 : 40)));
+const ORDERS_PER_DEPARTURE = Math.min(5, Math.max(1, Number(process.env.ORDERS_PER_DEPARTURE || (LEVEL === "L1" ? 2 : 3))));
 const TEST_PASSWORD = "LoadTest!987654";
 const RUN = `lt_${Date.now().toString(36)}`;
 
@@ -33,7 +33,7 @@ if (!TARGET || !DATABASE_URL || !ADMIN_USERNAME || !ADMIN_PASSWORD) {
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 15
+  max: LEVEL === "L1" ? 2 : 15
 });
 
 const userIds = [];
@@ -211,15 +211,17 @@ try {
         failures.push(`admin-check:${err.message}`);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise(resolve => setTimeout(resolve, LEVEL === "L1" ? 5000 : 150));
     }
   })();
 
   const started = performance.now();
 
-  // Pico principal: todos os motoboys fazem saídas ao mesmo tempo.
+  // L1: motoboys conectados, mas ações distribuídas. Níveis superiores preservam o stress legado.
   await Promise.all(courierCookies.map(async (cookie, courierIndex) => {
+    if (LEVEL === "L1") await new Promise(resolve => setTimeout(resolve, courierIndex * 1500));
     for (let n = 1; n <= DEPARTURES; n++) {
+      if (LEVEL === "L1" && n > 1) await new Promise(resolve => setTimeout(resolve, 12000 + ((courierIndex * 977 + n * 613) % 9000)));
       const orders = Array.from(
         { length: ORDERS_PER_DEPARTURE },
         (_, j) => `#${RUN.toUpperCase()}-${courierIndex + 1}-${n}-${j + 1}`
