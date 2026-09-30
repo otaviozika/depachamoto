@@ -1875,6 +1875,11 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
     WHERE order_id=$1
   `, [job.order_id]);
 
+  await resolveOperationalNotifications({
+    uniqueKeyPrefixes: [`anotaai-dispatch-dead:${job.order_id}:cycle:`],
+    reason: "anotaai_dispatch_confirmed_sent"
+  });
+
   await auditBestEffort(null, "ANOTAAI_DISPATCH_SENT", "dispatch", job.dispatch_id, {
     anotaai_order_id: job.order_id,
     order_number: job.local_order_number,
@@ -2584,12 +2589,17 @@ async function markIfoodDispatchDone(orderId, lifecycleStatus = null) {
     metadata: { lifecycle_status: lifecycleStatus }
   });
 
+  await resolveOperationalNotifications({
+    uniqueKeyPrefixes: [`ifood-dispatch-failed:${orderId}:cycle:`],
+    reason: "ifood_dispatch_confirmed_done"
+  });
+
   return { ok: true, alreadyDone: true, orderId: String(orderId), lifecycleStatus, linkStatus };
 }
 
 async function failIfoodDispatchJob(orderId, reason, httpStatus = null) {
   const context = (await pool.query(`
-    SELECT j.dispatch_id,j.attempts,d.trace_id,d.courier_id,l.local_order_number
+    SELECT j.dispatch_id,j.attempts,j.retry_cycle,d.trace_id,d.courier_id,l.local_order_number
     FROM ifood_dispatch_jobs j
     LEFT JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
     LEFT JOIN dispatches d ON d.id=j.dispatch_id
