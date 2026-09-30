@@ -45,7 +45,7 @@ jobs:
       ANOTAAI_CLIENT_ID: staging-fake-client
       ANOTAAI_CLIENT_SECRET: staging-fake-secret
       PORT: "3000"
-      DB_POOL_MAX: "20"
+      DB_POOL_MAX: "10"
       TARGET_URL: http://127.0.0.1:3000
       LOADTEST_ADMIN_USERNAME: stagingadmin
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
@@ -86,6 +86,8 @@ jobs:
       - name: Static and regression gates
         run: |
           node --check server.js
+          node --check scripts/loadtest-staging-50.js
+          node --check scripts/loadtest-48-orchestrator.js
           node scripts/selftest-staging-safety.js
           failed=0
           for test in scripts/selftest-*.js; do
