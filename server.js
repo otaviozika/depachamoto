@@ -5102,7 +5102,7 @@ async function createDispatchTransaction({
   const operationalSla = await getOperationalSlaSettings();
   const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
   const returnSlaMinutes = operationalSla.returnMinutes;
-  const client = await pool.connect();
+  let client = await pool.connect();
   try {
     await client.query("BEGIN");
 
@@ -5719,23 +5719,29 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
       await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
     }
     await client.query("COMMIT");
+    const releasedDispatch = q.rows[0] || null;
+    // Return the transactional connection to the pool before best-effort writes.
+    // Those helpers use pool.query() themselves; keeping this client checked out
+    // would require two pool slots for one completed return under load.
+    client.release();
+    client = null;
     await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
     await operationalEventBestEffort({
-      traceId: q.rows[0]?.trace_id,
+      traceId: releasedDispatch?.trace_id,
       eventName: "dispatch.released",
       source,
-      dispatchId: q.rows[0]?.id || dispatchId,
-      courierId: q.rows[0]?.courier_id,
+      dispatchId: releasedDispatch?.id || dispatchId,
+      courierId: releasedDispatch?.courier_id,
       status: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "RELEASED_WITH_PENDING" : "COMPLETED",
       metadata: { reason }
     });
-    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
-    return q.rows[0] || null;
+    emitRealtime("dispatch:changed", { courier_id: releasedDispatch?.courier_id, dispatch_id: releasedDispatch?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
+    return releasedDispatch;
   } catch (e) {
-    await client.query("ROLLBACK");
+    if (client) await client.query("ROLLBACK");
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
