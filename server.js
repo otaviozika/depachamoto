@@ -12,6 +12,8 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import compression from "compression";
+import fs from "node:fs";
+import { spawn } from "node:child_process";
 import webpush from "web-push";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
@@ -12507,6 +12509,12 @@ app.get("/api/live", (req, res) => {
   res.json({ ok: true, version: VERSION, time: new Date().toISOString() });
 });
 
+app.get("/api/admin/load-test-status", auth, adminOnly, (req,res)=>{
+  if(!STAGING_SAFE_MODE)return res.status(404).json({error:"Disponível apenas em homologação."});
+  try{return res.json(JSON.parse(fs.readFileSync("/tmp/despachefull-loadtest-state.json","utf8")))}
+  catch{return res.json({active:false,state:"AGUARDANDO INÍCIO",level:"L1",couriers:0,requests:0,rps:0,p50:0,p95:0,p99:0,http5xx:0,lost:0,duplicates:0,orphanLocks:0,corruption:0,integrity:"100%"})}
+});
+
 app.get("/api/health", async (req, res) => {
   try {
     const started = Date.now();
@@ -12915,7 +12923,16 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 3000);
-server.listen(port, () => console.log(`DespacheFull ${VERSION} rodando na porta ${port}`));
+server.listen(port, () => {
+  console.log(`DespacheFull ${VERSION} rodando na porta ${port}`);
+  if(STAGING_SAFE_MODE && String(process.env.LOADTEST_48_AUTORUN||"")==="1"){
+    setTimeout(()=>{
+      console.log("LOAD TEST 4.8 AUTORUN: iniciando L1-L4");
+      const child=spawn(process.execPath,["scripts/loadtest-48-orchestrator.js"],{cwd:__dirname,env:process.env,stdio:"inherit"});
+      child.on("exit",code=>console.log("LOAD TEST 4.8 AUTORUN: finalizado com código",code));
+    },10000).unref?.();
+  }
+});
 
 let shuttingDown = false;
 async function gracefulShutdown(signal) {
