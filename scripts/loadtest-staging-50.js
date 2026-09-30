@@ -36,6 +36,7 @@ const pool = new Pool({
 });
 
 const userIds = [];
+let adminId = null;
 const latencies = [];
 const failures = [];
 const statusCounts = {};
@@ -117,6 +118,16 @@ async function seedCouriers() {
       RETURNING id
     `, [`Load Test ${i}`, `${RUN}_c${i}`, hash]);
     userIds.push(q.rows[0].id);
+    const dates=(await pool.query("SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS today, ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1) AS yesterday")).rows[0];
+    for(const d of [dates.today,dates.yesterday]){
+      for(const shiftCode of ["LUNCH","DINNER"]){
+        await pool.query(`
+          INSERT INTO courier_attendance(courier_id,attendance_date,shift_code,checked_in_at,checkin_method,checked_in_by,admin_reason)
+          VALUES($1,$2::date,$3,NOW(),'ADMIN_MANUAL',$4,'Load test 4.8')
+          ON CONFLICT(courier_id,attendance_date,shift_code) WHERE shift_code IS NOT NULL DO NOTHING
+        `,[q.rows[0].id,d,shiftCode,adminId]);
+      }
+    }
   }
 }
 
@@ -134,6 +145,7 @@ async function cleanup() {
     await pool.query("DELETE FROM dispatches WHERE courier_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM user_presence WHERE user_id=ANY($1::int[])", [userIds]);
     await pool.query("DELETE FROM users WHERE id=ANY($1::int[])", [userIds]);
+    await pool.query("DELETE FROM anotaai_orders WHERE page_id=$1", [RUN]);
     await pool.query("COMMIT");
   } catch (err) {
     await pool.query("ROLLBACK");
@@ -160,6 +172,8 @@ function writeReport(report) {
 }
 
 writeLiveState({state:"PREPARANDO"});
+adminId=Number((await pool.query("SELECT id FROM users WHERE username=$1 AND role='admin' LIMIT 1",[ADMIN_USERNAME.toLowerCase()])).rows[0]?.id||0);
+if(!adminId)throw new Error("Admin staging não encontrado para presença de carga.");
 await seedCouriers();
 writeLiveState();
 
@@ -211,8 +225,17 @@ try {
       );
 
       const token = `${RUN}-${courierIndex + 1}-${n}`;
+      for(let j=0;j<orders.length;j++){
+        await pool.query(`
+          INSERT INTO anotaai_orders(order_id,page_id,display_id,status,order_type,remote_created_at,remote_updated_at,payload)
+          VALUES($1,$2,$3,'READY','DELIVERY',NOW(),NOW(),'{}'::jsonb)
+          ON CONFLICT(order_id) DO NOTHING
+        `,[`${RUN}-order-${courierIndex+1}-${n}-${j+1}`,RUN,orders[j]]);
+      }
       const payload = {
         order_numbers: orders,
+        order_count: orders.length,
+        platform_selections: orders.map(order_number=>({order_number,platform:"anotaai"})),
         confirm_recent_orders: true,
         client_token: token
       };
@@ -246,12 +269,12 @@ try {
         else failures.push(`idempotent-replay:HTTP${replay.status}`);
       }
 
-      // v2.8: a próxima saída só é liberada após retorno + check-in na loja.
+      // Entre ciclos, o admin libera a rota de teste para permitir o próximo despacho.
       if (departure && n < DEPARTURES) {
-        const ret = await call(`/api/courier/dispatches/${departure.id}/start-return`, cookie, { method: "POST", body: "{}" });
-        if (!ret.ok) failures.push(`start-return-c${courierIndex + 1}-n${n}:HTTP${ret.status}`);
-        const arrived = await call(`/api/courier/dispatches/${departure.id}/arrive`, cookie, { method: "POST", body: "{}" });
-        if (!arrived.ok) failures.push(`arrive-c${courierIndex + 1}-n${n}:HTTP${arrived.status}`);
+        const released = await call(`/api/admin/dispatches/${departure.id}/release`, adminCookie, {
+          method:"POST",body:JSON.stringify({reason:"Load test 4.8 - ciclo concluído"})
+        });
+        if(!released.ok)failures.push(`release-c${courierIndex+1}-n${n}:HTTP${released.status}`);
       }
     }
   }));
@@ -306,23 +329,25 @@ try {
     );
   }
 
-  // Libera o último ciclo de cada motoboy antes da corrida de pedido compartilhado.
+  // Libera o último ciclo de cada motoboy antes da corrida compartilhada.
   const finalActives = (await pool.query(`
     SELECT id,courier_id FROM dispatches
     WHERE courier_id=ANY($1::int[]) AND status='ON_ROAD'
     ORDER BY courier_id
   `, [userIds])).rows;
-  const cookieByUser = new Map(userIds.map((id,i)=>[Number(id),courierCookies[i]]));
   for (const row of finalActives) {
-    const cookie = cookieByUser.get(Number(row.courier_id));
-    const ret = await call(`/api/courier/dispatches/${row.id}/start-return`, cookie, { method: "POST", body: "{}" });
-    if (!ret.ok) failures.push(`pre-race-return:${row.courier_id}:${ret.status}`);
-    const arrived = await call(`/api/courier/dispatches/${row.id}/arrive`, cookie, { method: "POST", body: "{}" });
-    if (!arrived.ok) failures.push(`pre-race-arrive:${row.courier_id}:${arrived.status}`);
+    const released=await call(`/api/admin/dispatches/${row.id}/release`,adminCookie,{
+      method:"POST",body:JSON.stringify({reason:"Load test 4.8 - pré corrida"})
+    });
+    if(!released.ok)failures.push(`pre-race-release:${row.courier_id}:${released.status}`);
   }
 
   // Corrida real: 50 motoboys tentam registrar o mesmo pedido.
   const raceOrder = `#${RUN.toUpperCase()}-RACE-SAME-ORDER`;
+  await pool.query(`
+    INSERT INTO anotaai_orders(order_id,page_id,display_id,status,order_type,remote_created_at,remote_updated_at,payload)
+    VALUES($1,$2,$3,'READY','DELIVERY',NOW(),NOW(),'{}'::jsonb)
+  `,[`${RUN}-race-order`,RUN,raceOrder]);
   const raceStarted = performance.now();
 
   const raceResponses = await Promise.all(
@@ -331,6 +356,8 @@ try {
         method: "POST",
         body: JSON.stringify({
           order_numbers: [raceOrder],
+          order_count: 1,
+          platform_selections: [{order_number:raceOrder,platform:"anotaai"}],
           confirm_recent_orders: true,
           client_token: `${RUN}-race-${i + 1}`
         })
