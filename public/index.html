@@ -1516,7 +1516,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             </label>
             <button class="btn primary" onclick="loadPayments()">Atualizar</button>
             <button class="btn outline" onclick="exportPayments()">Exportar CSV</button>
-            <button id="paymentCloseDay" class="btn primary" type="button" onclick="closePaymentDay()">Fechar o dia</button>
+            <button id="paymentCloseDay" class="btn primary" type="button" onclick="closePaymentDay()">Fechar / atualizar planilha</button>
           </div>
         </div>
 
@@ -3359,7 +3359,7 @@ async function savePaymentSheetConfig(){
 async function closePaymentDay(){
   const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';
   if(!shift)return message('paymentCloseMsg','Selecione Almoço ou Janta antes de fechar o dia.','err');
-  const label=shift==='LUNCH'?'Almoço':'Janta',tab=shift==='LUNCH'?date.slice(8,10)+'/'+date.slice(5,7):date.slice(8,10)+'/'+date.slice(5,7)+' '+paymentDayLetter(date);
+  const label=shift==='LUNCH'?'Almoço':'Janta',tab=date.slice(8,10)+'/'+date.slice(5,7)+' '+paymentDayLetter(date);
   if(!confirm(`Fechar ${label.toLowerCase()} de ${date.split('-').reverse().join('/')}? Os dados serão salvos no aplicativo e enviados somente para a aba ${tab}.`))return;
   const button=$('paymentCloseDay');button.disabled=true;button.textContent='Fechando...';message('paymentCloseMsg','Salvando os valores do dia...','');
   try{
@@ -3373,7 +3373,7 @@ async function closePaymentDay(){
     if(result.spreadsheetUrl){const open=document.createElement('a');open.href=result.spreadsheetUrl;open.target='_blank';open.rel='noopener';open.className='btn outline';open.style.marginTop='8px';open.textContent='Abrir aba fechada no Drive';$('paymentCloseMsg').appendChild(open)}
     await loadPayments();await loadPaymentSheetConfig(date.slice(0,7));
   }catch(err){message('paymentCloseMsg',err.message,'err')}
-  finally{button.disabled=false;button.textContent='Fechar o dia'}
+  finally{button.disabled=false;button.textContent='Fechar / atualizar planilha'}
 }
 
 function setPaymentView(view){

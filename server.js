@@ -17,7 +17,7 @@ import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operatio
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
-import { googleSheetsConfig, googleSheetsCredentialsConfigured, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets } from "./lib/google-sheets.js";
+import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets } from "./lib/google-sheets.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -632,9 +632,25 @@ CREATE TABLE IF NOT EXISTS payment_sheet_day_closures (
   PRIMARY KEY(payment_date,shift_code)
 );
 
+ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'SYNCED';
+ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_error TEXT;
+ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ;
+DO $closure$ BEGIN
+  ALTER TABLE payment_sheet_day_closures ADD CONSTRAINT payment_sheet_day_closures_status_check
+    CHECK (sync_status IN ('PENDING','SYNCING','SYNCED','FAILED'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $closure$;
+
 INSERT INTO payment_sheet_books(month_key,lunch_spreadsheet_id,dinner_spreadsheet_id)
 VALUES('2026-09','1b-MsqWwWmuS9oLwoRW6cgWXPfOPb7ty5ibS3Kp803Bs','1NN44Veo0k1vrj58bYae6jAXvLr-3wGwhrYBLUtEXdzs')
 ON CONFLICT(month_key) DO NOTHING;
+
+INSERT INTO payment_sheet_books(month_key,lunch_spreadsheet_id,dinner_spreadsheet_id)
+VALUES('2026-10','1XtovrJR7kZ5yqkZZp6ZDBGpDDQ65CViiKPrr8A1rQ18','1Bc4sNDXW7ahIWACIOOjDtW1uwjGx2IqaAl5NUOxjPb0')
+ON CONFLICT(month_key) DO UPDATE SET
+  lunch_spreadsheet_id=EXCLUDED.lunch_spreadsheet_id,
+  dinner_spreadsheet_id=EXCLUDED.dinner_spreadsheet_id,
+  updated_at=NOW();
 
 -- v3.8: financeiro por motoboy + data + turno.
 ALTER TABLE payment_rate_rules ADD COLUMN IF NOT EXISTS lunch_mon_thu NUMERIC(12,2);
@@ -10692,7 +10708,7 @@ app.get("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res
   const month=String(req.query.month||'').trim();
   if(!validMonth(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
   const book=(await pool.query(`SELECT month_key,lunch_spreadsheet_id,dinner_spreadsheet_id,updated_at FROM payment_sheet_books WHERE month_key=$1`,[month])).rows[0]||null;
-  const closures=(await pool.query(`SELECT to_char(payment_date,'YYYY-MM-DD') payment_date,shift_code,tab_title,row_count,synced_at FROM payment_sheet_day_closures WHERE payment_date BETWEEN ($1||'-01')::date AND (($1||'-01')::date+INTERVAL '1 month'-INTERVAL '1 day')::date ORDER BY payment_date DESC,shift_code`,[month])).rows;
+  const closures=(await pool.query(`SELECT to_char(payment_date,'YYYY-MM-DD') payment_date,shift_code,tab_title,row_count,sync_status,attempts,last_error,last_attempt_at,synced_at FROM payment_sheet_day_closures WHERE payment_date BETWEEN ($1||'-01')::date AND (($1||'-01')::date+INTERVAL '1 month'-INTERVAL '1 day')::date ORDER BY payment_date DESC,shift_code`,[month])).rows;
   const config=googleSheetsConfig();
   res.json({
     month,
@@ -10725,10 +10741,35 @@ app.post("/api/admin/payments/close-day", auth, adminOnly, asyncRoute(async (req
   const spreadsheetId=shift==='LUNCH'?book.lunch_spreadsheet_id:book.dinner_spreadsheet_id;
   const {rows}=await getPaymentRows(date,shift);
   assertExternalMutationAllowed("envio de fechamento ao Google Planilhas");
-  const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
-  await pool.query(`INSERT INTO payment_sheet_day_closures(payment_date,shift_code,spreadsheet_id,tab_title,row_count,synced_by,synced_at) VALUES($1::date,$2,$3,$4,$5,$6,NOW()) ON CONFLICT(payment_date,shift_code) DO UPDATE SET spreadsheet_id=EXCLUDED.spreadsheet_id,tab_title=EXCLUDED.tab_title,row_count=EXCLUDED.row_count,synced_by=EXCLUDED.synced_by,synced_at=NOW()`,[date,shift,spreadsheetId,result.tabTitle,result.rows,req.session.user.id]);
-  await audit(req.session.user.id,'PAYMENT_DAY_CLOSED','payment',null,{payment_date:date,shift_code:shift,rows:result.rows,spreadsheet_id:spreadsheetId,tab_title:result.tabTitle});
-  res.json({...result,message:`${shiftLabel(shift)} de ${date.split('-').reverse().join('/')} fechado e enviado para a aba ${result.tabTitle}.`});
+
+  const lockKey=`payment-sheet:${date}:${shift}`;
+  const lockClient=await pool.connect();
+  let locked=false;
+  try{
+    locked=(await lockClient.query('SELECT pg_try_advisory_lock(hashtext($1)) locked',[lockKey])).rows[0]?.locked===true;
+    if(!locked)return res.status(409).json({error:'Este fechamento já está sendo sincronizado. Aguarde alguns segundos.',code:'PAYMENT_SHEET_SYNC_IN_PROGRESS'});
+
+    const previous=(await lockClient.query(`SELECT sync_status,synced_at FROM payment_sheet_day_closures WHERE payment_date=$1::date AND shift_code=$2`,[date,shift])).rows[0]||null;
+    await lockClient.query(`INSERT INTO payment_sheet_day_closures(payment_date,shift_code,spreadsheet_id,tab_title,row_count,synced_by,sync_status,attempts,last_error,last_attempt_at)
+      VALUES($1::date,$2,$3,$4,0,$5,'SYNCING',1,NULL,NOW())
+      ON CONFLICT(payment_date,shift_code) DO UPDATE SET spreadsheet_id=EXCLUDED.spreadsheet_id,tab_title=EXCLUDED.tab_title,synced_by=EXCLUDED.synced_by,
+      sync_status='SYNCING',attempts=payment_sheet_day_closures.attempts+1,last_error=NULL,last_attempt_at=NOW()`,
+      [date,shift,spreadsheetId,paymentDaySheetTitle(date,shift),req.session.user.id]);
+
+    try{
+      const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
+      await lockClient.query(`UPDATE payment_sheet_day_closures SET spreadsheet_id=$3,tab_title=$4,row_count=$5,synced_by=$6,sync_status='SYNCED',last_error=NULL,synced_at=NOW(),last_attempt_at=NOW() WHERE payment_date=$1::date AND shift_code=$2`,
+        [date,shift,spreadsheetId,result.tabTitle,result.rows,req.session.user.id]);
+      await audit(req.session.user.id,previous?'PAYMENT_DAY_UPDATED':'PAYMENT_DAY_CLOSED','payment',null,{payment_date:date,shift_code:shift,rows:result.rows,spreadsheet_id:spreadsheetId,tab_title:result.tabTitle});
+      return res.json({...result,updated:Boolean(previous),sync_status:'SYNCED',message:`${shiftLabel(shift)} de ${date.split('-').reverse().join('/')} ${previous?'atualizado':'fechado'} e sincronizado com a aba ${result.tabTitle}.`});
+    }catch(err){
+      await lockClient.query(`UPDATE payment_sheet_day_closures SET sync_status='FAILED',last_error=$3,last_attempt_at=NOW() WHERE payment_date=$1::date AND shift_code=$2`,[date,shift,String(err?.message||err).slice(0,1000)]);
+      throw err;
+    }
+  }finally{
+    if(locked)await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))',[lockKey]).catch(()=>{});
+    lockClient.release();
+  }
 }));
 
 app.get("/api/admin/payments/drive/status", auth, adminOnly, asyncRoute(async (req,res)=>{
