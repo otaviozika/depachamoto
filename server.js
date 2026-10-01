@@ -10709,7 +10709,7 @@ app.get("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res
   const month=String(req.query.month||'').trim();
   if(!validMonth(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
   const book=(await pool.query(`SELECT month_key,lunch_spreadsheet_id,dinner_spreadsheet_id,updated_at FROM payment_sheet_books WHERE month_key=$1`,[month])).rows[0]||null;
-  const closures=(await pool.query(`SELECT to_char(payment_date,'YYYY-MM-DD') payment_date,shift_code,tab_title,row_count,sync_status,attempts,last_error,last_attempt_at,synced_at FROM payment_sheet_day_closures WHERE payment_date BETWEEN ($1||'-01')::date AND (($1||'-01')::date+INTERVAL '1 month'-INTERVAL '1 day')::date ORDER BY payment_date DESC,shift_code`,[month])).rows;
+  const closures=(await pool.query(`SELECT to_char(payment_date,'YYYY-MM-DD') payment_date,shift_code,tab_title,row_count,sync_status,attempts,last_error,last_attempt_at,next_retry_at,synced_at FROM payment_sheet_day_closures WHERE payment_date BETWEEN ($1||'-01')::date AND (($1||'-01')::date+INTERVAL '1 month'-INTERVAL '1 day')::date ORDER BY payment_date DESC,shift_code`,[month])).rows;
   const config=googleSheetsConfig();
   res.json({
     month,
