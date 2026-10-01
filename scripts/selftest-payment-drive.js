@@ -20,7 +20,9 @@ assert.equal(values.length,2);
 assert.equal(values[1][2],"Danielle");
 assert.equal(values[1][12],162);
 
-assert.equal(paymentDaySheetTitle("2026-09-26","LUNCH"),"26/09");
+assert.equal(paymentDaySheetTitle("2026-09-26","LUNCH"),"26/09 S");
+assert.equal(paymentDaySheetTitle("2026-10-01","LUNCH"),"01/10 Q");
+assert.equal(paymentDaySheetTitle("2026-10-01","DINNER"),"01/10 Q");
 assert.equal(paymentDaySheetTitle("2026-09-26","DINNER"),"26/09 S");
 const daily=paymentRowsToDailySheetData([{
   courier_name:"Danielle",delivery_count:12,base_amount:75,rain:true,rain_bonus:10,
@@ -67,7 +69,7 @@ assert.equal(closed.rows,1);
 assert.ok(dailyCalls.some(call=>call.url.includes("values:batchClear")));
 assert.ok(dailyCalls.some(call=>call.url.includes("values:batchUpdate")));
 const clearBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchClear")).options.body);
-assert.deepEqual(clearBody.ranges,["'26/09 S'!A4:A53","'26/09 S'!E4:J53","'26/09 S'!M4:M53"]);
+assert.deepEqual(clearBody.ranges,["'26/09 S'!A4:A200","'26/09 S'!E4:J200","'26/09 S'!M4:M200"]);
 const updateBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchUpdate")).options.body);
 assert.deepEqual(updateBody.data.map(item=>item.range),["'26/09 S'!A4:A4","'26/09 S'!E4:J4","'26/09 S'!M4:M4"]);
 
