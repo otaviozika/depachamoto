@@ -636,6 +636,7 @@ ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS sync_status TEXT
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_error TEXT;
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ;
+ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ;
 DO $closure$ BEGIN
   ALTER TABLE payment_sheet_day_closures ADD CONSTRAINT payment_sheet_day_closures_status_check
     CHECK (sync_status IN ('PENDING','SYNCING','SYNCED','FAILED'));
@@ -10758,12 +10759,12 @@ app.post("/api/admin/payments/close-day", auth, adminOnly, asyncRoute(async (req
 
     try{
       const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
-      await lockClient.query(`UPDATE payment_sheet_day_closures SET spreadsheet_id=$3,tab_title=$4,row_count=$5,synced_by=$6,sync_status='SYNCED',last_error=NULL,synced_at=NOW(),last_attempt_at=NOW() WHERE payment_date=$1::date AND shift_code=$2`,
+      await lockClient.query(`UPDATE payment_sheet_day_closures SET spreadsheet_id=$3,tab_title=$4,row_count=$5,synced_by=$6,sync_status='SYNCED',last_error=NULL,next_retry_at=NULL,synced_at=NOW(),last_attempt_at=NOW() WHERE payment_date=$1::date AND shift_code=$2`,
         [date,shift,spreadsheetId,result.tabTitle,result.rows,req.session.user.id]);
       await audit(req.session.user.id,previous?'PAYMENT_DAY_UPDATED':'PAYMENT_DAY_CLOSED','payment',null,{payment_date:date,shift_code:shift,rows:result.rows,spreadsheet_id:spreadsheetId,tab_title:result.tabTitle});
       return res.json({...result,updated:Boolean(previous),sync_status:'SYNCED',message:`${shiftLabel(shift)} de ${date.split('-').reverse().join('/')} ${previous?'atualizado':'fechado'} e sincronizado com a aba ${result.tabTitle}.`});
     }catch(err){
-      await lockClient.query(`UPDATE payment_sheet_day_closures SET sync_status='FAILED',last_error=$3,last_attempt_at=NOW() WHERE payment_date=$1::date AND shift_code=$2`,[date,shift,String(err?.message||err).slice(0,1000)]);
+      await lockClient.query(`UPDATE payment_sheet_day_closures SET sync_status='FAILED',last_error=$3,last_attempt_at=NOW(),next_retry_at=NOW()+INTERVAL '2 minutes' WHERE payment_date=$1::date AND shift_code=$2`,[date,shift,String(err?.message||err).slice(0,1000)]);
       throw err;
     }
   }finally{
@@ -11967,6 +11968,44 @@ setTimeout(() => {
   }).catch(() => {});
 }, 2500);
 
+
+async function runPaymentSheetRetryWorkerOnce(){
+  if(STAGING_SAFE_MODE||!googleSheetsCredentialsConfigured())return;
+  const jobs=(await pool.query(`SELECT c.payment_date::text payment_date,c.shift_code,c.attempts,
+      CASE WHEN c.shift_code='LUNCH' THEN b.lunch_spreadsheet_id ELSE b.dinner_spreadsheet_id END spreadsheet_id
+    FROM payment_sheet_day_closures c
+    JOIN payment_sheet_books b ON b.month_key=to_char(c.payment_date,'YYYY-MM')
+    WHERE c.sync_status='FAILED' AND c.attempts<5 AND COALESCE(c.next_retry_at,NOW())<=NOW()
+    ORDER BY c.last_attempt_at ASC NULLS FIRST LIMIT 2`)).rows;
+  for(const job of jobs){
+    const date=String(job.payment_date).slice(0,10),shift=String(job.shift_code),spreadsheetId=String(job.spreadsheet_id||'');
+    if(!spreadsheetId)continue;
+    const lockKey=`payment-sheet:${date}:${shift}`,client=await pool.connect();
+    let locked=false;
+    try{
+      locked=(await client.query('SELECT pg_try_advisory_lock(hashtext($1)) locked',[lockKey])).rows[0]?.locked===true;
+      if(!locked)continue;
+      const claimed=await client.query(`UPDATE payment_sheet_day_closures SET sync_status='SYNCING',attempts=attempts+1,last_error=NULL,last_attempt_at=NOW()
+        WHERE payment_date=$1::date AND shift_code=$2 AND sync_status='FAILED' RETURNING attempts`,[date,shift]);
+      if(!claimed.rowCount)continue;
+      try{
+        const {rows}=await getPaymentRows(date,shift);
+        const result=await syncPaymentDayToGoogleSheets({date,shiftCode:shift,rows,spreadsheetId});
+        await client.query(`UPDATE payment_sheet_day_closures SET sync_status='SYNCED',tab_title=$3,row_count=$4,last_error=NULL,next_retry_at=NULL,synced_at=NOW(),last_attempt_at=NOW()
+          WHERE payment_date=$1::date AND shift_code=$2`,[date,shift,result.tabTitle,result.rows]);
+      }catch(err){
+        await client.query(`UPDATE payment_sheet_day_closures SET sync_status='FAILED',last_error=$3,next_retry_at=NOW()+INTERVAL '2 minutes',last_attempt_at=NOW()
+          WHERE payment_date=$1::date AND shift_code=$2`,[date,shift,String(err?.message||err).slice(0,1000)]);
+      }
+    }finally{
+      if(locked)await client.query('SELECT pg_advisory_unlock(hashtext($1))',[lockKey]).catch(()=>{});
+      client.release();
+    }
+  }
+}
+
+setInterval(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry:',String(err?.message||err))),60*1000);
+setTimeout(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry startup:',String(err?.message||err))),20_000);
 
 app.use((err, req, res, next) => {
   const status = err.status || 500;
