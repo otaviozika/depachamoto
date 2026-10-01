@@ -636,10 +636,10 @@ ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS sync_status TEXT
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_error TEXT;
 ALTER TABLE payment_sheet_day_closures ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ;
-DO $ BEGIN
+DO $closure$ BEGIN
   ALTER TABLE payment_sheet_day_closures ADD CONSTRAINT payment_sheet_day_closures_status_check
     CHECK (sync_status IN ('PENDING','SYNCING','SYNCED','FAILED'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $;
+EXCEPTION WHEN duplicate_object THEN NULL; END $closure$;
 
 INSERT INTO payment_sheet_books(month_key,lunch_spreadsheet_id,dinner_spreadsheet_id)
 VALUES('2026-09','1b-MsqWwWmuS9oLwoRW6cgWXPfOPb7ty5ibS3Kp803Bs','1NN44Veo0k1vrj58bYae6jAXvLr-3wGwhrYBLUtEXdzs')
