@@ -17,7 +17,7 @@ import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operatio
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
-import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets } from "./lib/google-sheets.js";
+import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
 const { Pool } = pg;
 const PgSession = connectPg(session);
@@ -10720,6 +10720,19 @@ app.get("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res
     updated_at:book?.updated_at||null,
     closures
   });
+}));
+
+app.get("/api/admin/payments/sheets/test-connection", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const month=String(req.query.month||'').trim();
+  if(!validMonth(month))return res.status(400).json({error:'Mês inválido. Use AAAA-MM.'});
+  const book=(await pool.query(`SELECT lunch_spreadsheet_id,dinner_spreadsheet_id FROM payment_sheet_books WHERE month_key=$1`,[month])).rows[0];
+  if(!book)return res.status(409).json({error:'Vincule as planilhas de almoço e janta deste mês antes de testar.',code:'PAYMENT_SHEETS_NOT_LINKED'});
+  const result=await testGoogleSheetsConnection({
+    month,
+    lunchSpreadsheetId:book.lunch_spreadsheet_id,
+    dinnerSpreadsheetId:book.dinner_spreadsheet_id
+  });
+  res.json({...result,message:result.ok?'Conexão com o Google validada. Nenhuma célula foi alterada.':'A autenticação funcionou, mas faltam abas esperadas em uma ou mais planilhas.'});
 }));
 
 app.put("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res)=>{
