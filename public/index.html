@@ -1565,6 +1565,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             </div>
             <div class="actions" style="margin-top:13px">
               <button class="btn primary" type="button" onclick="savePaymentSheetConfig()">Salvar planilhas do mês</button>
+              <button id="paymentSheetTestConnection" class="btn outline" type="button" onclick="testPaymentSheetConnection()">Testar conexão Google</button>
               <a id="paymentSheetLunchOpen" class="btn outline hidden" href="#" target="_blank" rel="noopener">Abrir almoço</a>
               <a id="paymentSheetDinnerOpen" class="btn outline hidden" href="#" target="_blank" rel="noopener">Abrir janta</a>
             </div>
@@ -3356,6 +3357,27 @@ async function savePaymentSheetConfig(){
   const month=$('paymentSheetMonth')?.value||($('paymentDate')?.value||spToday()).slice(0,7),lunch_url=$('paymentSheetLunchUrl')?.value||'',dinner_url=$('paymentSheetDinnerUrl')?.value||'';
   try{const result=await api('/api/admin/payments/sheets',{method:'PUT',body:JSON.stringify({month,lunch_url,dinner_url})});message('paymentSheetMsg',result.message,'ok');await loadPaymentSheetConfig(month)}catch(err){message('paymentSheetMsg',err.message,'err')}
 }
+async function testPaymentSheetConnection(){
+  const month=$('paymentSheetMonth')?.value||($('paymentDate')?.value||spToday()).slice(0,7);
+  const button=$('paymentSheetTestConnection');
+  if(button){button.disabled=true;button.textContent='Testando...'}
+  message('paymentSheetMsg','Validando credenciais e acesso em modo somente leitura...','');
+  try{
+    const result=await api('/api/admin/payments/sheets/test-connection?month='+encodeURIComponent(month));
+    const lunch=result.lunch||{},dinner=result.dinner||{};
+    if(result.ok){
+      message('paymentSheetMsg',`Conexão OK. Almoço: ${lunch.tabsFound}/${lunch.tabsExpected} abas. Janta: ${dinner.tabsFound}/${dinner.tabsExpected} abas. Nenhuma célula foi alterada.`,'ok');
+    }else{
+      const details=[];
+      if(lunch.missingTabs?.length)details.push(`Almoço: faltam ${lunch.missingTabs.join(', ')}`);
+      if(dinner.missingTabs?.length)details.push(`Janta: faltam ${dinner.missingTabs.join(', ')}`);
+      message('paymentSheetMsg',`${result.message} ${details.join(' | ')} Nenhuma célula foi alterada.`,'err');
+    }
+    await loadPaymentSheetConfig(month);
+  }catch(err){message('paymentSheetMsg',`${err.message} Nenhuma célula foi alterada pelo teste.`,'err')}
+  finally{if(button){button.disabled=false;button.textContent='Testar conexão Google'}}
+}
+
 async function closePaymentDay(){
   const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';
   if(!shift)return message('paymentCloseMsg','Selecione Almoço ou Janta antes de fechar o dia.','err');
