@@ -1423,7 +1423,8 @@ async function upsertAnotaAiOrder(pageId, normalized) {
       payload=CASE
         WHEN EXCLUDED.payload IS NULL OR EXCLUDED.payload='{}'::jsonb
         THEN anotaai_orders.payload
-        ELSE EXCLUDED.payload
+        -- Poll summaries omit deliveryAddress/items; retain the fetched details.
+        ELSE COALESCE(anotaai_orders.payload,'{}'::jsonb) || EXCLUDED.payload
       END,
       updated_at=NOW()
   `, [
@@ -1553,12 +1554,17 @@ async function syncAnotaAiPage(pageId) {
         listed += 1;
 
         const previous = (await pool.query(`
-          SELECT status_code,remote_updated_at,payload,display_id FROM anotaai_orders WHERE order_id=$1
+          SELECT status_code,remote_updated_at,payload,display_id,order_type FROM anotaai_orders WHERE order_id=$1
         `, [summaryOrder.orderId])).rows[0];
         const summaryUpdated = validAnotaAiDate(summaryOrder.remoteUpdatedAt);
         const missingHumanReference = !previous ||
           !anotaAiHasHumanReference(previous.display_id, summaryOrder.orderId);
+        // Repair active delivery payloads erased by older summary-only polls once.
+        const missingDeliveryDetails = previous && previous.order_type === "DELIVERY" &&
+          ["ANALYSIS","PRODUCTION","READY"].includes(summaryOrder.status) &&
+          !Array.isArray(previous.payload?.items);
         const shouldFetch = !previous || missingHumanReference ||
+          missingDeliveryDetails ||
           Number(previous.status_code) !== Number(summaryOrder.statusCode) ||
           (summaryUpdated && validAnotaAiDate(previous.remote_updated_at) !== summaryUpdated) ||
           !previous.payload || Object.keys(previous.payload).length < 2;
@@ -3358,25 +3364,99 @@ function firstText(...values) {
   return "";
 }
 
-function firstNumber(...values) {
+function deliveryAddressText(...values) {
   for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const number = Number(value);
-    if (Number.isFinite(number)) return number;
+    if (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))) continue;
+    const text = String(value).trim().replace(/\s+/g, " ");
+    if (text) return text;
   }
-  return null;
+  return "";
 }
 
 function ifoodDeliveryAddress(order) {
   const delivery = order.delivery || {};
-  return (
-    delivery.deliveryAddress ||
-    delivery.address ||
-    order.deliveryAddress ||
-    order.address ||
-    order.customer?.address ||
-    {}
-  );
+  return [delivery.deliveryAddress, delivery.address, order.deliveryAddress,
+    order.delivery_address, order.address, order.customer?.address].find(value =>
+      value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length) || {};
+}
+
+function deliveryAddressFields(address) {
+  const text = deliveryAddressText;
+  const postal = text(address.postalCode, address.postal_code, address.zipCode, address.zip_code, address.zipcode, address.cep);
+  const digits = postal.replace(/\D/g, "");
+  const postalCode = digits.length === 8 && digits !== "00000000"
+    ? digits.slice(0,5) + "-" + digits.slice(5) : "";
+  const country = text(address.country, address.countryCode);
+  return {
+    street: text(address.streetName, address.street_name, address.street, address.route, address.address, address.logradouro),
+    number: text(address.streetNumber, address.street_number, address.number, address.numero),
+    complement: text(address.complement, address.complemento),
+    neighborhood: text(address.neighborhood, address.district, address.bairro),
+    city: text(address.city, address.locality, address.cidade),
+    state: text(address.state, address.stateCode, address.region, address.uf),
+    postalCode,
+    country: /^(br|bra|brazil|brasil)$/i.test(country) ? "Brasil" : country
+  };
+}
+
+function deliveryCoordinateNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const text = value.trim().replace(",", ".");
+  return /^[+-]?\d+(?:\.\d+)?$/.test(text) ? Number(text) : null;
+}
+
+function deliveryCoordinatePair(coordinates) {
+  if (!coordinates || typeof coordinates !== "object" || Array.isArray(coordinates)) return null;
+  const point = coordinates.type === "Point" && Array.isArray(coordinates.coordinates)
+    ? coordinates.coordinates : null;
+  const latitude = deliveryCoordinateNumber(point ? point[1] :
+    (coordinates.latitude ?? coordinates.lat));
+  const longitude = deliveryCoordinateNumber(point ? point[0] :
+    (coordinates.longitude ?? coordinates.lng ?? coordinates.lon ?? coordinates.long));
+  if (latitude === null || longitude === null || Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180 || (latitude === 0 && longitude === 0)) return null;
+  return { latitude, longitude };
+}
+
+function buildDeliveryDestination(order) {
+  const address = ifoodDeliveryAddress(order);
+  const delivery = order.delivery || {};
+  const fields = deliveryAddressFields(address);
+  // Read an entire pair from the same object; never combine unrelated pins.
+  const coordinates = [address.coordinates, address.coordinate, address.geolocation,
+    address.location, address, delivery.coordinates, delivery.coordinate,
+    delivery.geolocation, delivery.location].map(deliveryCoordinatePair).find(Boolean);
+  const formatted = deliveryAddressText(address.formattedAddress, address.formatted,
+    address.fullAddress, address.description, delivery.formattedAddress, delivery.deliveryAddressText,
+    typeof delivery.deliveryAddress === "string" ? delivery.deliveryAddress : "",
+    typeof delivery.address === "string" ? delivery.address : "",
+    typeof order.deliveryAddress === "string" ? order.deliveryAddress : "",
+    typeof order.delivery_address === "string" ? order.delivery_address : "",
+    typeof order.address === "string" ? order.address : "");
+  const streetLine = fields.street && (fields.number || !formatted)
+    ? [fields.street, fields.number].filter(Boolean).join(", ") : formatted;
+  const locality = [fields.neighborhood, fields.city, fields.state].filter(Boolean).join(" - ");
+  // Only a street/formatted address is searchable; a city/CEP alone is not a destination.
+  const country = fields.country || (fields.city && fields.state ? "Brasil" : "");
+  const addressText = streetLine
+    ? [streetLine, locality, fields.postalCode, country].filter(Boolean).join(", ") : "";
+  const complete = Boolean(fields.street && fields.number && fields.city);
+  // An unverified platform pin can be on a different house. Honor the numbered address.
+  if (addressText && (complete || !coordinates)) return {
+    latitude: coordinates?.latitude ?? null,
+    longitude: coordinates?.longitude ?? null,
+    address: addressText,
+    address_complete: complete,
+    source: "address"
+  };
+  if (coordinates) return {
+    ...coordinates,
+    address: addressText || null,
+    address_complete: complete,
+    source: "coordinates"
+  };
+  return null;
 }
 
 function buildOrderCustomerName(payload) {
@@ -3396,34 +3476,21 @@ function buildIfoodDeliveryAddressParts(payload) {
   const order = parseJsonPayload(payload);
   if (!order) return null;
   const address = ifoodDeliveryAddress(order);
-  const street = firstText(address.streetName,address.street,address.address,address.route);
-  const number = firstText(address.streetNumber,address.number);
+  const { street, number } = deliveryAddressFields(address);
   return street || number ? { street, number } : null;
 }
 
 function buildAnotaAiDeliveryCardAddress(payload) {
   const order = parseJsonPayload(payload);
   if (!order) return null;
-  const raw = order?.delivery?.deliveryAddress || order?.delivery?.address ||
-    order?.deliveryAddress || order?.delivery_address || order?.address ||
-    order?.customer?.address;
-  if (!raw || typeof raw !== 'object') return null;
-  const text = (...values) => values.find(v => typeof v === 'string' && v.trim())?.trim() || '';
-  const street = text(raw.streetName, raw.street_name, raw.street, raw.route, raw.address);
-  const number = text(raw.streetNumber, raw.street_number, raw.number);
+  const { street, number, complement, neighborhood, city, state } = deliveryAddressFields(ifoodDeliveryAddress(order));
   if (!street && !number) return null;
-  return { street, number, complement: text(raw.complement, raw.complemento),
-    neighborhood: text(raw.neighborhood, raw.district, raw.bairro),
-    city: text(raw.city, raw.locality, raw.cidade),
-    state: text(raw.state, raw.stateCode, raw.uf) };
+  return { street, number, complement, neighborhood, city, state };
 }
 
 function buildAnotaAiDeliveryDestination(payload) {
-  const a = buildAnotaAiDeliveryCardAddress(payload);
-  if (!a) return null;
-  const street = [a.street,a.number].filter(Boolean).join(', ');
-  const locality = [a.neighborhood,a.city,a.state].filter(Boolean).join(' - ');
-  return { latitude: null, longitude: null, address: [street,locality].filter(Boolean).join(', '), source: 'address' };
+  const order = parseJsonPayload(payload);
+  return order ? buildDeliveryDestination(order) : null;
 }
 function buildIfoodDeliveryDetails(payload) {
   const order = parseJsonPayload(payload);
@@ -3541,74 +3608,7 @@ function buildAnotaAiPaymentInfo(payload) {
 
 function buildIfoodDeliveryDestination(payload) {
   const order = parseJsonPayload(payload);
-  if (!order) return null;
-
-  const delivery = order.delivery || {};
-  const address = ifoodDeliveryAddress(order);
-  const coordinates =
-    address.coordinates ||
-    address.coordinate ||
-    delivery.coordinates ||
-    delivery.coordinate ||
-    {};
-
-  const latitude = firstNumber(
-    coordinates.latitude,
-    coordinates.lat,
-    address.latitude,
-    address.lat
-  );
-  const longitude = firstNumber(
-    coordinates.longitude,
-    coordinates.lng,
-    coordinates.lon,
-    address.longitude,
-    address.lng,
-    address.lon
-  );
-
-  const formatted = firstText(
-    address.formattedAddress,
-    address.formatted,
-    address.fullAddress,
-    address.description,
-    delivery.formattedAddress,
-    delivery.deliveryAddressText
-  );
-  const streetLine = [
-    firstText(address.streetName, address.street, address.address, address.route),
-    firstText(address.streetNumber, address.number)
-  ].filter(Boolean).join(", ");
-  const areaLine = [
-    firstText(address.neighborhood, address.district),
-    firstText(address.city, address.locality),
-    firstText(address.state, address.stateCode, address.region)
-  ].filter(Boolean).join(" - ");
-  const postalCode = firstText(address.postalCode, address.zipCode);
-  const addressText = firstText(
-    formatted,
-    [streetLine, areaLine, postalCode].filter(Boolean).join(", ")
-  );
-
-  if (latitude !== null && longitude !== null) {
-    return {
-      latitude,
-      longitude,
-      address: addressText || null,
-      source: "coordinates"
-    };
-  }
-
-  if (addressText) {
-    return {
-      latitude: null,
-      longitude: null,
-      address: addressText,
-      source: "address"
-    };
-  }
-
-  return null;
+  return order ? buildDeliveryDestination(order) : null;
 }
 
 function normalizeDeliveryCode(value) {

@@ -1,5 +1,5 @@
 // approved-delivery-card-v1: preserve the existing courier card cache contract.
-const CACHE = "despachefull-v3.7.0-dark-relief-login-v2";
+const CACHE = "despachefull-v3.7.0-navigation-address-v1";
 const STATIC = ["/", "/courier-dark.css", "/login-desktop.css", "/password-recovery.js", "/password-recovery.css", "/vendor/jsQR.js", "/manifest.webmanifest", "/brand-logo.png", "/brand-wordmark.png", "/brand-wordmark-light.png", "/app-icon-192.png", "/app-icon-512.png", "/favicon-64.png", "/waze-icon.png", "/google-maps-icon.svg"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => Promise.allSettled(STATIC.map(url => cache.add(url)))));
