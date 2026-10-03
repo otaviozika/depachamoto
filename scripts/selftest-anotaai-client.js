@@ -38,6 +38,11 @@ const fetchImpl = async (url, options = {}) => {
     assert.equal(body.active, true);
     return new Response(JSON.stringify({ success: true, message: "linked", info: { token: linkedToken } }), { status: 200 });
   }
+  if (/\/order\/(ready|finalize)\/order-1$/.test(entry.url)) {
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["x-page-id"], "page-123");
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  }
   throw new Error(`Unexpected request: ${entry.url}`);
 };
 
@@ -66,5 +71,11 @@ const linked = await client.linkPage("store-key");
 assert.equal(linked.pageId, "page-123");
 assert.equal(anotaAiPageIdFromTokens(linkedToken), "page-123");
 assert.equal(calls.some(call => String(call.options?.headers?.Authorization || "").includes("client-secret")), false);
+await client.readyOrder("page-123", "order-1");
+await client.finalizeOrder("page-123", "order-1");
+assert.deepEqual(calls.filter(call => /\/order\//.test(call.url)).map(call => call.url), [
+  'https://gateway-partners.anota.ai/api-old/partnerauth/v2/order/ready/order-1',
+  'https://gateway-partners.anota.ai/api-old/partnerauth/v2/order/finalize/order-1'
+]);
 
 console.log("selftest-anotaai-client: OK");
