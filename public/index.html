@@ -3691,23 +3691,26 @@ function courierDeliveryBadge(x){
   return '<span class="badge gray">AGUARDANDO iFOOD</span>';
 }
 
-function buildWazeUrl(destination){
-  if(!destination)return '';
-  const params=new URLSearchParams();
+function courierNavigationTarget(destination){
+  if(!destination)return null;
+  const address=typeof destination.address==='string'?destination.address.trim():'';
+  if(address&&(destination.source==='address'||destination.address_complete===true))return {address};
   const rawLat=destination.latitude;
   const rawLng=destination.longitude;
-  const hasCoordinates=rawLat!==null&&rawLat!==undefined&&rawLat!==''&&rawLng!==null&&rawLng!==undefined&&rawLng!=='';
-  const lat=Number(rawLat);
-  const lng=Number(rawLng);
-  if(hasCoordinates&&Number.isFinite(lat)&&Number.isFinite(lng)){
-    params.set('ll',`${lat},${lng}`);
-    params.set('navigate','yes');
-  }else{
-    const address=String(destination.address||'').trim();
-    if(!address)return '';
-    params.set('q',address);
-    params.set('navigate','yes');
-  }
+  const numeric=value=>typeof value==='number'?value:
+    typeof value==='string'&&/^[+-]?\d+(?:[.,]\d+)?$/.test(value.trim())?Number(value.trim().replace(',','.')):NaN;
+  const lat=numeric(rawLat),lng=numeric(rawLng);
+  if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&(lat!==0||lng!==0))return {coordinates:lat+','+lng};
+  return address?{address}:null;
+}
+
+function buildWazeUrl(destination){
+  const target=courierNavigationTarget(destination);
+  if(!target)return '';
+  const params=new URLSearchParams();
+  if(target.address)params.set('q',target.address);
+  else params.set('ll',target.coordinates);
+  params.set('navigate','yes');
   params.set('vehicle_type','motorcycle');
   params.set('utm_source','despachefull');
   return `https://waze.com/ul?${params.toString()}`;
@@ -3715,19 +3718,13 @@ function buildWazeUrl(destination){
 
 
 function buildGoogleMapsUrl(destination){
-  if(!destination)return '';
-  const lat=destination.latitude, lng=destination.longitude;
-  let target='';
-  if(lat!==null&&lat!==undefined&&lat!==''&&lng!==null&&lng!==undefined&&lng!==''){
-    const a=Number(lat),b=Number(lng);
-    if(Number.isFinite(a)&&Number.isFinite(b))target=a+','+b;
-  }
-  if(!target)target=String(destination.address||'').trim();
+  const target=courierNavigationTarget(destination);
   if(!target)return '';
   const params=new URLSearchParams();
   params.set('api','1');
-  params.set('destination',target);
+  params.set('destination',target.address||target.coordinates);
   params.set('travelmode','driving');
+  params.set('dir_action','navigate');
   return 'https://www.google.com/maps/dir/?'+params.toString();
 }
 
