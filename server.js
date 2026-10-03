@@ -1690,7 +1690,7 @@ async function notifyAnotaAiDispatchDead({
   await createNotification({
     type: "ANOTAAI_DISPATCH_FAILED",
     severity: "error",
-    title: "Falha definitiva no despacho Anota AI",
+    title: "Falha definitiva na atualização Anota AI",
     message: `#${orderNumber} após ${count} tentativas`,
     dispatchId,
     uniqueKey: `anotaai-dispatch-dead:${orderId}:cycle:${cycle}`
@@ -1705,32 +1705,56 @@ async function notifyAnotaAiDispatchDead({
   });
 }
 
-async function markAnotaAiDispatchSent(job, responseBody = null) {
-  await pool.query(`
-    UPDATE anotaai_dispatch_links
-    SET anotaai_dispatch_status='SENT',
+async function markAnotaAiDispatchSent(job, responseBody = null, alreadyFinished = false) {
+  const action = job.confirmed_at && job.dispatched_at ? "FINALIZE" : "READY";
+  const finished = action === "FINALIZE" || alreadyFinished;
+  // dispatched_at records the successful READY step. A local confirmation can
+  // queue FINALIZE only after that step, including a confirmation received early.
+  const applied = await pool.query(`
+    WITH current_claim AS (
+      SELECT anotaai_order_id FROM anotaai_dispatch_links
+      WHERE anotaai_order_id=$1 AND anotaai_dispatch_status='PROCESSING'
+        AND attempts=$7 AND retry_cycle=$8 AND processing_started_at=$9::timestamptz
+      FOR UPDATE
+    ), remote_update AS (
+      UPDATE anotaai_orders
+      SET status=CASE
+            WHEN status IN ('FINISHED','CANCELLED','DENIED','CANCELLATION_REQUESTED') THEN status
+            ELSE $3 END,
+          status_code=CASE
+            WHEN status IN ('FINISHED','CANCELLED','DENIED','CANCELLATION_REQUESTED') THEN status_code
+            ELSE $4 END,
+          updated_at=NOW()
+      WHERE order_id IN (SELECT anotaai_order_id FROM current_claim)
+      RETURNING status
+    ), next_step AS (
+      SELECT ($5::boolean AND r.status='READY' AND EXISTS (
+        SELECT 1 FROM anotaai_delivery_confirmations c
+        WHERE c.anotaai_order_id=$1 AND c.dispatch_id=$6
+      )) AS finalize_pending
+      FROM remote_update r
+    )
+    UPDATE anotaai_dispatch_links l
+    SET anotaai_dispatch_status=CASE WHEN n.finalize_pending THEN 'PENDING' ELSE 'SENT' END,
+        attempts=CASE WHEN n.finalize_pending THEN 0 ELSE l.attempts END,
+        retry_cycle=CASE WHEN n.finalize_pending THEN l.retry_cycle+1 ELSE l.retry_cycle END,
         processing_started_at=NULL,
-        dispatched_at=COALESCE(dispatched_at,NOW()),
+        dispatched_at=COALESCE(l.dispatched_at,NOW()),
         next_attempt_at=NOW(),
         last_http_status=200,
         last_error=NULL,
         last_response=$2::jsonb
-    WHERE anotaai_order_id=$1
-  `, [job.order_id, JSON.stringify(responseBody || {})]);
-
-  await pool.query(`
-    UPDATE anotaai_orders
-    SET status='FINISHED',
-        status_code=3,
-        remote_updated_at=COALESCE(remote_updated_at,NOW()),
-        updated_at=NOW()
-    WHERE order_id=$1
-  `, [job.order_id]);
+    FROM next_step n
+    WHERE l.anotaai_order_id=$1
+  `, [job.order_id, JSON.stringify({ ...(responseBody || {}), despache_delivery_finalized: finished }), finished ? "FINISHED" : "READY",
+    finished ? 3 : 2, action === "READY", job.dispatch_id,job.claimed_attempts,job.retry_cycle,job.claim_started_at]);
+  if (!applied.rowCount) return;
 
   await auditBestEffort(null, "ANOTAAI_DISPATCH_SENT", "dispatch", job.dispatch_id, {
     anotaai_order_id: job.order_id,
     order_number: job.local_order_number,
-    endpoint_action: "FINALIZE"
+    endpoint_action: action,
+    already_finished: alreadyFinished
   });
 
   emitRealtime("anotaai:changed", {
@@ -1738,6 +1762,29 @@ async function markAnotaAiDispatchSent(job, responseBody = null) {
     dispatch_id: job.dispatch_id,
     order_id: job.order_id
   });
+}
+
+async function queueAnotaAiDeliveryFinalization(orderId = null, dispatchId = null) {
+  // Reuse the durable queue and the existing admin replay. Do not reset a job
+  // already pending/processing/dead when the courier clicks twice.
+  const q = await pool.query(`
+    UPDATE anotaai_dispatch_links l
+    SET anotaai_dispatch_status='PENDING',attempts=0,retry_cycle=retry_cycle+1,
+        processing_started_at=NULL,next_attempt_at=NOW(),last_error=NULL,last_http_status=NULL
+    FROM anotaai_orders a
+    WHERE ($1::text IS NULL OR l.anotaai_order_id=$1) AND ($2::bigint IS NULL OR l.dispatch_id=$2)
+      AND a.order_id=l.anotaai_order_id
+      AND a.status NOT IN ('FINISHED','CANCELLED','DENIED','CANCELLATION_REQUESTED')
+      AND l.anotaai_dispatch_status='SENT' AND l.dispatched_at IS NOT NULL
+      AND COALESCE(l.last_response->>'despache_delivery_finalized','false') <> 'true'
+      AND EXISTS (SELECT 1 FROM dispatches d WHERE d.id=l.dispatch_id AND d.departed_at >= NOW()-INTERVAL '48 hours')
+      AND EXISTS (
+        SELECT 1 FROM anotaai_delivery_confirmations c
+        WHERE c.anotaai_order_id=l.anotaai_order_id AND c.dispatch_id=l.dispatch_id
+      )
+    RETURNING l.anotaai_order_id
+  `, [orderId,dispatchId]);
+  return q.rowCount > 0;
 }
 
 async function resetStaleAnotaAiDispatchJobs() {
@@ -1795,6 +1842,8 @@ async function runAnotaAiDispatchWorkerOnce() {
 
   try {
     await resetStaleAnotaAiDispatchJobs();
+    // Recover a crash between saving a local confirmation and enqueueing FINALIZE.
+    await queueAnotaAiDeliveryFinalization();
 
     const jobs = (await pool.query(`
       SELECT
@@ -1807,10 +1856,14 @@ async function runAnotaAiDispatchWorkerOnce() {
         a.status AS order_status,
         a.status_code,
         a.order_type,
+        l.dispatched_at,
+        c.confirmed_at,
         d.departed_at
       FROM anotaai_dispatch_links l
       JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
       JOIN dispatches d ON d.id=l.dispatch_id
+      LEFT JOIN anotaai_delivery_confirmations c
+        ON c.anotaai_order_id=l.anotaai_order_id AND c.dispatch_id=l.dispatch_id
       WHERE l.anotaai_dispatch_status IN ('PENDING','FAILED')
         AND l.attempts < $1
         AND l.next_attempt_at <= NOW()
@@ -1831,53 +1884,80 @@ async function runAnotaAiDispatchWorkerOnce() {
         WHERE anotaai_order_id=$1
           AND anotaai_dispatch_status IN ('PENDING','FAILED')
           AND attempts < $2
-        RETURNING attempts
+        RETURNING attempts,retry_cycle,dispatched_at,processing_started_at::text AS claim_started_at,
+          (SELECT c.confirmed_at FROM anotaai_delivery_confirmations c
+           WHERE c.anotaai_order_id=$1 AND c.dispatch_id=anotaai_dispatch_links.dispatch_id) AS confirmed_at
       `, [job.order_id, ANOTAAI_DISPATCH_MAX_ATTEMPTS])).rows[0];
 
       if (!claim) continue;
       const attempts = Number(claim.attempts || 1);
+      Object.assign(job,claim,{claimed_attempts:attempts});
+      const action = job.confirmed_at && job.dispatched_at ? "FINALIZE" : "READY";
 
       try {
         if (String(job.order_status || "").toUpperCase() === "FINISHED" || Number(job.status_code) === 3) {
-          await markAnotaAiDispatchSent(job, { already_finished: true });
+          await markAnotaAiDispatchSent(job, { already_finished: true }, true);
+          continue;
+        }
+        if (action === "READY" && (String(job.order_status || "").toUpperCase() === "READY" || Number(job.status_code) === 2)) {
+          await markAnotaAiDispatchSent(job, { already_ready: true });
           continue;
         }
 
-        assertExternalMutationAllowed("finalização de pedido no Anota AI");
-        const body = await anotaAiClient.finalizeOrder(job.page_id, job.order_id);
+        let body;
+        if (action === "READY") {
+          assertExternalMutationAllowed("saída para entrega de pedido no Anota AI");
+          body = await anotaAiClient.readyOrder(job.page_id, job.order_id);
+        } else {
+          if (String(job.order_status || "").toUpperCase() !== "READY" && Number(job.status_code) !== 2) {
+            const details = await anotaAiClient.getOrder(job.page_id,job.order_id);
+            const normalized = normalizeAnotaAiOrder(extractAnotaAiOrderCandidate(details,job.order_id),{});
+            if (normalized.status === "FINISHED") {
+              await markAnotaAiDispatchSent(job,details,true);
+              continue;
+            }
+            if (normalized.status !== "READY") throw new Error("A saída para entrega ainda não consta no Anota AI; finalização permanece pendente.");
+          }
+          assertExternalMutationAllowed("finalização de pedido no Anota AI");
+          body = await anotaAiClient.finalizeOrder(job.page_id, job.order_id);
+        }
         await markAnotaAiDispatchSent(job, body);
 
         setImmediate(() => {
-          syncAnotaAiOnce({ reason: "dispatch_finalize" }).catch(error => {
-            console.error("Anota AI sync after finalize:", anotaAiSafeError(error));
+          syncAnotaAiOnce({ reason: action === "READY" ? "dispatch_ready" : "delivery_finalize" }).catch(error => {
+            console.error("Anota AI sync after status change:", anotaAiSafeError(error));
           });
         });
       } catch (error) {
         let remotelyFinished = false;
+        let remotelyReady = false;
         let remoteBody = null;
 
-        if ([400,404,409,412].includes(Number(error?.statusCode || 0))) {
+        const httpStatus = Number(error?.statusCode || 0);
+        if ([400,404,409,412].includes(httpStatus) || httpStatus >= 500 || !httpStatus) {
           try {
             remoteBody = await anotaAiClient.getOrder(job.page_id, job.order_id);
             const candidate = extractAnotaAiOrderCandidate(remoteBody, job.order_id);
             const normalized = normalizeAnotaAiOrder(candidate, {});
             remotelyFinished = Number(normalized.statusCode) === 3 ||
               String(normalized.status || "").toUpperCase() === "FINISHED";
+            remotelyReady = Number(normalized.statusCode) === 2 ||
+              String(normalized.status || "").toUpperCase() === "READY";
             if (normalized.orderId) await upsertAnotaAiOrder(job.page_id, normalized);
           } catch {}
         }
 
-        if (remotelyFinished) {
-          await markAnotaAiDispatchSent(job, remoteBody || { already_finished: true });
+        if (remotelyFinished || (action === "READY" && remotelyReady)) {
+          await markAnotaAiDispatchSent(job, remoteBody || {}, remotelyFinished);
           continue;
         }
 
         const backoff = anotaAiDispatchBackoffSeconds(attempts);
         const retryAllowed = attempts < ANOTAAI_DISPATCH_MAX_ATTEMPTS;
         const nextStatus = retryAllowed ? "FAILED" : "DEAD";
-        const errorText = anotaAiSafeError(error);
+        const errorText = `${action}: ${anotaAiSafeError(error)}`;
 
-        await pool.query(`
+        const failed = await pool.query(`
           UPDATE anotaai_dispatch_links
           SET anotaai_dispatch_status=$2,
               processing_started_at=NULL,
@@ -1888,13 +1968,17 @@ async function runAnotaAiDispatchWorkerOnce() {
               last_http_status=$4,
               last_error=$5
           WHERE anotaai_order_id=$1
+            AND anotaai_dispatch_status='PROCESSING' AND attempts=$6 AND retry_cycle=$7
+            AND processing_started_at=$8::timestamptz
         `, [
           job.order_id,
           nextStatus,
           String(backoff),
           Number(error?.statusCode || 0) || null,
-          errorText
+          errorText,
+          attempts,job.retry_cycle,job.claim_started_at
         ]);
+        if (!failed.rowCount) continue;
 
         if (!retryAllowed) {
           await notifyAnotaAiDispatchDead({
@@ -1925,7 +2009,7 @@ async function runAnotaAiDispatchWorkerOnce() {
         });
 
         console.error(
-          `Anota AI finalize #${job.local_order_number} tentativa ${attempts}/${ANOTAAI_DISPATCH_MAX_ATTEMPTS}:`,
+          `Anota AI ${action} #${job.local_order_number} tentativa ${attempts}/${ANOTAAI_DISPATCH_MAX_ATTEMPTS}:`,
           errorText
         );
       }
@@ -6687,6 +6771,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
   }
 
   if (row.confirmed_at) {
+    await queueAnotaAiDeliveryFinalization(row.order_id,row.dispatch_id);
     return res.json({
       ok: true,
       already_confirmed: true,
@@ -6704,6 +6789,12 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
       confirmed_at=COALESCE(anotaai_delivery_confirmations.confirmed_at,EXCLUDED.confirmed_at)
     RETURNING confirmed_at
   `, [row.order_id,row.dispatch_id,req.session.user.id])).rows[0];
+
+  // Persist the physical delivery first. The durable worker performs FINALIZE
+  // after READY succeeds, so a platform outage neither skips READY nor loses delivery.
+  await queueAnotaAiDeliveryFinalization(row.order_id,row.dispatch_id);
+  setImmediate(() => runAnotaAiDispatchWorkerOnce().catch(error =>
+    console.error("Anota AI delivery finalization:", anotaAiSafeError(error))));
 
   await auditBestEffort(req.session.user.id, "ANOTAAI_DELIVERY_CONFIRMED", "dispatch", row.dispatch_id, {
     anotaai_order_id: row.order_id,
@@ -11908,7 +11999,7 @@ setInterval(() => emitRealtime("server:time", { now: new Date().toISOString() })
 setInterval(checkTimeNotifications, 30 * 1000);
 setTimeout(checkTimeNotifications, 5000);
 
-// Envia a baixa dos pedidos Anota AI vinculados a uma saída.
+// Envia READY na saída e FINALIZE após a confirmação física de entrega.
 // A fila é durável: falhas externas não desfazem a saída do motoboy e são reprocessadas.
 setInterval(() => {
   runAnotaAiDispatchWorkerOnce().catch(error => {

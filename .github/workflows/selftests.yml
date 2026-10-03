@@ -46,6 +46,7 @@ jobs:
           node scripts/selftest-socket-security.js
           node scripts/selftest-anotaai-integration.js
           node scripts/selftest-anotaai-address-preservation.js
+          node scripts/selftest-anotaai-delivery-stages.js
           node scripts/selftest-waze-navigation.js
           node scripts/selftest-delivery-details.js
           node scripts/selftest-courier-customer-card.js
