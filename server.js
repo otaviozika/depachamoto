@@ -13,9 +13,12 @@ import { Server } from "socket.io";
 import crypto from "crypto";
 import compression from "compression";
 import webpush from "web-push";
+import { accountMatchesSession, regenerateAuthenticatedSession, changePasswordAndRevokeSessions, credentialVersion } from "./lib/session-security.js";
+import { appContentSecurityPolicy } from "./lib/ui-security.js";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
+import { installPasswordRecovery } from "./lib/password-recovery.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
@@ -72,7 +75,7 @@ const io = new Server(server);
 
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: appContentSecurityPolicy(path.join(__dirname, "public"), process.env.NODE_ENV === "production") }));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -174,6 +177,9 @@ ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS nickname TEXT;
@@ -1177,21 +1183,18 @@ async function auth(req, res, next) {
     return res.status(401).json({ error: "Não autenticado.", code: "SESSION_EXPIRED" });
   }
 
-  // Contas de motoboy excluídas ou desativadas perdem acesso imediatamente,
-  // inclusive quando já havia uma sessão aberta em outro aparelho.
-  if (sessionUser.role === "courier") {
-    const account = (await pool.query(
-      "SELECT active,approval_status FROM users WHERE id=$1 AND role='courier'",
-      [sessionUser.id]
-    )).rows[0];
-
-    if (!account || !account.active || account.approval_status !== "APPROVED") {
-      await new Promise(resolve => req.session.destroy(() => resolve()));
-      return res.status(401).json({
-        error: "Este acesso de motoboy não está mais ativo.",
-        code: "SESSION_EXPIRED"
-      });
-    }
+  // Validate every role's current credential epoch. A stale save or login
+  // cannot revive a session after a password change.
+  const account = (await pool.query(
+    "SELECT id,role,active,approval_status,session_version FROM users WHERE id=$1",
+    [sessionUser.id]
+  )).rows[0];
+  if (!accountMatchesSession(account, sessionUser)) {
+    await new Promise(resolve => req.session.destroy(() => resolve()));
+    return res.status(401).json({
+      error: "Este acesso não está mais ativo. Entre novamente.",
+      code: "SESSION_EXPIRED"
+    });
   }
 
   next();
@@ -1206,7 +1209,7 @@ function courierOnly(req, res, next) {
 }
 async function currentUser(userId) {
   const q = await pool.query(
-    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash,nickname,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_verified_by,pix_updated_at FROM users WHERE id=$1",
+    "SELECT id,name,username,role,active,approval_status,must_change_password,password_hash,session_version,nickname,pix_key,pix_type,pix_holder_name,pix_status,pix_verified_at,pix_verified_by,pix_updated_at FROM users WHERE id=$1",
     [userId]
   );
   return q.rows[0] || null;
@@ -1307,9 +1310,19 @@ async function revokeUserSessions(userId) {
 async function disconnectUserSockets(userId) {
   const id = Number(userId);
   if (!Number.isInteger(id) || id <= 0) return 0;
-  const sockets = await io.in(SOCKET_ROOMS.user(id)).fetchSockets();
-  for (const socket of sockets) socket.disconnect(true);
-  return sockets.length;
+  // Close local sockets first: an adapter lookup outage must not keep this
+  // instance's old access alive or misreport a committed password change.
+  let count = 0;
+  for (const socket of io.sockets.sockets.values()) {
+    if (Number(socket.data?.user?.id) === id) { socket.disconnect(true); count++; }
+  }
+  try {
+    const remote = await io.in(SOCKET_ROOMS.user(id)).fetchSockets();
+    for (const socket of remote) { socket.disconnect(true); count++; }
+  } catch {
+    await auditBestEffort(id, "SOCKET_REVOCATION_DEFERRED", "security", id, { reason: "ADAPTER_LOOKUP_UNAVAILABLE" });
+  }
+  return count;
 }
 
 function disconnectSocketForUser(socketId, userId) {
@@ -5928,6 +5941,8 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
   });
 }));
 
+await installPasswordRecovery({ app, pool, asyncRoute, auth, adminOnly, audit, sessionSecret, onCredentialsChanged: disconnectUserSockets });
+
 app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -5946,18 +5961,12 @@ app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req,
     return res.status(403).json({ error: "Seu cadastro não foi aprovado. Procure o administrador." });
   }
 
-  await new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
-  req.session.user = {
-    id: user.id,
-    name: user.name,
-    username: user.username,
-    role: user.role
-  };
+  await regenerateAuthenticatedSession(req, user);
 
   await audit(user.id, "LOGIN", "user", user.id, requestMeta(req));
   res.json({
     user: {
-      ...req.session.user,
+      id: user.id, name: user.name, username: user.username, role: user.role,
       mustChangePassword: !!user.must_change_password
     },
     server_now: new Date().toISOString()
@@ -6052,13 +6061,22 @@ app.post("/api/account/password", auth, asyncRoute(async (req, res) => {
     return res.status(400).json({ error: "A nova senha deve ser diferente da senha atual." });
   }
 
-  await pool.query(
-    "UPDATE users SET password_hash=$1,must_change_password=false WHERE id=$2",
-    [await bcrypt.hash(newPassword, 12), user.id]
-  );
-
-  await audit(user.id, "PASSWORD_CHANGED", "user", user.id, requestMeta(req));
-  res.json({ ok: true, message: "Senha alterada com sucesso." });
+  const updated = await changePasswordAndRevokeSessions({
+    pool, account: user, sessionUser: req.session.user,
+    nextHash: await bcrypt.hash(newPassword, 12)
+  });
+  await disconnectUserSockets(user.id);
+  try {
+    await regenerateAuthenticatedSession(req, updated);
+  } catch {
+    if (req.session?.destroy) await new Promise(resolve => req.session.destroy(() => resolve()));
+    req.session = null;
+    res.clearCookie("connect.sid", { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    await auditBestEffort(user.id, "PASSWORD_CHANGED", "user", user.id, { ...requestMeta(req), session_rotated: false });
+    return res.json({ ok: true, reauthenticate: true, message: "Senha alterada. Entre novamente com a nova senha." });
+  }
+  await auditBestEffort(user.id, "PASSWORD_CHANGED", "user", user.id, { ...requestMeta(req), sessions_revoked: true, session_rotated: true });
+  res.json({ ok: true, session_rotated: true, message: "Senha alterada com sucesso. Os outros acessos foram encerrados." });
 }));
 
 
@@ -11508,7 +11526,7 @@ app.post("/api/admin/couriers/:id/reset-password", auth, adminOnly, asyncRoute(a
 
   const q = await pool.query(`
     UPDATE users
-    SET password_hash=$1,must_change_password=true
+    SET password_hash=$1,must_change_password=true,session_version=session_version+1
     WHERE id=$2 AND role='courier' AND approval_status<>'DELETED'
     RETURNING id,name,username,must_change_password
   `, [await bcrypt.hash(newPassword, 12), req.params.id]);
@@ -11930,10 +11948,7 @@ io.use(async (socket, next) => {
     }
 
     const account = await currentUser(sessionUser.id);
-    const validRole = account && ["admin", "courier"].includes(account.role);
-    const courierApproved = account?.role !== "courier" || account.approval_status === "APPROVED";
-
-    if (!account || !account.active || !validRole || !courierApproved) {
+    if (!accountMatchesSession(account, sessionUser)) {
       if (socket.request.session) {
         await new Promise(resolve => socket.request.session.destroy(() => resolve()));
       }
@@ -11945,7 +11960,8 @@ io.use(async (socket, next) => {
     socket.data.user = {
       id: Number(account.id),
       role: account.role,
-      username: account.username
+      username: account.username,
+      session_version: credentialVersion(account.session_version)
     };
     next();
   } catch (err) {
@@ -11977,11 +11993,9 @@ io.on("connection", socket => {
       }
 
       const account = await currentUser(user.id);
-      const valid =
-        account &&
-        account.active &&
-        ["admin", "courier"].includes(account.role) &&
-        (account.role !== "courier" || account.approval_status === "APPROVED");
+      const valid = accountMatchesSession(account, sessionUser) &&
+        account.role === user.role &&
+        credentialVersion(account.session_version) === user.session_version;
 
       if (!valid) socket.disconnect(true);
     } catch {

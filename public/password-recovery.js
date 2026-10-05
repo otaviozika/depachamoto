@@ -124,9 +124,9 @@
         <div class="password-recovery-item-main"><b>${esc(row.name)}</b><span>@${esc(row.username)}</span><small>Solicitado em ${dateTime(row.requested_at)}</small></div>
         <div class="password-recovery-status">${esc(statusLabel(row.status))}</div>
         <div class="password-recovery-actions">${row.status === 'PENDING'
-          ? `<button class="btn primary" type="button" onclick="approvePasswordRecovery(${Number(row.id)})">Gerar código</button><button class="btn outline" type="button" onclick="rejectPasswordRecovery(${Number(row.id)})">Recusar</button>`
+          ? `<button class="btn primary" type="button" data-ui-click="acb1fcb727623d0" data-ui-click-args="${uiActionArgs([Number(row.id)])}">Gerar código</button><button class="btn outline" type="button" data-ui-click="aa14ec5dbfc04b1" data-ui-click-args="${uiActionArgs([Number(row.id)])}">Recusar</button>`
           : row.status === 'APPROVED'
-            ? `<span class="small muted">Expira em ${dateTime(row.expires_at)}</span><button class="btn outline" type="button" onclick="rejectPasswordRecovery(${Number(row.id)})">Cancelar</button>`
+            ? `<span class="small muted">Expira em ${dateTime(row.expires_at)}</span><button class="btn outline" type="button" data-ui-click="aa14ec5dbfc04b1" data-ui-click-args="${uiActionArgs([Number(row.id)])}">Cancelar</button>`
             : ''}</div>
       </div>`).join('');
     } catch (error) {

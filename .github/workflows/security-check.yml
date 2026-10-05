@@ -18,6 +18,8 @@ jobs:
         run: npm install --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Prepare and validate production frontend
+        run: npm run prestart
       - name: Syntax checks
         run: |
           node --check server.js
@@ -32,3 +34,6 @@ jobs:
           node scripts/selftest-bandwidth-stage1.js
           npm run selftest:delivery-confirmation
           npm run selftest:socket-security
+          npm run selftest:session-revocation
+          npm run selftest:ui-security
+          npm run selftest:security-integration
