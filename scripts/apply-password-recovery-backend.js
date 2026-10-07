@@ -14,7 +14,7 @@ if (!server.includes('installPasswordRecovery')) {
 
   const routeAnchor = 'app.post("/api/login",';
   if (!server.includes(routeAnchor)) throw new Error('Password recovery backend: login route anchor not found.');
-  server = server.replace(routeAnchor, 'await installPasswordRecovery({ app, pool, asyncRoute, auth, adminOnly, audit, sessionSecret });\n\n' + routeAnchor);
+  server = server.replace(routeAnchor, 'await installPasswordRecovery({ app, pool, asyncRoute, auth, adminOnly, audit, sessionSecret, onCredentialsChanged: disconnectUserSockets });\n\n' + routeAnchor);
 }
 
 fs.writeFileSync(serverPath, server);

@@ -7,9 +7,10 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js",
+    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js && node scripts/apply-ui-security.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "test:regression": "node scripts/run-regression.js",
     "loadtest:health": "node scripts/loadtest-health.js",
     "selftest:brutal": "node scripts/selftest-brutal.js",
     "loadtest:brutal": "node scripts/loadtest-brutal.js",
@@ -37,6 +38,10 @@
     "selftest:ifood-order-days": "node scripts/selftest-ifood-order-days.js",
     "selftest:platform-selection": "node scripts/selftest-platform-selection.js",
     "selftest:socket-security": "node scripts/selftest-socket-security.js",
+    "selftest:session-revocation": "node scripts/selftest-session-revocation.js",
+    "selftest:ui-security": "node scripts/selftest-ui-security.js",
+    "selftest:security-integration": "node scripts/selftest-security-integration.js",
+    "verify:security-browser": "node scripts/verify-security-browser.mjs",
     "selftest:dispatch-recovery": "node scripts/selftest-dispatch-recovery.js",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
