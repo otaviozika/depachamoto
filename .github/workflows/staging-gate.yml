@@ -66,7 +66,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm install
+        run: npm ci --ignore-scripts
 
       - name: Security audit
         run: npm audit --omit=dev --audit-level=high
@@ -75,14 +75,7 @@ jobs:
         run: |
           node --check server.js
           node scripts/selftest-staging-safety.js
-          failed=0
-          for test in scripts/selftest-*.js; do
-            echo "::group::$test"
-            node "$test" || failed=$((failed+1))
-            echo "::endgroup::"
-          done
-          echo "Failed test scripts: $failed"
-          test "$failed" -eq 0
+          npm run test:regression
 
       - name: Apply production prestart transformations
         run: npm run prestart
@@ -147,6 +140,7 @@ jobs:
             health.json
             staging-smoke-report.json
             staging-server.log
+            artifacts/regression/
           if-no-files-found: ignore
 
       - name: Stop staging app

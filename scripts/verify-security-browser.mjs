@@ -71,6 +71,29 @@ try{
   await admin.page.locator('#adminAccountModal button[data-ui-click="af022eb0bd9405e"]').click();
   check(true,'declarative profile menu and account modal preserve interaction');
 
+  // The restored monthly sheet must work through the actual UI/API boundary.
+  // Google integration is disabled in this isolated staging application.
+  await admin.page.locator('[data-subpage="payments"]').click();
+  await admin.page.locator('#paymentDailyView').waitFor({state:'visible'});
+  check(await admin.page.locator('#paymentMonthView').isHidden(),'payments opens in the daily view');
+  const monthResponse=admin.page.waitForResponse(response=>response.url().includes('/api/admin/payments/month?')&&response.request().method()==='GET');
+  await admin.page.locator('#paymentMonthTab').click();
+  const monthResult=await monthResponse;
+  check(monthResult.status()===200,'monthly tab loads the protected monthly API');
+  await admin.page.locator('#paymentMonthView').waitFor({state:'visible'});
+  await admin.page.waitForFunction(()=>paymentMonthState.month&&document.querySelectorAll('#paymentMonthDays button').length>=28);
+  check(await admin.page.locator('#paymentMonthTab').getAttribute('aria-selected')==='true','monthly tab exposes its active accessibility state');
+  await admin.page.locator('#paymentBookDinner').click();
+  check(await admin.page.evaluate(()=>paymentMonthState.shift)==='DINNER','monthly dinner tab selects the correct shift');
+  await admin.page.locator('#paymentBookLunch').click();
+  check(await admin.page.evaluate(()=>paymentMonthState.shift)==='LUNCH','monthly lunch tab selects the correct shift');
+  await admin.page.locator('#paymentMonthDays button').last().click();
+  check(await admin.page.evaluate(()=>paymentMonthState.date.endsWith(String(paymentMonthDates(paymentMonthState.month).length))),'monthly day tab selects the last valid day');
+  await admin.page.locator('#paymentDailyTab').click();
+  await admin.page.locator('#paymentDailyView').waitFor({state:'visible'});
+  check(await admin.page.locator('#paymentMonthView').isHidden(),'daily tab restores the daily view');
+  check(await admin.page.evaluate(()=>cspViolations.length)===0,'payment tabs execute with the strict CSP');
+
   for(const username of ['browser_courier','browser_other']){
     const result=await admin.context.request.post(base+'/api/admin/couriers',{data:{name:username,username,password}});assert.equal(result.status(),201);
   }
