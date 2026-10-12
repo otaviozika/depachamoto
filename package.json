@@ -58,6 +58,7 @@
     "@electric-sql/pglite": "^0.5.8"
   },
   "overrides": {
-    "ip-address": "^10.7.1"
+    "ip-address": "^10.7.1",
+    "proxy-addr": "2.0.8"
   }
 }
