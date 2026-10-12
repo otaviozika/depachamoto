@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import {authorizedTagme,parseTagmeCount} from "../lib/tagme-queue.js";
+const secret="a".repeat(40), req=v=>({get:k=>k==="authorization"?v:""});
+assert.equal(authorizedTagme(req("Bearer "+secret),secret),true);
+assert.equal(authorizedTagme(req("Bearer "+"b".repeat(40)),secret),false);
+assert.equal(authorizedTagme(req("Bearer "+secret),"short"),false);
+const event={event_id:"event-001",occurred_at:new Date().toISOString(),waiting_groups:8,name:"PRIVATE",phone:"PRIVATE"};
+assert.deepEqual(parseTagmeCount(event),{eventId:event.event_id,occurredAt:event.occurred_at,count:8});
+for(const bad of [-1,1.2,1001,"8",null])assert.equal(parseTagmeCount({...event,waiting_groups:bad}),null);
+assert.equal(parseTagmeCount({...event,event_id:"invalid id"}),null);
+assert.equal(parseTagmeCount({...event,occurred_at:"2020-01-01T00:00:00Z"}),null);
+console.log("PASS: Tagme auth, strict count payload, no PII in normalized result.");
