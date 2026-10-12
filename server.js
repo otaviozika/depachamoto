@@ -11,6 +11,7 @@ import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
+import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
 import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
@@ -12110,6 +12111,59 @@ async function runPaymentSheetRetryWorkerOnce(){
 
 setInterval(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry:',String(err?.message||err))),60*1000);
 setTimeout(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry startup:',String(err?.message||err))),20_000);
+
+// Tagme queue: independent from dispatch/payment systems. No personal data is persisted.
+// Disabled until TAGME_WEBHOOK_SECRET (32+ chars) is provisioned and payload contract homologated.
+await pool.query(`
+CREATE TABLE IF NOT EXISTS tagme_queue_snapshot (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  waiting_groups INTEGER NOT NULL CHECK (waiting_groups BETWEEN 0 AND 1000),
+  last_event_id TEXT NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS tagme_queue_event_ids (
+  event_id TEXT PRIMARY KEY,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`);
+const tagmeLimiter=rateLimit({windowMs:60*1000,limit:120,standardHeaders:"draft-8",legacyHeaders:false});
+app.post("/api/integrations/tagme/webhook",tagmeLimiter,async(req,res)=>{
+  res.setHeader("Cache-Control","no-store");
+  const secret=String(process.env.TAGME_WEBHOOK_SECRET||"");
+  if(secret.length<32)return res.status(503).json({ok:false,code:"TAGME_NOT_CONFIGURED"});
+  if(!authorizedTagme(req,secret))return res.status(401).json({ok:false,code:"UNAUTHORIZED"});
+  const event=parseTagmeCount(req.body);
+  if(!event)return res.status(422).json({ok:false,code:"INVALID_COUNT_EVENT"});
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('tagme-queue'))");
+    const duplicate=await client.query("SELECT 1 FROM tagme_queue_event_ids WHERE event_id=$1",[event.eventId]);
+    if(duplicate.rowCount){await client.query("COMMIT");return res.status(200).json({ok:true,duplicate:true});}
+    const current=await client.query("SELECT occurred_at FROM tagme_queue_snapshot WHERE singleton=TRUE");
+    if(!current.rowCount || new Date(current.rows[0].occurred_at).getTime()<Date.parse(event.occurredAt)){
+      await client.query(`INSERT INTO tagme_queue_snapshot(singleton,waiting_groups,last_event_id,occurred_at,received_at)
+        VALUES(TRUE,$1,$2,$3,NOW()) ON CONFLICT(singleton) DO UPDATE
+        SET waiting_groups=EXCLUDED.waiting_groups,last_event_id=EXCLUDED.last_event_id,
+        occurred_at=EXCLUDED.occurred_at,received_at=NOW()`,[event.count,event.eventId,event.occurredAt]);
+    }
+    await client.query("INSERT INTO tagme_queue_event_ids(event_id) VALUES($1)",[event.eventId]);
+    await client.query("DELETE FROM tagme_queue_event_ids WHERE received_at<NOW()-INTERVAL '7 days'");
+    await client.query("COMMIT");
+    return res.status(200).json({ok:true});
+  }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Tagme webhook failed:",err?.code||"DB_ERROR");return res.status(503).json({ok:false,code:"TEMPORARILY_UNAVAILABLE"});}
+  finally{client.release();}
+});
+app.get("/api/public/oldman/queue",async(req,res)=>{
+  res.setHeader("Cache-Control","no-store");
+  if(String(process.env.TAGME_WEBHOOK_SECRET||"").length<32)return res.json({available:false,reason:"integration_pending"});
+  try{
+    const {rows}=await pool.query("SELECT waiting_groups,received_at FROM tagme_queue_snapshot WHERE singleton=TRUE AND received_at>NOW()-INTERVAL '15 minutes'");
+    if(!rows.length)return res.json({available:false,reason:"stale_or_pending"});
+    return res.json({available:true,waiting_groups:rows[0].waiting_groups,updated_at:rows[0].received_at});
+  }catch{return res.status(503).json({available:false,reason:"temporarily_unavailable"});}
+});
 
 app.use((err, req, res, next) => {
   const status = err.status || 500;

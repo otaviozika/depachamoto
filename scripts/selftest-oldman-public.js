@@ -24,6 +24,7 @@ assert.ok(!html.includes('src="/brand-logo.png"'));
 assert.doesNotMatch(html,/id="sobre"|id="story-title"|class="social-poster"|A VIDA<br>|DA GARAGEM<br>/);
 assert.doesNotMatch(html,/João Silva|5511912345678|joao\.silva@gmail\.com/);
 assert.doesNotMatch(html,/getin\.app\/sao-paulo\/holy-burger/);
-assert.doesNotMatch(html,/fetch\(|XMLHttpRequest|localStorage|sessionStorage/);
+assert.match(html,/fetch\("\/api\/public\/oldman\/queue"/);
+assert.doesNotMatch(html,/XMLHttpRequest|localStorage|sessionStorage/);
 assert.ok(server.includes('express.static(path.join(__dirname, "public")'));
 console.log("PASS: site público objetivo, informações básicas, fila sem valor fictício e sem dados pessoais.");
