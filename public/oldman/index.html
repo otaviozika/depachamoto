@@ -48,5 +48,29 @@
  </section>
 </main>
 <footer class="footer"><div class="wrap foot"><div><strong>OLD MAN</strong><p>Sandwich Shop · São Caetano do Sul / SP</p><p>Prévia: a fila será ativada após homologação da Tagme.</p></div><nav class="foot-links" aria-label="Links oficiais"><a href="https://www.instagram.com/oldmansandwich/" target="_blank" rel="noopener noreferrer">Instagram ↗</a><a href="https://drive.google.com/file/d/12LTQLTRQcYOvrgEJxabwEjnZGFIrPljB/view?usp=share_link" target="_blank" rel="noopener noreferrer">Cardápio ↗</a><a href="#inicio">Voltar ao topo ↑</a></nav></div></footer>
+<script>
+(() => {
+ const count=document.getElementById("queue-count"),status=document.getElementById("queue-status"),caption=document.getElementById("queue-caption");
+ async function refresh(){
+   try{
+     const response=await fetch("/api/public/oldman/queue",{cache:"no-store",credentials:"omit"});
+     if(!response.ok)throw Error("unavailable");
+     const data=await response.json();
+     if(data.available===true&&Number.isSafeInteger(data.waiting_groups)&&data.waiting_groups>=0){
+       count.textContent=String(data.waiting_groups);
+       status.textContent="Fila atualizada";
+       caption.textContent="Quantidade de mesas/grupos aguardando. Atualização automática.";
+     }else{
+       count.textContent="—";status.textContent="Aguardando atualização";
+       caption.textContent="A contagem ainda não está disponível ou está desatualizada.";
+     }
+   }catch{
+     count.textContent="—";status.textContent="Temporariamente indisponível";
+     caption.textContent="Não foi possível confirmar a contagem atual.";
+   }
+ }
+ refresh();setInterval(()=>{if(!document.hidden)refresh();},60000);
+})();
+</script>
 </body>
 </html>
