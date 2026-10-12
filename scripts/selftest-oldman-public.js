@@ -19,6 +19,8 @@ assert.match(html,/www\.google\.com\/maps\/search/);
 assert.match(html,/waze\.com\/ul\?/);
 assert.match(html,/static-images\.ifood\.com\.br\/image\/upload\/capa\/7061b3fb/);
 assert.match(html,/@media\(max-width:420px\)/);
+assert.ok(html.includes("images.getinapp.com.br/b2982ddbda57208e0e9fede5950de070be89b6df.png"));
+assert.ok(!html.includes('src="/brand-logo.png"'));
 assert.doesNotMatch(html,/id="sobre"|id="story-title"|class="social-poster"|A VIDA<br>|DA GARAGEM<br>/);
 assert.doesNotMatch(html,/João Silva|5511912345678|joao\.silva@gmail\.com/);
 assert.doesNotMatch(html,/getin\.app\/sao-paulo\/holy-burger/);
