@@ -1305,6 +1305,28 @@ async function revokeUserSessions(userId) {
   );
 }
 
+// Ao trocar a própria senha, encerra os acessos abertos em outros aparelhos
+// (sessões e sockets em tempo real), preservando somente a sessão atual.
+async function revokeOtherUserSessions(userId, keepSessionId) {
+  const keep = String(keepSessionId || "");
+  const deleted = await pool.query(
+    "DELETE FROM user_sessions WHERE (sess::jsonb #>> '{user,id}')=$1 AND sid<>$2",
+    [String(userId), keep]
+  );
+  let disconnected = 0;
+  const id = Number(userId);
+  if (Number.isInteger(id) && id > 0) {
+    const sockets = await io.in(SOCKET_ROOMS.user(id)).fetchSockets();
+    for (const socket of sockets) {
+      if (socket.data?.sessionId !== keep) {
+        socket.disconnect(true);
+        disconnected++;
+      }
+    }
+  }
+  return { sessions: deleted.rowCount || 0, sockets: disconnected };
+}
+
 async function disconnectUserSockets(userId) {
   const id = Number(userId);
   if (!Number.isInteger(id) || id <= 0) return 0;
@@ -6070,8 +6092,19 @@ app.post("/api/account/password", auth, asyncRoute(async (req, res) => {
     [await bcrypt.hash(newPassword, 12), user.id]
   );
 
-  await audit(user.id, "PASSWORD_CHANGED", "user", user.id, requestMeta(req));
-  res.json({ ok: true, message: "Senha alterada com sucesso." });
+  const revoked = await revokeOtherUserSessions(user.id, req.sessionID);
+  await audit(user.id, "PASSWORD_CHANGED", "user", user.id, {
+    ...requestMeta(req),
+    other_sessions_revoked: revoked.sessions,
+    other_sockets_disconnected: revoked.sockets
+  });
+  res.json({
+    ok: true,
+    message: revoked.sessions
+      ? "Senha alterada com sucesso. Os acessos abertos em outros aparelhos foram encerrados."
+      : "Senha alterada com sucesso.",
+    other_sessions_revoked: revoked.sessions
+  });
 }));
 
 
@@ -11958,6 +11991,7 @@ io.use(async (socket, next) => {
       return next(error);
     }
 
+    socket.data.sessionId = String(socket.request.sessionID || "");
     socket.data.user = {
       id: Number(account.id),
       role: account.role,
