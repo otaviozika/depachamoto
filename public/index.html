@@ -772,6 +772,7 @@
 
 </style>
 <link rel="stylesheet" href="/login-desktop.css?v=dark-relief-v2">
+<link rel="stylesheet" href="/password-recovery.css">
 <style id="login-approved-style">
 /* LOGIN APPROVED INLINE START */
 /* Dark relief access screen. Authentication owns visibility through .hidden. */
@@ -962,6 +963,89 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 </style>
 <link rel="stylesheet" href="/courier-dark.css?v=3">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
+
+
+
+<style>/* payment-clean-sheet-v1 */#adminApp #paymentMonthView .payment-sheet-table{min-width:1480px;width:100%;font-size:13px}#adminApp #paymentMonthView .payment-sheet-table thead th{background:#253447!important;color:#fff!important;padding:12px 9px}#adminApp #paymentMonthView .payment-sheet-table tbody td{padding:9px 8px;border-bottom:1px solid #e2e8f0!important}#adminApp #paymentMonthView .payment-sheet-table tbody tr.sheet-paid td{background:#e6f5ea;color:#14532d}#adminApp #paymentMonthView .payment-sheet-table tbody tr.sheet-pending td{background:#fff1f0;color:#7f1d1d}#adminApp #paymentMonthView .payment-sheet-wrap{max-height:65vh;overflow:auto}#adminApp #paymentMonthView .payment-month-summary{grid-template-columns:repeat(5,minmax(0,1fr))}#adminApp #paymentMonthView .payment-month-summary .metric{font-size:clamp(16px,2vw,25px)}#adminApp #paymentMonthView .payment-sheet-table input,#adminApp #paymentMonthView .payment-sheet-table select{background:#fff;color:#111827}#adminApp #paymentMonthView .payment-sheet-table input:disabled,#adminApp #paymentMonthView .payment-sheet-table select:disabled{background:transparent}@media(max-width:850px){#adminApp #paymentMonthView .payment-month-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
+<style>/* payment-longe-v1 */#adminApp [id^="payAdjustment-"]{width:82px;text-align:center;font-weight:800}</style>
+
+
+
+
+
+
+<!-- GOOGLE MAPS NAV START -->
+<style id="googleMapsNavigationStyles">
+.delivery-navigation{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:8px;
+  width:100%;
+}
+.delivery-navigation .btn{
+  min-height:48px;
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:13px;
+  line-height:1.15;
+  white-space:nowrap;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.delivery-navigation .btn.waze{
+  background:#2f80ed;
+  color:#fff;
+  border:1px solid #2f80ed;
+  box-shadow:none;
+}
+.delivery-navigation .btn.google-maps{
+  background:#111827;
+  color:#f8fafc;
+  border:1px solid #475569;
+  box-shadow:none;
+}
+.delivery-navigation .btn.google-maps:hover{
+  background:#172033;
+  border-color:#64748b;
+}
+.delivery-navigation .waze-mark,
+.delivery-navigation .google-maps-mark{
+  width:27px;
+  height:27px;
+  min-width:27px;
+  border-radius:8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.delivery-navigation .waze-mark{background:#fff}
+.delivery-navigation .google-maps-mark{background:transparent}
+.delivery-navigation .waze-mark img{width:22px;height:22px;display:block;object-fit:contain}
+.delivery-navigation .google-maps-mark img{width:25px;height:25px;display:block;object-fit:contain}
+@media (max-width:390px){
+  .delivery-navigation{gap:7px}
+  .delivery-navigation .btn{
+    min-height:46px;
+    padding:9px 8px;
+    font-size:12px;
+    gap:6px;
+  }
+  .delivery-navigation .waze-mark,
+  .delivery-navigation .google-maps-mark{
+    width:24px;
+    height:24px;
+    min-width:24px;
+  }
+  .delivery-navigation .waze-mark img{width:20px;height:20px}
+  .delivery-navigation .google-maps-mark img{width:23px;height:23px}
+}
+</style>
+<!-- GOOGLE MAPS NAV END -->
+
 </head>
 <body>
 <div id="stagingBanner" class="staging-banner" role="status">
@@ -997,20 +1081,29 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div class="auth-desktop-brand"><img src="/brand-wordmark-light.png" alt="DespacheFull"><div class="creator-signature">Create by. Hernandes</div></div>
       <h2><span class="login-title-mobile">Bem-vindo</span><span class="login-title-desktop">Entrar no<br><span class="login-title-wordmark">Despache<em>Full</em></span></span></h2>
       <p class="muted">Acesse sua central de despacho.</p>
-      <div class="tabs"><button id="tabLogin" class="on" type="button" onclick="setAuth('login')">Entrar</button><button id="tabRegister" type="button" onclick="setAuth('register')">Criar conta</button></div>
+      <div class="tabs"><button id="tabLogin" class="on" type="button" data-ui-click="a40346f754cebfe">Entrar</button><button id="tabRegister" type="button" data-ui-click="a54efc80636990b">Criar conta</button></div>
       <div id="registrationNotice" class="small muted"></div>
       <div id="authMsg"></div>
       <form id="loginForm" class="form">
         <label>Usuário<input id="loginUser" autocomplete="username" required placeholder="E-mail ou usuário"></label>
-        <label>Senha<input id="loginPass" type="password" autocomplete="current-password" required placeholder="Senha"></label>
-        <div class="login-help-row">Esqueceu a senha? Procure o administrador.</div>
+        <label>Senha<span class="password-field"><input id="loginPass" type="password" autocomplete="current-password" required placeholder="Senha"><button type="button" class="password-toggle" data-password-target="loginPass" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
+        <button type="button" class="login-help-row password-recovery-link" data-ui-click="a42504c846a1caf">Esqueci minha senha</button>
         <button class="btn primary">Entrar</button>
       </form>
       <form id="registerForm" class="form hidden">
         <label>Nome completo<input id="regName" required placeholder="Nome completo"></label>
         <label>Usuário<input id="regUser" required placeholder="Usuário"></label>
-        <label>Senha<input id="regPass" type="password" minlength="8" required placeholder="Senha"></label>
-        <label>Confirmar senha<input id="regPass2" type="password" minlength="8" required placeholder="Confirmar senha"></label>
+        <label>Senha<span class="password-field"><input id="regPass" type="password" minlength="8" required placeholder="Senha" autocomplete="new-password"><button type="button" class="password-toggle" data-password-target="regPass" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
+        <label>Confirmar senha<span class="password-field"><input id="regPass2" type="password" minlength="8" required placeholder="Confirmar senha" autocomplete="new-password"><button type="button" class="password-toggle" data-password-target="regPass2" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
         <button id="registerSubmit" class="btn primary">Solicitar cadastro</button>
         <p class="small muted">A senha precisa ter pelo menos 8 caracteres. O administrador aprova o acesso.</p>
       </form>
@@ -1043,18 +1136,18 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     </nav>
     <div class="admin-side-bottom">
       <div class="admin-profile-wrap">
-        <button id="adminProfileButton" class="side-user-card" type="button" aria-haspopup="true" aria-expanded="false" onclick="toggleAdminProfileMenu(event)">
+        <button id="adminProfileButton" class="side-user-card" type="button" aria-haspopup="true" aria-expanded="false" data-ui-click="aa5d7669b07b467">
           <span id="adminSideAvatar" class="side-user-avatar">A</span>
           <span class="side-user-copy"><b id="adminSideName">Administrador</b><small id="adminSideUser">admin</small></span>
           <span class="side-user-chevron" aria-hidden="true">⌃</span>
         </button>
         <div id="adminProfileMenu" class="admin-profile-menu hidden" role="menu">
           <div class="admin-profile-menu-head"><b id="adminMenuName">Administrador</b><small id="adminMenuUser">admin</small></div>
-          <button type="button" role="menuitem" onclick="openAdminAccountModal()">Minha conta</button>
-          <button type="button" role="menuitem" onclick="closeAdminProfileMenu();openPasswordModal()">Alterar minha senha</button>
-          <button id="installBtnAdmin" class="hidden" type="button" role="menuitem" onclick="closeAdminProfileMenu();installApp()">Instalar aplicativo</button>
+          <button type="button" role="menuitem" data-ui-click="a9649063bcae1f0">Minha conta</button>
+          <button type="button" role="menuitem" data-ui-click="a4c039fe8d22487">Alterar minha senha</button>
+          <button id="installBtnAdmin" class="hidden" type="button" role="menuitem" data-ui-click="ab73ba350370ad5">Instalar aplicativo</button>
           <div class="admin-profile-menu-separator"></div>
-          <button class="danger" type="button" role="menuitem" onclick="logout()">Sair</button>
+          <button class="danger" type="button" role="menuitem" data-ui-click="a3d870e10fcc796">Sair</button>
         </div>
       </div>
     </div>
@@ -1064,9 +1157,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div class="admin-top-page"><b id="pageTitle">Dashboard</b></div>
       <div class="actions admin-top-actions">
         <span class="connection-pill online connectionStatus"><i class="status-dot"></i>Online</span>
-        <button class="btn outline" onclick="openRouteOrderModal(true)">Alocar pedido sem motoboy</button><button class="btn primary manual-dispatch-top" onclick="openManualDispatchModal()"><span class="manual-plus">+</span> Saída manual</button>
+        <button class="btn outline" data-ui-click="a7bc6a1b38e59c4">Alocar pedido sem motoboy</button><button class="btn primary manual-dispatch-top" data-ui-click="a61afea73fb4201"><span class="manual-plus">+</span> Saída manual</button>
         <div class="bell-wrap">
-          <button class="btn outline bell-btn" aria-label="Notificações" onclick="toggleNotificationPanel()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5"/></svg><span id="notificationCount" class="bell-count hidden">0</span></button>
+          <button class="btn outline bell-btn" aria-label="Notificações" data-ui-click="ae5b8157fb0f1e2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5"/></svg><span id="notificationCount" class="bell-count hidden">0</span></button>
         </div>
       </div>
     </div>
@@ -1103,7 +1196,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div class="section dashboard-panel dashboard-recent-panel">
             <div class="section-head"><b>Últimas saídas</b></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Motoboy</th><th>Saída</th></tr></thead><tbody id="recentTable"></tbody></table></div>
-            <button class="dashboard-history-link" type="button" onclick="activateAdminPage('history')">Ver todas as saídas ›</button>
+            <button class="dashboard-history-link" type="button" data-ui-click="a8e5a477293ca44">Ver todas as saídas ›</button>
           </div>
         </div>
         <div class="dashboard-footer">
@@ -1121,7 +1214,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             <h1 class="title">Presença do dia</h1>
             <p class="muted">O motoboy entra na operação somente depois de confirmar a presença pelo QR da loja.</p>
           </div>
-          <button class="btn outline" type="button" onclick="loadAttendance()">Atualizar</button>
+          <button class="btn outline" type="button" data-ui-click="ada23440bf260f6">Atualizar</button>
         </div>
 
         <div class="cards" style="margin-top:18px">
@@ -1139,7 +1232,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
                 <b>QR de presença</b>
                 <div class="small muted">Atualiza automaticamente. O motoboy deve escanear com a câmera do celular.</div>
               </div>
-              <button class="btn outline" type="button" onclick="refreshAttendanceQr()">Novo QR</button>
+              <button class="btn outline" type="button" data-ui-click="a9279ebf5c94475">Novo QR</button>
             </div>
             <div class="attendance-qr-card">
               <div id="attendanceQr" class="attendance-qr-shell"><div class="muted">Carregando QR...</div></div>
@@ -1183,17 +1276,17 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <div id="peakStrip" class="peak-strip" style="margin-top:18px"></div>
         <div id="timeKpis" class="sla-kpis" style="margin-top:12px"></div>
         <div class="section" style="margin-top:18px">
-          <div class="section-head"><div><b>⚠ Exceções de tempo</b><div class="small muted">Mostra somente quem atingiu atenção, atraso ou crítico.</div></div><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
+          <div class="section-head"><div><b>⚠ Exceções de tempo</b><div class="small muted">Mostra somente quem atingiu atenção, atraso ou crítico.</div></div><button class="btn outline" data-ui-click="a3bc1aa28479ec2">Atualizar</button></div>
           <div id="operationalExceptions" class="exception-list"></div>
         </div>
         <div class="analytics-grid">
           <div class="section">
-            <div class="section-head"><b>Equipe agora</b><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
+            <div class="section-head"><b>Equipe agora</b><button class="btn outline" data-ui-click="a3bc1aa28479ec2">Atualizar</button></div>
             <div id="teamNow" class="team-grid" style="padding:15px"></div>
           </div>
           <div class="section">
             <div class="section-head"><b>Busca instantânea de pedido</b></div>
-            <div class="search"><input id="quickOrderSearch" placeholder="#5821" onkeydown="if(event.key==='Enter')searchOrderNow()"><button class="btn primary" onclick="searchOrderNow()">Buscar</button></div>
+            <div class="search"><input id="quickOrderSearch" placeholder="#5821" data-ui-keydown="ad1e7fbf4634312"><button class="btn primary" data-ui-click="a928883538e4d6b">Buscar</button></div>
             <div id="quickOrderResults"></div>
           </div>
         </div>
@@ -1225,9 +1318,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       </div>
       <div class="actions">
         <span id="healthCenterFreshness" class="badge gray">CARREGANDO</span>
-        <button class="btn outline" type="button" onclick="loadHealthCenter()">Atualizar</button>
-        <button id="ifoodPauseBtn" class="btn danger" type="button" onclick="pauseIfoodDispatch()">Pausar iFood</button>
-        <button id="ifoodResumeBtn" class="btn primary hidden" type="button" onclick="resumeIfoodDispatch()">Retomar iFood</button>
+        <button class="btn outline" type="button" data-ui-click="adee145adfd7222">Atualizar</button>
+        <button id="ifoodPauseBtn" class="btn danger" type="button" data-ui-click="ad7157663b1f1c1">Pausar iFood</button>
+        <button id="ifoodResumeBtn" class="btn primary hidden" type="button" data-ui-click="a7685ce184ff6d8">Retomar iFood</button>
       </div>
     </div>
 
@@ -1280,8 +1373,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <div class="section-head">
       <b>Conexão</b>
       <div class="actions">
-        <button id="ifoodTestBtn" class="btn outline" onclick="testIfoodConnection()">Testar conexão</button>
-        <button id="ifoodSyncBtn" class="btn primary" onclick="syncIfoodNow()">Sincronizar agora</button>
+        <button id="ifoodTestBtn" class="btn outline" data-ui-click="ada15457e966989">Testar conexão</button>
+        <button id="ifoodSyncBtn" class="btn primary" data-ui-click="aea8bc910184eb3">Sincronizar agora</button>
       </div>
     </div>
     <div style="padding:20px">
@@ -1293,7 +1386,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   <div class="section" style="margin-top:18px">
     <div class="section-head">
       <b>Pedidos iFood recebidos</b>
-      <button class="btn outline" onclick="loadIfoodStatus()">Atualizar</button>
+      <button class="btn outline" data-ui-click="a1d63f547e2da5d">Atualizar</button>
     </div>
     <div class="table-wrap">
       <table class="table">
@@ -1329,9 +1422,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   <div class="section" style="margin-top:18px">
     <div class="section-head">
       <div><b>Conectar loja</b><div class="small muted">A chave é usada somente nesta chamada e não fica salva no DespacheFull.</div></div>
-      <button id="anotaAiTestBtn" class="btn outline" type="button" onclick="testAnotaAiConnection()">Testar credenciais</button>
+      <button id="anotaAiTestBtn" class="btn outline" type="button" data-ui-click="a7f63103340d3e3">Testar credenciais</button>
     </div>
-    <form id="anotaAiLinkForm" class="form" style="padding:20px;max-width:720px" onsubmit="linkAnotaAiPage(event)">
+    <form id="anotaAiLinkForm" class="form" style="padding:20px;max-width:720px" data-ui-submit="a3dbf5461383d3c">
       <label>Chave de integração da loja
         <input id="anotaAiPageToken" type="password" autocomplete="new-password" maxlength="4096" placeholder="Cole a chave exibida no admin Anota AI" required>
       </label>
@@ -1345,8 +1438,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <div class="section-head">
       <div><b>Pedidos Anota AI recebidos</b><div class="small muted">Atualização automática a cada 30 segundos quando ativada no servidor.</div></div>
       <div class="actions">
-        <button class="btn outline" type="button" onclick="loadAnotaAiStatus()">Atualizar</button>
-        <button id="anotaAiSyncBtn" class="btn primary" type="button" onclick="syncAnotaAiNow()">Sincronizar agora</button>
+        <button class="btn outline" type="button" data-ui-click="a8a44f42856d1a6">Atualizar</button>
+        <button id="anotaAiSyncBtn" class="btn primary" type="button" data-ui-click="a8677503ae9c5ff">Sincronizar agora</button>
       </div>
     </div>
     <div class="table-wrap">
@@ -1368,7 +1461,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div class="kds-right">
             <div class="kds-clock"><div id="kdsClockTime" class="kds-clock-time">--:--:--</div><div id="kdsClockDate" class="kds-clock-date">--/--/----</div></div>
             <span id="kdsConnection" class="kds-online">● ONLINE</span>
-            <button class="btn kds-fullscreen-btn" type="button" onclick="enterWallFullscreen()">⛶ Tela cheia</button>
+            <button class="btn kds-fullscreen-btn" type="button" data-ui-click="a1ba7be3ea19c84">⛶ Tela cheia</button>
           </div>
         </div>
 
@@ -1403,7 +1496,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             </select>
             <input id="histFrom" type="date">
             <input id="histTo" type="date">
-            <button class="btn primary" onclick="applyHistoryFilters()">Filtrar</button>
+            <button class="btn primary" data-ui-click="a6b40365d27ac08">Filtrar</button>
           </div>
           <div class="table-wrap">
             <table class="table">
@@ -1414,8 +1507,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div class="pagination">
             <div id="historyPageInfo" class="muted">Página 1</div>
             <div class="actions">
-              <button id="historyPrev" class="btn outline" onclick="changeHistoryPage(-1)">← Anterior</button>
-              <button id="historyNext" class="btn outline" onclick="changeHistoryPage(1)">Próxima →</button>
+              <button id="historyPrev" class="btn outline" data-ui-click="aa5d758fa10bb08">← Anterior</button>
+              <button id="historyNext" class="btn outline" data-ui-click="a5bf053d12e13b4">Próxima →</button>
             </div>
           </div>
         </div>
@@ -1423,7 +1516,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 
       <section id="report" class="page">
         <h1 class="title">Relatório diário</h1>
-        <div class="actions" style="margin:18px 0"><input id="reportDate" type="date" style="padding:10px;border:1px solid var(--line);border-radius:9px"><button class="btn primary" onclick="loadReport()">Gerar</button><button class="btn outline" onclick="exportReport()">Exportar CSV</button></div>
+        <div class="actions" style="margin:18px 0"><input id="reportDate" type="date" style="padding:10px;border:1px solid var(--line);border-radius:9px"><button class="btn primary" data-ui-click="adf1e3259fa8242">Gerar</button><button class="btn outline" data-ui-click="a294c4afe042577">Exportar CSV</button></div>
         <div class="cards" style="grid-template-columns:repeat(4,1fr)">
           <div class="card"><div class="label">Pedidos recebidos</div><div id="rOrders" class="metric">0</div></div>
           <div class="card"><div class="label">Pedidos despachados</div><div id="rDispatchedOrders" class="metric">0</div></div>
@@ -1444,17 +1537,17 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <div class="section" style="margin-top:18px">
           <div style="padding:16px">
             <div class="preset-buttons">
-              <button class="btn outline" onclick="setPeriodPreset('today')">Hoje</button>
-              <button class="btn outline" onclick="setPeriodPreset('yesterday')">Ontem</button>
-              <button class="btn outline" onclick="setPeriodPreset('7d')">Últimos 7 dias</button>
-              <button class="btn outline" onclick="setPeriodPreset('month')">Este mês</button>
-              <button class="btn outline" onclick="setPeriodPreset('prevmonth')">Mês anterior</button>
+              <button class="btn outline" data-ui-click="ae354805d678074">Hoje</button>
+              <button class="btn outline" data-ui-click="ab939cd596fbaa1">Ontem</button>
+              <button class="btn outline" data-ui-click="a249a2ce7816eb6">Últimos 7 dias</button>
+              <button class="btn outline" data-ui-click="a589044d6aa841f">Este mês</button>
+              <button class="btn outline" data-ui-click="a6ffda0f8375ea3">Mês anterior</button>
             </div>
             <div class="actions" style="margin-top:12px;align-items:end">
               <label class="small"><b>De</b><input id="periodFrom" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
               <label class="small"><b>Até</b><input id="periodTo" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
-              <button class="btn primary" onclick="loadManagement()">Atualizar análise</button>
-              <button class="btn outline" onclick="exportPeriod()">Exportar CSV</button>
+              <button class="btn primary" data-ui-click="a38f7785ab90f8a">Atualizar análise</button>
+              <button class="btn outline" data-ui-click="a0bc2e66685089c">Exportar CSV</button>
             </div>
           </div>
         </div>
@@ -1509,18 +1602,23 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           </div>
           <div id="paymentDailyToolbar" class="payment-toolbar">
             <label>Data
-              <input id="paymentDate" type="date" onchange="loadPayments();loadPaymentSheetConfig()">
+              <input id="paymentDate" type="date" data-ui-change="af407d1d211c5b1">
             </label>
             <label>Turno
-              <select id="paymentShift" onchange="loadPayments()"><option value="">Todos</option><option value="LUNCH">Almoço</option><option value="DINNER">Janta</option></select>
+              <select id="paymentShift" data-ui-change="a67a4028dbb265f"><option value="">Todos</option><option value="LUNCH">Almoço</option><option value="DINNER">Janta</option></select>
             </label>
-            <button class="btn primary" onclick="loadPayments()">Atualizar</button>
-            <button class="btn outline" onclick="exportPayments()">Exportar CSV</button>
-            <button id="paymentCloseDay" class="btn primary" type="button" onclick="closePaymentDay()">Fechar / atualizar planilha</button>
+            <button class="btn primary" data-ui-click="a59eac5e58a2b4c">Atualizar</button>
+            <button class="btn outline" data-ui-click="a91823941be4c5e">Exportar CSV</button>
+            <button id="paymentCloseDay" class="btn primary" type="button" data-ui-click="a49cd9caf023587">Fechar / atualizar planilha</button>
           </div>
         </div>
 
-        <div id="paymentDailyView">
+        <!-- payment-clean-sheet-v1 -->
+<div class="payment-view-tabs" role="tablist" aria-label="Visualização de pagamentos"><button id="paymentDailyTab" class="active" role="tab" aria-selected="true" data-ui-click="a6aa346135de4b9">Fechamento do dia</button><button id="paymentMonthTab" role="tab" aria-selected="false" data-ui-click="a35e5dcc587a32e">Planilha limpa</button></div>
+<section id="paymentMonthView" class="hidden"><div class="payment-month-toolbar"><div><h2>Planilha de pagamentos</h2><p class="muted">Selecione o mês, turno e dia para conferir os pagamentos.</p></div><div class="payment-month-filters"><label>Mês<input id="paymentMonth" type="month" data-ui-change="a71e55f4fabe46f"></label><button id="paymentMonthSave" class="btn primary" disabled data-ui-click="a2729d7de357bc1">Salvar alterações</button></div></div>
+<div class="cards payment-month-summary" style="margin-top:16px"><div class="card"><div class="label">Motoboys</div><div class="metric" id="monthPayCouriers">0</div></div><div class="card"><div class="label">Entregas</div><div class="metric" id="monthPayDeliveries">0</div></div><div class="card"><div class="label">Total</div><div class="metric" id="monthPayTotal">R$ 0,00</div></div><div class="card"><div class="label">Pago</div><div class="metric" id="monthPayPaid">R$ 0,00</div></div><div class="card"><div class="label">Pendente</div><div class="metric" id="monthPayPending">R$ 0,00</div></div></div>
+<div class="section payment-book" style="margin-top:18px"><div class="payment-book-head"><div class="payment-shift-tabs" role="tablist"><button id="paymentBookLunch" class="active" role="tab" aria-selected="true" data-ui-click="a1acfc81f6a6a18">Almoço</button><button id="paymentBookDinner" role="tab" aria-selected="false" data-ui-click="a0ba1647236293d">Janta</button></div><span class="muted">Dados separados por turno</span></div><div id="paymentMonthDays" class="payment-day-tabs" role="tablist"></div><div class="payment-sheet-caption"><b id="paymentSheetTitle">MOTOBOY</b><span id="paymentSheetDate"></span></div><div class="payment-sheet-wrap"><table class="table payment-sheet-table"><thead><tr><th>Motoboy</th><th>Apelido</th><th>Chave PIX</th><th>Tipo PIX</th><th>Entregas</th><th>Encosta</th><th>Gorjeta</th><th>Desconto</th><th>Forma</th><th>Pago?</th><th>Status</th><th>Total</th><th>Observações</th></tr></thead><tbody id="paymentMonthTable"></tbody></table></div></div><div id="paymentMonthMsg" aria-live="polite"></div></section>
+<div id="paymentDailyView">
 
         <div class="cards" style="grid-template-columns:repeat(5,1fr)">
           <div class="card"><div class="label">Motoboys</div><div id="payCouriers" class="metric">0</div></div>
@@ -1546,7 +1644,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             </div>
             <div class="actions" style="margin-top:13px;align-items:end">
               <label class="small"><b>Nova regra válida a partir de</b><input id="paymentRuleEffective" type="date" style="display:block;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:9px"></label>
-              <button class="btn primary" onclick="savePaymentRule()">Salvar nova regra</button>
+              <button class="btn primary" data-ui-click="ae71c8ed9fd22dd">Salvar nova regra</button>
             </div>
             <div id="paymentRuleMsg"></div>
             <p class="small muted" style="margin-bottom:0">Pagamentos marcados como <b>Conferido</b> ou <b>Pago</b> ficam congelados com a regra e quantidade de entregas daquele fechamento.</p>
@@ -1559,13 +1657,13 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           </div>
           <div style="padding:18px">
             <div class="settings-grid">
-              <label><b>Mês</b><input id="paymentSheetMonth" type="month" onchange="loadPaymentSheetConfig(this.value)"></label>
+              <label><b>Mês</b><input id="paymentSheetMonth" type="month" data-ui-change="a2b453b3a974189"></label>
               <label><b>Planilha do almoço</b><input id="paymentSheetLunchUrl" type="url" placeholder="Cole o link do Google Planilhas"></label>
               <label><b>Planilha da janta</b><input id="paymentSheetDinnerUrl" type="url" placeholder="Cole o link do Google Planilhas"></label>
             </div>
             <div class="actions" style="margin-top:13px">
-              <button class="btn primary" type="button" onclick="savePaymentSheetConfig()">Salvar planilhas do mês</button>
-              <button id="paymentSheetTestConnection" class="btn outline" type="button" onclick="testPaymentSheetConnection()">Testar conexão Google</button>
+              <button class="btn primary" type="button" data-ui-click="ab905859583e5f1">Salvar planilhas do mês</button>
+              <button id="paymentSheetTestConnection" class="btn outline" type="button" data-ui-click="a91c6d7b5d2db37">Testar conexão Google</button>
               <a id="paymentSheetLunchOpen" class="btn outline hidden" href="#" target="_blank" rel="noopener">Abrir almoço</a>
               <a id="paymentSheetDinnerOpen" class="btn outline hidden" href="#" target="_blank" rel="noopener">Abrir janta</a>
             </div>
@@ -1576,14 +1674,14 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <div class="section" style="margin-top:18px">
           <div class="section-head">
             <div><b>Fechamento do dia</b><div id="paymentDayInfo" class="small muted" style="margin-top:4px"></div></div>
-            <button class="btn outline" onclick="loadPayments()">Recalcular abertos</button>
+            <button class="btn outline" data-ui-click="a59eac5e58a2b4c">Recalcular abertos</button>
           </div>
           <div class="table-wrap">
             <table class="table">
               <thead>
                 <tr>
                   <th>Motoboy</th><th>Turno</th><th>Entregas</th><th>R$/entrega</th><th>Base</th><th>Chuva</th>
-                  <th>Gorjeta</th><th>Desconto</th><th>Ajuste</th><th>Total</th>
+                  <th>Gorjeta</th><th>Desconto</th><th title="R$ 6,00 por entrega longe">LONGE</th><th>Total</th>
                   <th>PIX</th><th>Forma</th><th>Status</th><th>Observações</th><th>Ação</th>
                 </tr>
               </thead>
@@ -1598,7 +1696,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 <section id="couriers" class="page">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><h1 class="title">Motoboys</h1><p class="muted">Aprovação, acesso e confirmação das chaves PIX cadastradas pelos motoboys.</p></div>
-          <button class="btn primary" onclick="openCourierModal()">+ Cadastrar</button>
+          <button class="btn primary" data-ui-click="abeb22eb9a402f0">+ Cadastrar</button>
         </div>
         <div class="section" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Nome</th><th>Usuário</th><th>PIX</th><th>Pedidos hoje</th><th>Status operacional</th><th>Conexão</th><th>Última saída</th><th>Aprovação</th><th>Conta</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="courierTable"></tbody></table></div></div>
       </section>
@@ -1621,7 +1719,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           </div>
           <div class="small muted" style="margin-top:12px">Exemplo: rota de 3 pedidos com meta 35 min → atenção a partir de 28 min, atrasado após 35 min e crítico após a margem configurada.</div>
           <div id="settingsMsg"></div>
-          <button class="btn primary" style="margin-top:15px" onclick="saveOperationalSla()">Salvar SLA operacional</button>
+          <button class="btn primary" style="margin-top:15px" data-ui-click="ab59d6bb89e1f4b">Salvar SLA operacional</button>
           <div class="hidden"><input id="alertAttention"><input id="alertDelayed"><input id="alertCritical"></div>
         </div></div>
       </section>
@@ -1634,11 +1732,11 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div class="section">
             <div class="section-head"><b>Tipos de alerta</b></div>
             <div style="padding:20px">
-              <div class="switch-row"><div><b>🟡 Atenção</b><div class="small muted">Quando atingir o primeiro limite de tempo.</div></div><button id="notifyAttention" class="switch" onclick="toggleNotifySetting('attention')"></button></div>
-              <div class="switch-row"><div><b>🟠 Demorado</b><div class="small muted">Quando atingir o segundo limite.</div></div><button id="notifyDelayed" class="switch" onclick="toggleNotifySetting('delayed')"></button></div>
-              <div class="switch-row"><div><b>🔴 Crítico</b><div class="small muted">Quando atingir o limite crítico.</div></div><button id="notifyCritical" class="switch" onclick="toggleNotifySetting('critical')"></button></div>
-              <div class="switch-row"><div><b>👤 Novo cadastro</b><div class="small muted">Motoboy aguardando aprovação.</div></div><button id="notifyRegistration" class="switch" onclick="toggleNotifySetting('registration')"></button></div>
-              <div class="switch-row"><div><b>🔊 Som</b><div class="small muted">Emite som quando um novo alerta chegar com o sistema aberto.</div></div><button id="notifySound" class="switch" onclick="toggleNotifySetting('sound')"></button></div>
+              <div class="switch-row"><div><b>🟡 Atenção</b><div class="small muted">Quando atingir o primeiro limite de tempo.</div></div><button id="notifyAttention" class="switch" data-ui-click="a36194042e76cec"></button></div>
+              <div class="switch-row"><div><b>🟠 Demorado</b><div class="small muted">Quando atingir o segundo limite.</div></div><button id="notifyDelayed" class="switch" data-ui-click="a79b6ed0014e8eb"></button></div>
+              <div class="switch-row"><div><b>🔴 Crítico</b><div class="small muted">Quando atingir o limite crítico.</div></div><button id="notifyCritical" class="switch" data-ui-click="a5e5f22109fe7a1"></button></div>
+              <div class="switch-row"><div><b>👤 Novo cadastro</b><div class="small muted">Motoboy aguardando aprovação.</div></div><button id="notifyRegistration" class="switch" data-ui-click="a8a21db51a67bbe"></button></div>
+              <div class="switch-row"><div><b>🔊 Som</b><div class="small muted">Emite som quando um novo alerta chegar com o sistema aberto.</div></div><button id="notifySound" class="switch" data-ui-click="a04b3731d1e6039"></button></div>
               <div id="notifySettingsMsg"></div>
             </div>
           </div>
@@ -1646,14 +1744,14 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             <div class="section-head"><b>Notificações no aparelho</b></div>
             <div style="padding:20px">
               <p class="muted">Ative Web Push para receber alertas compatíveis mesmo com o DespacheFull fechado. A permissão depende do navegador/aparelho.</p>
-              <button class="btn primary" onclick="enableBackgroundPush()">Ativar push em segundo plano</button>
-              <button class="btn outline" style="margin-left:6px" onclick="disableBackgroundPush()">Desativar neste aparelho</button>
+              <button class="btn primary" data-ui-click="a851fb67d4d1da3">Ativar push em segundo plano</button>
+              <button class="btn outline" style="margin-left:6px" data-ui-click="a70f0a8430f5a0b">Desativar neste aparelho</button>
               <p id="browserNotificationStatus" class="small muted" style="margin-top:12px"></p>
             </div>
           </div>
         </div>
         <div class="section" style="margin-top:18px">
-          <div class="section-head"><b>Histórico recente</b><button class="btn outline" onclick="loadNotifications()">Atualizar</button></div>
+          <div class="section-head"><b>Histórico recente</b><button class="btn outline" data-ui-click="a64f8468c633b15">Atualizar</button></div>
           <div id="notificationsPageList"></div>
         </div>
       </section>
@@ -1661,11 +1759,11 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 <section id="security" class="page">
         <h1 class="title">Segurança e backup</h1><p class="muted">Controles importantes para uso diário.</p>
         <div class="security-grid" style="margin-top:18px">
-          <div class="section"><div class="section-head"><b>Cadastro público</b></div><div style="padding:20px"><p id="registrationStatusText"></p><button id="registrationToggleBtn" class="btn outline" onclick="togglePublicRegistration()">Carregando...</button></div></div>
-          <div class="section"><div class="section-head"><b>Backup operacional</b></div><div style="padding:20px"><p class="muted">Baixe todo o histórico de pedidos e saídas em CSV.</p><button class="btn primary" onclick="downloadFullBackup()">Baixar backup CSV</button></div></div>
-          <div class="section"><div class="section-head"><b>Saúde do sistema</b></div><div style="padding:20px"><div id="healthBox" class="health-list"><span class="muted">Carregando...</span></div><button class="btn outline" style="margin-top:15px" onclick="loadSystemHealth()">Atualizar</button></div></div>
+          <div class="section"><div class="section-head"><b>Cadastro público</b></div><div style="padding:20px"><p id="registrationStatusText"></p><button id="registrationToggleBtn" class="btn outline" data-ui-click="a2881861fb936ae">Carregando...</button></div></div>
+          <div class="section"><div class="section-head"><b>Backup operacional</b></div><div style="padding:20px"><p class="muted">Baixe todo o histórico de pedidos e saídas em CSV.</p><button class="btn primary" data-ui-click="a16f64701ee3fe4">Baixar backup CSV</button></div></div>
+          <div class="section"><div class="section-head"><b>Saúde do sistema</b></div><div style="padding:20px"><div id="healthBox" class="health-list"><span class="muted">Carregando...</span></div><button class="btn outline" style="margin-top:15px" data-ui-click="ae109872175ed52">Atualizar</button></div></div>
           <div class="section" style="grid-column:1/-1">
-            <div class="section-head"><b>Monitoramento de produção</b><button class="btn outline" onclick="loadMonitoring()">Atualizar</button></div>
+            <div class="section-head"><b>Monitoramento de produção</b><button class="btn outline" data-ui-click="aea7cb4f23504a8">Atualizar</button></div>
             <div style="padding:20px">
               <div id="monitorBoxes" class="monitor-grid"></div>
               <div style="margin-top:18px"><b>Erros recentes</b></div>
@@ -1688,7 +1786,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div class="ops-card"><div class="label">Críticos 24h</div><div id="conflictsCritical" class="ops-value">0</div></div>
         </div>
         <div class="section" style="margin-top:18px">
-          <div class="section-head"><b>Eventos recentes</b><button class="btn outline" onclick="loadConflicts()">Atualizar</button></div>
+          <div class="section-head"><b>Eventos recentes</b><button class="btn outline" data-ui-click="af7f19a2198b394">Atualizar</button></div>
           <div class="table-wrap"><table class="table"><thead><tr><th>Horário</th><th>Tipo</th><th>Motoboy</th><th>Pedidos</th><th>Severidade</th><th>Ação</th></tr></thead><tbody id="conflictsTable"></tbody></table></div>
         </div>
       </section>
@@ -1703,7 +1801,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 <div id="notificationPanel" class="notification-panel hidden">
   <div class="notification-head">
     <div><b>🔔 Notificações</b><div id="notificationSubtitle" class="small muted">0 não lidas</div></div>
-    <div class="actions"><button class="btn outline" onclick="markAllNotificationsRead()">Marcar todas</button><button class="btn outline" onclick="toggleNotificationPanel()">×</button></div>
+    <div class="actions"><button class="btn outline" data-ui-click="aa6a3f110a6d5b5">Marcar todas</button><button class="btn outline" data-ui-click="ae5b8157fb0f1e2">×</button></div>
   </div>
   <div id="notificationList" class="notification-list"></div>
 </div>
@@ -1713,25 +1811,25 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <img class="brand-wordmark-header" src="/brand-wordmark-light.png" alt="DespacheFull">
     <div class="actions courier-top-actions">
       <span class="connection-pill online connectionStatus"><i class="status-dot"></i>Online</span>
-      <button id="installBtnCourier" class="btn outline hidden" type="button" onclick="installApp()">Instalar app</button>
-      <button class="btn outline courier-desktop-action" type="button" onclick="openPasswordModal()">Minha senha</button>
+      <button id="installBtnCourier" class="btn outline hidden" type="button" data-ui-click="afb08eab88ba12e">Instalar app</button>
+      <button class="btn outline courier-desktop-action" type="button" data-ui-click="a249cf1a2388468">Minha senha</button>
       <span id="courierName" class="courier-desktop-action"></span>
-      <button class="btn outline courier-desktop-action" type="button" onclick="logout()">Sair</button>
+      <button class="btn outline courier-desktop-action" type="button" data-ui-click="a3d870e10fcc796">Sair</button>
       <div class="courier-mobile-account">
-        <button id="courierAccountButton" class="courier-account-trigger" type="button" aria-label="Abrir minha conta" aria-expanded="false" onclick="toggleCourierAccountMenu(event)"><span id="courierMobileAvatar">M</span></button>
+        <button id="courierAccountButton" class="courier-account-trigger" type="button" aria-label="Abrir minha conta" aria-expanded="false" data-ui-click="a8cbe31edc0da2f"><span id="courierMobileAvatar">M</span></button>
         <div id="courierAccountMenu" class="courier-account-menu hidden">
           <div class="courier-account-identity"><b id="courierMobileName">Minha conta</b><span>Perfil de motoboy</span></div>
-          <button type="button" onclick="closeCourierAccountMenu();openPasswordModal()">🔐 Alterar minha senha</button>
-          <button class="danger-link" type="button" onclick="logout()">↪ Sair do aplicativo</button>
+          <button type="button" data-ui-click="a0dfdfd9520ec44">🔐 Alterar minha senha</button>
+          <button class="danger-link" type="button" data-ui-click="a3d870e10fcc796">↪ Sair do aplicativo</button>
         </div>
       </div>
     </div>
   </header>
   <main class="content" style="max-width:760px">
     <nav class="courier-desktop-tabs" aria-label="Áreas do motoboy">
-      <button class="active" type="button" data-courier-nav="home" onclick="activateCourierTab('home',this)">Início</button>
-      <button type="button" data-courier-nav="route" onclick="activateCourierTab('route',this)">Rota</button>
-      <button type="button" data-courier-nav="earnings" onclick="activateCourierTab('earnings',this)">Ganhos</button>
+      <button class="active" type="button" data-courier-nav="home" data-ui-click="aaf9bcebc16f6b5">Início</button>
+      <button type="button" data-courier-nav="route" data-ui-click="ab0a3431e106130">Rota</button>
+      <button type="button" data-courier-nav="earnings" data-ui-click="a17f3e8a17845d2">Ganhos</button>
     </nav>
     <section id="courierHomeTab" class="courier-tab-panel active" data-courier-panel="home">
       <div id="courierHome" class="courier-home-card courier-home-direct">
@@ -1745,7 +1843,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
       <div id="attendanceCheckinStatus"></div>
       <div id="attendanceCheckinActions" class="attendance-checkin-actions hidden">
-        <button id="attendanceScannerBtn" class="btn attendance-scan-btn" type="button" onclick="openAttendanceScanner()">📷 Ler QR de presença</button>
+        <button id="attendanceScannerBtn" class="btn attendance-scan-btn" type="button" data-ui-click="a7c1a5482a19f49">📷 Ler QR de presença</button>
         <span class="small muted">A câmera será aberta dentro do aplicativo.</span>
       </div>
       <div id="departureCard" class="card">
@@ -1756,7 +1854,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <p class="courier-helper">Digite de 1 a 5 pedidos iFood. Cada pedido será validado automaticamente.</p>
         <form id="departureForm" class="form">
           <label>Quantos pedidos você vai levar?
-            <select id="departureCount" required onchange="resetOrderFields()"><option value="">Selecione a quantidade</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+            <select id="departureCount" required data-ui-change="a727c62f159692d"><option value="">Selecione a quantidade</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
           </label><div id="orderFields"></div>
           <div class="courier-add-row">
             <span class="small muted">Preencha todos os campos da quantidade escolhida.</span>
@@ -1781,7 +1879,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             <h2 style="margin:4px 0 0">Entregas e confirmações</h2>
             <div class="small muted" style="margin-top:4px">Pedidos concluídos aparecem aqui. O que ainda precisar de código ficará pendente.</div>
           </div>
-          <button type="button" class="btn outline courier-refresh-btn" onclick="loadCourierDeliveries()">Atualizar</button>
+          <button type="button" class="btn outline courier-refresh-btn" data-ui-click="acc0a404f757a4f">Atualizar</button>
         </div>
         <div id="courierDeliveriesList" class="delivery-list"></div>
       </div>
@@ -1804,12 +1902,12 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <div class="courier-monthly-heading">
           <div><div class="courier-eyebrow">Extrato mensal</div><h2>Quanto fiz em cada dia</h2><p class="small muted">Almoço e janta separados. Dias sem registro aparecem com R$ 0,00.</p></div>
           <div class="courier-month-controls" role="group" aria-label="Selecionar mês e ano">
-            <button type="button" class="btn outline courier-month-arrow" onclick="changeCourierPaymentMonth(-1)" aria-label="Mês anterior">‹</button>
+            <button type="button" class="btn outline courier-month-arrow" data-ui-click="ac489c49843ce70" aria-label="Mês anterior">‹</button>
             <div class="courier-month-picker">
               <label for="courierPaymentMonth">MÊS E ANO</label>
-              <input id="courierPaymentMonth" type="month" aria-label="Mês e ano do extrato" onchange="loadCourierPaymentMonth(this.value)">
+              <input id="courierPaymentMonth" type="month" aria-label="Mês e ano do extrato" data-ui-change="ad4784a4cca9b35">
             </div>
-            <button id="courierNextMonth" type="button" class="btn outline courier-month-arrow" onclick="changeCourierPaymentMonth(1)" aria-label="Próximo mês">›</button>
+            <button id="courierNextMonth" type="button" class="btn outline courier-month-arrow" data-ui-click="a5230f22016c204" aria-label="Próximo mês">›</button>
           </div>
         </div>
         <div id="courierMonthTotal" class="courier-month-total">Carregando...</div>
@@ -1866,9 +1964,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     </section>
   </main>
   <nav class="courier-mobile-nav" aria-label="Navegação do motoboy">
-    <button class="active" type="button" data-courier-nav="home" onclick="activateCourierTab('home',this)"><span>⌂</span>Início</button>
-    <button type="button" data-courier-nav="route" onclick="activateCourierTab('route',this)"><span class="courier-nav-icon">🛵<i id="courierRouteBadge" class="hidden">0</i></span>Rota</button>
-    <button type="button" data-courier-nav="earnings" onclick="activateCourierTab('earnings',this)"><span>R$</span>Ganhos</button>
+    <button class="active" type="button" data-courier-nav="home" data-ui-click="aaf9bcebc16f6b5"><span>⌂</span>Início</button>
+    <button type="button" data-courier-nav="route" data-ui-click="ab0a3431e106130"><span class="courier-nav-icon">🛵<i id="courierRouteBadge" class="hidden">0</i></span>Rota</button>
+    <button type="button" data-courier-nav="earnings" data-ui-click="a17f3e8a17845d2"><span>R$</span>Ganhos</button>
   </nav>
 </div>
 
@@ -1879,7 +1977,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <h2 style="margin:0">Transferir pedido</h2>
         <div id="transferOrderFrom" class="small muted" style="margin-top:4px"></div>
       </div>
-      <button type="button" class="btn outline" onclick="closeTransferOrderModal()">×</button>
+      <button type="button" class="btn outline" data-ui-click="a59dff5b3963ff6">×</button>
     </div>
     <div class="warning" style="margin-top:16px">
       Use esta opção para corrigir uma alocação feita para o motoboy errado. A entrega, confirmação, plataforma e horário serão preservados; a contagem e o pagamento passam para o motoboy correto.
@@ -1907,7 +2005,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <h2 style="margin:0">Confirmar entrega</h2>
         <div id="deliveryConfirmOrderLabel" class="small muted" style="margin-top:4px">Pedido</div>
       </div>
-      <button type="button" class="btn outline" onclick="closeDeliveryConfirmModal()">×</button>
+      <button type="button" class="btn outline" data-ui-click="a3ac4646655fc60">×</button>
     </div>
     <div class="warning" style="margin-top:16px">
       Peça ao cliente o código/localizador da entrega e digite abaixo. O DespacheFull enviará a confirmação diretamente ao iFood.
@@ -1922,14 +2020,14 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   </div>
 </div>
 
-<div id="scannerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="scannerTitle" onclick="if(event.target===this)closeOrderScanner()">
+<div id="scannerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="scannerTitle" data-ui-click="a5f9788aefa8cac">
   <div class="modal-box scanner-modal-box">
     <div class="scanner-title-row">
       <div>
         <h2 id="scannerTitle">Ler QR de presença</h2>
         <p id="scannerHelp" class="small">Centralize o QR exibido na loja e mantenha o celular firme.</p>
       </div>
-      <button class="btn outline scanner-close-btn" type="button" aria-label="Fechar câmera" onclick="closeOrderScanner()">×</button>
+      <button class="btn outline scanner-close-btn" type="button" aria-label="Fechar câmera" data-ui-click="af2f867cedb99a4">×</button>
     </div>
     <div class="scanner-camera-shell">
       <video id="scannerVideo" autoplay muted playsinline aria-label="Imagem da câmera"></video>
@@ -1937,15 +2035,15 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     </div>
     <div id="scannerStatus" class="scanner-status" role="status" aria-live="polite">Preparando câmera...</div>
     <div class="scanner-actions">
-      <button id="scannerTorchBtn" class="btn outline hidden" type="button" onclick="toggleScannerTorch()">🔦 Lanterna</button>
-      <button class="btn outline" type="button" onclick="closeOrderScanner()">Cancelar</button>
+      <button id="scannerTorchBtn" class="btn outline hidden" type="button" data-ui-click="ae22185bef1f213">🔦 Lanterna</button>
+      <button class="btn outline" type="button" data-ui-click="af2f867cedb99a4">Cancelar</button>
     </div>
   </div>
 </div>
 
-<div id="courierModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" onclick="closeCourierModal()">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Apelido (opcional)<input id="newNickname"></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><div class="small muted">PIX é opcional. Se o Admin cadastrar aqui, a chave já será considerada verificada.</div><label>Titular do PIX<input id="newPixHolder"></label><label>Chave PIX<input id="newPixKey"></label><label>Tipo de PIX<select id="newPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
+<div id="courierModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Cadastrar motoboy</h2><button class="btn outline" data-ui-click="aa05390e9a2983d">×</button></div><div id="courierModalMsg"></div><form id="courierForm" class="form" style="margin-top:15px"><label>Nome<input id="newName" required></label><label>Apelido (opcional)<input id="newNickname"></label><label>Usuário<input id="newUser" required></label><label>Senha<input id="newPass" minlength="8" required></label><div class="small muted">PIX é opcional. Se o Admin cadastrar aqui, a chave já será considerada verificada.</div><label>Titular do PIX<input id="newPixHolder"></label><label>Chave PIX<input id="newPixKey"></label><label>Tipo de PIX<select id="newPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><button class="btn primary">Cadastrar já aprovado</button></form></div></div>
 
-<div id="courierProfileModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">Dados do motoboy</h2><div id="editCourierUsername" class="small muted"></div></div><button class="btn outline" onclick="closeCourierProfileModal()">×</button></div><div id="courierProfileMsg"></div><form id="courierProfileForm" class="form" style="margin-top:15px"><input id="editCourierId" type="hidden"><label>Nome<input id="editCourierName" required></label><label>Apelido (opcional)<input id="editCourierNickname"></label><div id="editCourierPixStatusBox" class="pix-status-box"></div><label>Titular do PIX<input id="editCourierPixHolder"></label><label>Chave PIX<input id="editCourierPixKey"></label><label>Tipo de PIX<select id="editCourierPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><div class="actions"><button class="btn primary" type="submit">Salvar dados</button><button id="verifyCourierPixBtn" class="btn success hidden" type="button" onclick="verifyCourierPixFromModal()">Confirmar PIX</button></div><div class="small muted">Se o Admin editar os dados do PIX e salvar, a nova chave será considerada verificada.</div></form></div></div>
+<div id="courierProfileModal" class="modal"><div class="modal-box" style="width:min(560px,100%)"><div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">Dados do motoboy</h2><div id="editCourierUsername" class="small muted"></div></div><button class="btn outline" data-ui-click="a34e0aaa82b4e2d">×</button></div><div id="courierProfileMsg"></div><form id="courierProfileForm" class="form" style="margin-top:15px"><input id="editCourierId" type="hidden"><label>Nome<input id="editCourierName" required></label><label>Apelido (opcional)<input id="editCourierNickname"></label><div id="editCourierPixStatusBox" class="pix-status-box"></div><label>Titular do PIX<input id="editCourierPixHolder"></label><label>Chave PIX<input id="editCourierPixKey"></label><label>Tipo de PIX<select id="editCourierPixType"><option value="">Não informado</option><option>CPF</option><option>Celular</option><option>E-mail</option><option>Chave aleatória</option></select></label><div class="actions"><button class="btn primary" type="submit">Salvar dados</button><button id="verifyCourierPixBtn" class="btn success hidden" type="button" data-ui-click="a415468c1d43966">Confirmar PIX</button></div><div class="small muted">Se o Admin editar os dados do PIX e salvar, a nova chave será considerada verificada.</div></form></div></div>
 
 
 
@@ -1953,7 +2051,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   <div class="modal-box" style="width:min(470px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
       <div><h2 style="margin:0">Excluir motoboy</h2><div class="small muted" style="margin-top:4px">Confirmação protegida pela senha do administrador.</div></div>
-      <button class="btn outline" type="button" aria-label="Fechar" onclick="closeDeleteCourierModal()">×</button>
+      <button class="btn outline" type="button" aria-label="Fechar" data-ui-click="a5f9b8bc786a77b">×</button>
     </div>
     <div class="delete-courier-warning"><b>Atenção:</b> o acesso e os dados ativos do perfil serão removidos. O histórico de entregas, pagamentos e auditoria será preservado.</div>
     <div class="delete-courier-target"><b id="deleteCourierName">Motoboy</b><div id="deleteCourierUsername" class="small muted" style="margin-top:4px"></div></div>
@@ -1964,7 +2062,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <input id="deleteCourierPassword" type="password" autocomplete="current-password" required>
       </label>
       <div class="delete-courier-actions">
-        <button class="btn outline" type="button" onclick="closeDeleteCourierModal()">Cancelar</button>
+        <button class="btn outline" type="button" data-ui-click="a5f9b8bc786a77b">Cancelar</button>
         <button id="deleteCourierSubmit" class="btn danger" type="submit">Excluir motoboy</button>
       </div>
     </form>
@@ -1972,9 +2070,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 </div>
 
 <div id="routeOrderModal" class="modal admin-dark-modal"><div class="modal-box" style="width:min(560px,100%)">
-  <div style="display:flex;justify-content:space-between;gap:12px"><h2 id="routeOrderTitle">Adicionar pedido à rota</h2><button type="button" class="btn outline" onclick="closeRouteOrderModal()">Fechar</button></div>
+  <div style="display:flex;justify-content:space-between;gap:12px"><h2 id="routeOrderTitle">Adicionar pedido à rota</h2><button type="button" class="btn outline" data-ui-click="a64d9adfa9126fb">Fechar</button></div>
   <p id="routeOrderHelp" class="small muted"></p><div id="routeOrderMsg"></div>
-  <form id="routeOrderForm" class="form" onsubmit="submitRouteOrder(event)">
+  <form id="routeOrderForm" class="form" data-ui-submit="a8e83a001230ad2">
     <label id="routeCourierLabel">Motoboy<select id="routeCourier"></select></label>
     <label>Pedido (iFood ou Anota AI)<input id="routeOrderNumber" required maxlength="50" placeholder="#4415" autocomplete="off"></label>
     <label id="routePlatformLabel" class="hidden">Plataforma
@@ -1994,7 +2092,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   <div class="modal-box" style="width:min(620px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div><h2 style="margin:0">Registrar saída manual</h2><div class="small muted">Exclusivo do Admin. Use para pedidos fora do iFood ou quando o motoboy não puder registrar pelo próprio celular.</div></div>
-      <button class="btn outline" onclick="closeManualDispatchModal()">×</button>
+      <button class="btn outline" data-ui-click="a699548f73cf970">×</button>
     </div>
     <div id="manualMsg"></div>
     <form id="manualDispatchForm" class="form" style="margin-top:16px">
@@ -2006,10 +2104,10 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div id="manualActiveInfo"></div>
       <div>
         <b style="font-size:13px">Pedidos</b>
-        <textarea id="manualPasteOrders" class="quick-paste" style="margin-top:8px" placeholder="Cole até 5 pedidos separados por vírgula, espaço ou linha" oninput="applyManualPaste()"></textarea>
+        <textarea id="manualPasteOrders" class="quick-paste" style="margin-top:8px" placeholder="Cole até 5 pedidos separados por vírgula, espaço ou linha" data-ui-input="a3d9cbfbd2d3188"></textarea>
         <div id="manualOrderFields" class="manual-orders" style="margin-top:8px"></div>
         <div class="actions" style="margin-top:8px">
-          <button id="manualAddOrderBtn" type="button" class="btn outline" onclick="addManualOrderField()">+ Adicionar pedido</button>
+          <button id="manualAddOrderBtn" type="button" class="btn outline" data-ui-click="ad79ed20313b0b1">+ Adicionar pedido</button>
           <span id="manualOrderCounter" class="small muted">1 de 5</span>
         </div>
       </div>
@@ -2022,12 +2120,31 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   </div>
 </div>
 
-<div id="adminAccountModal" class="modal admin-account-modal"><div class="modal-box admin-account-box"><div class="modal-title-row"><div><h2>Minha conta</h2><p>Informações do acesso administrativo.</p></div><button class="btn outline modal-close" type="button" onclick="closeAdminAccountModal()">×</button></div><div class="admin-account-details"><div><span>Nome</span><b id="adminAccountName">Administrador</b></div><div><span>Usuário</span><b id="adminAccountUsername">admin</b></div><div><span>Perfil</span><b>Administrador</b></div></div><div class="admin-account-actions"><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordModal()">Alterar minha senha</button></div></div></div>
+<div id="adminAccountModal" class="modal admin-account-modal"><div class="modal-box admin-account-box"><div class="modal-title-row"><div><h2>Minha conta</h2><p>Informações do acesso administrativo.</p></div><button class="btn outline modal-close" type="button" data-ui-click="af022eb0bd9405e">×</button></div><div class="admin-account-details"><div><span>Nome</span><b id="adminAccountName">Administrador</b></div><div><span>Usuário</span><b id="adminAccountUsername">admin</b></div><div><span>Perfil</span><b>Administrador</b></div></div><div class="admin-account-actions"><button class="btn outline" type="button" data-ui-click="a1d419bfecfac68">Alterar minha senha</button><button class="btn outline" type="button" data-ui-click="aa499b5e21d2f71">Recuperações de senha</button></div></div></div>
 
-<div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<input id="currentPassword" type="password" required></label><label>Nova senha<input id="newPassword" type="password" minlength="8" required></label><label>Confirmar nova senha<input id="newPassword2" type="password" minlength="8" required></label><button class="btn primary">Alterar senha</button></form></div></div>
+<div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" data-ui-click="a840bf13411cff7">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<span class="password-field"><input id="currentPassword" type="password" autocomplete="current-password" required><button type="button" class="password-toggle" data-password-target="currentPassword" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><label>Nova senha<span class="password-field"><input id="newPassword" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="password-toggle" data-password-target="newPassword" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><label>Confirmar nova senha<span class="password-field"><input id="newPassword2" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="password-toggle" data-password-target="newPassword2" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><button type="submit" class="btn primary">Alterar senha</button></form></div></div>
+
+<!-- PASSWORD RECOVERY UI START -->
+<div id="passwordRecoveryModal" class="modal password-recovery-modal"><div class="modal-box password-recovery-box">
+  <div class="password-recovery-head"><div><h2>Recuperar acesso</h2><p>O administrador precisa autorizar a troca.</p></div><button type="button" class="btn outline" aria-label="Fechar" data-ui-click="a902ffdaba29c58">×</button></div>
+  <div id="passwordRecoveryMsg"></div>
+  <div id="passwordRecoveryRequestStep"><form id="passwordRecoveryRequestForm" class="form" data-ui-submit="a903d88b27a1bbf"><label>Usuário<input id="passwordRecoveryUsername" autocomplete="username" required placeholder="Seu usuário"></label><button class="btn primary" type="submit">Solicitar recuperação</button></form><button class="password-recovery-have-code" type="button" data-ui-click="a7adc174094f2ef">Já tenho o código</button></div>
+  <div id="passwordRecoveryResetStep" class="hidden"><form id="passwordRecoveryResetForm" class="form" data-ui-submit="a8b8c38b7e99781"><label>Usuário<input id="passwordRecoveryResetUsername" autocomplete="username" required placeholder="Seu usuário"></label><label>Código de recuperação<input id="passwordRecoveryCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label><label>Nova senha<span class="password-field"><input id="recoveryPass" type="password" minlength="8" autocomplete="new-password" required placeholder="Nova senha"><button type="button" class="password-toggle" data-password-target="recoveryPass" aria-label="Mostrar senha" aria-pressed="false"><svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg></button></span></label><label>Confirmar nova senha<span class="password-field"><input id="recoveryPass2" type="password" minlength="8" autocomplete="new-password" required placeholder="Confirmar nova senha"><button type="button" class="password-toggle" data-password-target="recoveryPass2" aria-label="Mostrar senha" aria-pressed="false"><svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg></button></span></label><button class="btn primary" type="submit">Alterar minha senha</button></form><button class="password-recovery-have-code" type="button" data-ui-click="a7ebdf6938b682a">Voltar</button></div>
+</div></div>
+<div id="passwordRecoveryAdminModal" class="modal password-recovery-admin-modal"><div class="modal-box password-recovery-admin-box"><div class="password-recovery-head"><div><h2>Recuperações de senha</h2><p>Aprove somente depois de confirmar a identidade do motoboy.</p></div><button type="button" class="btn outline" aria-label="Fechar" data-ui-click="ade6554cf68d06f">×</button></div><div id="passwordRecoveryAdminMsg"></div><div id="passwordRecoveryAdminList" class="password-recovery-list"><div class="empty">Carregando...</div></div></div></div>
+<!-- PASSWORD RECOVERY UI END -->
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
+<script src="/vendor/qrcode.min.js?v=qrcodejs-1.0.0" integrity="sha384-5/QcN9nnY4ryIdmxVo7+7iDnqdVwW4jtSsJ//yWSMx7gc2R2MIIhUlyLKh0z1p/G"></script>
 <script>
 let me=null,dashboard=null,wallboardData=null,serverOffsetMs=0,deferredInstallPrompt=null;
 let alertSettings={attention:40,delayed:50,critical:60};
@@ -2049,6 +2166,43 @@ let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownT
 let courierAttendancePresent=false,courierShiftEnded=false;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
+
+
+
+
+
+
+
+
+
+
+
+/* PASSWORD TOGGLE START */
+function setPasswordVisibility(button, show){
+  const input=document.getElementById(button?.dataset?.passwordTarget||'');
+  if(!input)return;
+  input.type=show?'text':'password';
+  button.setAttribute('aria-pressed',String(show));
+  button.setAttribute('aria-label',show?'Ocultar senha':'Mostrar senha');
+}
+function hideAllPasswords(){
+  document.querySelectorAll('[data-password-target]').forEach(button=>setPasswordVisibility(button,false));
+}
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-password-target]');
+  if(button){
+    event.preventDefault();
+    const input=document.getElementById(button.dataset.passwordTarget);
+    if(!input)return;
+    const show=input.type==='password';
+    setPasswordVisibility(button,show);
+    input.focus({preventScroll:true});
+    try{const end=input.value.length;input.setSelectionRange(end,end)}catch{}
+    return;
+  }
+  if(event.target.closest('#tabLogin,#tabRegister')) hideAllPasswords();
+});
+/* PASSWORD TOGGLE END */
 
 function redirectExpiredSession(){
   if(sessionRedirecting)return;
@@ -2076,15 +2230,22 @@ function showSessionNotice(){
 }
 async function stopForExpiredSession(response){
   if(response?.status!==401||!me)return false;
+  if(passwordChangeInProgress)return false;
+  // Raw downloads/exports can also finish with an old-cookie response after
+  // rotation. Confirm expiration against the browser's CURRENT cookie.
+  try{if((await fetch('/api/me',{cache:'no-store'})).ok)return false;}catch{return false;}
   redirectExpiredSession();
   await new Promise(()=>{});
   return true;
 }
 
 const apiGetInFlight=new Map();
+let sessionRotationGeneration=0;
+let passwordChangeInProgress=false;
 async function api(url,opt={}){
   const method=String(opt.method||'GET').toUpperCase();
   const request=async()=>{
+    const requestGeneration=sessionRotationGeneration;
     let r;
     try{
       r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});
@@ -2095,7 +2256,9 @@ async function api(url,opt={}){
       throw err;
     }
     let d={};try{d=await r.json()}catch{}
-    await stopForExpiredSession(r);
+    // A response from the old cookie may arrive while credentials are being
+    // rotated. It must fail, but must not tear down the new authenticated UI.
+    if(url==='/api/account/password'||(!passwordChangeInProgress&&requestGeneration===sessionRotationGeneration))await stopForExpiredSession(r);
     if(!r.ok){const err=new Error(d.error||'Erro na operação.');err.status=r.status;err.code=d.code;err.payload=d;throw err}
     if(d.server_now)syncServerTime(d.server_now);
     return d;
@@ -2119,6 +2282,7 @@ function setAuth(mode){
   $('authMsg').innerHTML='';
 }
 function message(id,text,type){$(id).innerHTML=text?`<div class="msg ${type}">${escapeHtml(text)}</div>`:''}
+function uiActionArgs(values){return escapeHtml(JSON.stringify(values))}
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function localDate(x){return new Date(x).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function localTime(x){return new Date(x).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
@@ -2339,7 +2503,7 @@ function applyManualPaste(){
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
 function resetOrderFields(){$('orderFields').innerHTML='';for(let i=0;i<Number($('departureCount').value);i++)addOrderField();updateOrderUi()}
-function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-platform-valid="false" data-platform="" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleOrderFieldLookup(this)"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
+function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-platform-valid="false" data-platform="" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" data-ui-input="acf89b09c48b8e0"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
 function allCourierOrdersPlatformValidated(){
@@ -2424,7 +2588,7 @@ function applyOrderPlatformChoice(input,platform,statusText=''){
   input.dataset.platform=platform;
   input.dataset.platformValid='true';
   box.className='order-validation ok';
-  box.innerHTML=`✓ ${escapeHtml(platformLabel(platform))} selecionado${statusText?' • '+escapeHtml(statusText):''} <button type="button" class="btn outline" style="padding:4px 8px;margin-left:6px" onclick="lookupOrderField(this.closest('.order-row').querySelector('.order-input'))">Trocar</button>`;
+  box.innerHTML=`✓ ${escapeHtml(platformLabel(platform))} selecionado${statusText?' • '+escapeHtml(statusText):''} <button type="button" class="btn outline" style="padding:4px 8px;margin-left:6px" data-ui-click="a1224e09a668d58">Trocar</button>`;
   updateCourierDepartureEligibility();
 }
 
@@ -2440,7 +2604,7 @@ function renderPlatformChoice(input,data){
     const reason=candidate.valid===false&&candidate.message
       ? `<div class="small" style="margin-top:4px">${escapeHtml(candidate.label||platform)}: ${escapeHtml(candidate.message)}</div>`
       : '';
-    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),'${platform}')">${escapeHtml(candidate.label||platform)}</button>${reason}`;
+    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} data-ui-click="a290214c02d3eef" data-ui-click-args="${uiActionArgs([platform])}">${escapeHtml(candidate.label||platform)}</button>${reason}`;
   }).join('');
   box.className='order-validation warn';
   box.innerHTML=`<b>Pedido encontrado em mais de uma plataforma.</b><div class="small">Qual pedido você está levando?</div>${buttons}`;
@@ -2956,7 +3120,7 @@ function renderAttendance(){
     const action=x.present
       ? (x.active_dispatch_id
           ? '<span class="small muted">Finalize a entrega antes</span>'
-          : `<button class="btn danger" type="button" onclick="checkoutCourier(${x.courier_id},decodeURIComponent('${encodeURIComponent(x.name)}'))">Encerrar expediente</button>`)
+          : `<button class="btn danger" type="button" data-ui-click="a779d16d9b4b9d9" data-ui-click-args="${uiActionArgs([x.courier_id,encodeURIComponent(x.name)])}">Encerrar expediente</button>`)
       : '—';
     return `<tr>
       <td><b>${escapeHtml(x.name)}</b><div class="small muted">@${escapeHtml(x.username)}</div></td>
@@ -3059,7 +3223,7 @@ function dispatchProgressText(x){
   return `${total} pedido(s) • manual`;
 }
 function dispatchActionHtml(x){
-  return `<button class="btn outline" onclick="releaseDispatch(${x.id})">Liberar nova saída</button>`;
+  return `<button class="btn outline" data-ui-click="afb5cbadb8ddf4e" data-ui-click-args="${uiActionArgs([x.id])}">Liberar nova saída</button>`;
 }
 function renderRoad(){
   const a=dashboard.active||[];
@@ -3108,7 +3272,7 @@ async function loadHistory(){
         <td><span class="badge ${x.registration_source==='ADMIN'?'origin-admin':'origin-courier'}">${x.registration_source==='ADMIN_RECOVERED'?'SAÍDA RECUPERADA':x.registration_source==='ADMIN_TRANSFER'?'CORREÇÃO ADMIN':x.registration_source==='ADMIN'?'ADMIN':'MOTOBOY'}</span>${x.admin_reason?`<div class="small muted" style="margin-top:4px">${escapeHtml(x.admin_reason)}</div>`:''}</td>
         <td>${localDate(x.departed_at)}</td>
         <td><span class="badge ${cls}">${label}</span>${x.returning_at?`<div class="small muted" style="margin-top:4px">Retorno ${localTime(x.returning_at)}</div>`:''}</td>
-        <td><button type="button" class="btn outline" onclick="openTransferOrderModal(${Number(x.id)})">Transferir pedido</button></td>
+        <td><button type="button" class="btn outline" data-ui-click="a941d599f69acc6" data-ui-click-args="${uiActionArgs([Number(x.id)])}">Transferir pedido</button></td>
       </tr>`;
     }).join('')||empty(7);
     $('historyPageInfo').textContent=`Página ${historyState.page} de ${historyState.pages} • ${historyState.total} registro(s)`;
@@ -3189,9 +3353,9 @@ function pixStatusText(s){return s==='VERIFIED'?'VERIFICADO':s==='PENDING'?'AGUA
 function renderCouriers(){
   $('courierTable').innerHTML=dashboard.couriers.map(x=>{
     let accessActions='';
-    if(x.approval_status==='PENDING')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button><button class="btn danger" onclick="rejectCourier(${x.id})">Recusar</button>`;
-    else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" onclick="approveCourier(${x.id})">Aprovar</button>`;
-    else accessActions=`<button class="btn outline" onclick="toggleCourier(${x.id},${!x.active})">${x.active?'Desativar':'Ativar'}</button>`;
+    if(x.approval_status==='PENDING')accessActions=`<button class="btn success" data-ui-click="aa9cc61856c3524" data-ui-click-args="${uiActionArgs([x.id])}">Aprovar</button><button class="btn danger" data-ui-click="a1d26e6b2a1dbd9" data-ui-click-args="${uiActionArgs([x.id])}">Recusar</button>`;
+    else if(x.approval_status==='REJECTED')accessActions=`<button class="btn success" data-ui-click="aa9cc61856c3524" data-ui-click-args="${uiActionArgs([x.id])}">Aprovar</button>`;
+    else accessActions=`<button class="btn outline" data-ui-click="a8142005bac1d20" data-ui-click-args="${uiActionArgs([x.id,!x.active])}">${x.active?'Desativar':'Ativar'}</button>`;
 
     const statusLabel={NA_RUA:'NA RUA',RETORNANDO:'RETORNANDO',DISPONIVEL:'DISPONÍVEL',AUSENTE:'AUSENTE',ENCERRADO:'ENCERRADO',OFFLINE:'OFFLINE',INATIVO:'INATIVO'}[x.operational_status]||x.operational_status;
     const last=x.last_departure?localDate(x.last_departure):'Nunca';
@@ -3200,11 +3364,11 @@ function renderCouriers(){
       ? `<div class="small"><div class="pix-holder">${escapeHtml(x.pix_holder_name||'Titular não informado')}</div><b>${escapeHtml(x.pix_type||'PIX')}</b><br>${escapeHtml(x.pix_key)}<div style="margin-top:5px"><span class="badge ${pixBadgeClass(pixStatus)}">${pixStatusText(pixStatus)}</span></div></div>`
       : '<span class="badge gray">NÃO CADASTRADO</span>';
     const pixAction=pixStatus==='PENDING'
-      ? `<button class="btn success" onclick="verifyCourierPix(${x.id})">Confirmar PIX</button>`
+      ? `<button class="btn success" data-ui-click="a0bbffe7cfe34bc" data-ui-click-args="${uiActionArgs([x.id])}">Confirmar PIX</button>`
       : '';
     const deleteAction=x.on_road
       ? '<button class="btn courier-delete-button" type="button" disabled title="Finalize a saída ativa antes de excluir">Excluir</button>'
-      : `<button class="btn courier-delete-button" type="button" onclick="openDeleteCourierModal(${x.id})">Excluir</button>`;
+      : `<button class="btn courier-delete-button" type="button" data-ui-click="aea5af0920afd56" data-ui-click-args="${uiActionArgs([x.id])}">Excluir</button>`;
 
     return `<tr class="${pixStatus==='PENDING'?'pix-pending-row':pixStatus==='VERIFIED'?'pix-verified-row':''}">
       <td><b>${escapeHtml(x.name)}</b>${x.nickname?`<div class="small muted">${escapeHtml(x.nickname)}</div>`:''}</td>
@@ -3217,7 +3381,7 @@ function renderCouriers(){
       <td>${approvalBadge(x.approval_status)}</td>
       <td><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVA':'INATIVA'}</span></td>
       <td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td>
-      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button>${deleteAction}</div></td>
+      <td><div class="actions"><button class="btn outline" data-ui-click="a347d95201406bb" data-ui-click-args="${uiActionArgs([x.id])}">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" data-ui-click="a645296c932684b" data-ui-click-args="${uiActionArgs([x.id,x.name])}">Resetar senha</button>${deleteAction}</div></td>
     </tr>`;
   }).join('')||empty(11)
 }
@@ -3323,7 +3487,7 @@ async function copyPix(value){
   catch{prompt('Copie a chave PIX:',value)}
 }
 function paymentRowKey(row){return `${row.courier_id}-${row.shift_code||'LEGACY'}`}
-function previewPaymentRow(key){const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row||row.locked)return;const tip=moneyNumber($(`payTip-${key}`)?.value),discount=Math.max(0,moneyNumber($(`payDiscount-${key}`)?.value)),adjustment=moneyNumber($(`payAdjustment-${key}`)?.value),rain=$(`payRain-${key}`)?.checked===true;
+function previewPaymentRow(key){const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row||row.locked)return;const tip=moneyNumber($(`payTip-${key}`)?.value),discount=Math.max(0,moneyNumber($(`payDiscount-${key}`)?.value)),adjustment=Math.max(0,Number($(`payAdjustment-${key}`)?.value||0))*6,rain=$(`payRain-${key}`)?.checked===true;
   const total=Math.round((row.delivery_count*row.per_delivery+row.base_amount+(rain?Number(paymentState.rule?.rain_bonus||0):0)+tip-discount+adjustment)*100)/100;if($(`payTotalRow-${key}`))$(`payTotalRow-${key}`).textContent=brl(total)}
 function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.summary.couriers||0;$('payDeliveries').textContent=d.summary.deliveries||0;$('payTotal').textContent=brl(d.summary.total);$('payPaid').textContent=brl(d.summary.paid);$('payPending').textContent=brl(d.summary.pending);
   $('paymentRuleSummary').textContent=`${brl(d.rule?.per_delivery)} por entrega • Almoço ${brl(d.rule?.lunch_mon_thu)} Seg–Qui / ${brl(d.rule?.lunch_fri_sun)} Sex–Sáb • Janta ${brl(d.rule?.dinner_mon_thu)} Seg–Qui / ${brl(d.rule?.dinner_fri_sun)} Sex–Dom • Chuva +${brl(d.rule?.rain_bonus)}`;
@@ -3331,13 +3495,13 @@ function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.su
   $('paymentTable').innerHTML=d.rows.map(row=>{const key=paymentRowKey(row),disabled=row.locked?'disabled':'',lockedClass=row.locked?'payment-locked':'',pixStatus=row.pix_status||(row.pix_key?'VERIFIED':'NONE');let pix='';
     if(!row.pix_key)pix='<span class="badge gray">SEM PIX</span>';else if(pixStatus==='VERIFIED')pix=`<div class="payment-pix"><div class="pix-holder">${escapeHtml(row.pix_holder_name||'')}</div>${escapeHtml(row.pix_key)}<div><span class="badge green">VERIFICADO</span></div></div>`;else pix='<span class="badge yellow">AGUARDANDO</span>';
     return `<tr class="${lockedClass}"><td><b>${escapeHtml(row.courier_name)}</b></td><td><span class="badge ${row.shift_code==='LUNCH'?'yellow':'blue'}">${escapeHtml(row.shift_label)}</span></td><td><b>${row.delivery_count}</b></td><td>${brl(row.per_delivery)}</td><td>${brl(row.base_amount)}</td>
-      <td><label><input id="payRain-${key}" type="checkbox" ${row.rain?'checked':''} ${disabled} onchange="previewPaymentRow('${key}')"> +${brl(d.rule?.rain_bonus)}</label></td>
-      <td><input id="payTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payAdjustment-${key}" class="payment-input" type="number" step="0.01" value="${Number(row.adjustment_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td>
-      <td><span id="payTotalRow-${key}" class="payment-total">${brl(row.total_amount)}</span></td><td>${pix}</td><td><select id="payMethod-${key}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td><td><select id="payStatus-${key}" class="payment-select">${paymentStatusOptions(row.status)}</select></td><td><input id="payNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td><td><button class="btn primary" onclick="savePaymentRow('${key}')">Salvar</button></td></tr>`}).join('')||empty(15)}
+      <td><label><input id="payRain-${key}" type="checkbox" ${row.rain?'checked':''} ${disabled} data-ui-change="a115f9f0ebb54e9" data-ui-change-args="${uiActionArgs([key])}"> +${brl(d.rule?.rain_bonus)}</label></td>
+      <td><input id="payTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} data-ui-input="a48baa1be594747" data-ui-input-args="${uiActionArgs([key])}"></td><td><input id="payDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} data-ui-input="a48baa1be594747" data-ui-input-args="${uiActionArgs([key])}"></td><td><input id="payAdjustment-${key}" class="payment-input" type="number" min="0" step="1" inputmode="numeric" title="R$ 6 por entrega longe" value="${Number(row.longe_count??(Number(row.adjustment_amount||0)/6))||0}" ${disabled} data-ui-input="a48baa1be594747" data-ui-input-args="${uiActionArgs([key])}"></td>
+      <td><span id="payTotalRow-${key}" class="payment-total">${brl(row.total_amount)}</span></td><td>${pix}</td><td><select id="payMethod-${key}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td><td><select id="payStatus-${key}" class="payment-select">${paymentStatusOptions(row.status)}</select></td><td><input id="payNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td><td><button class="btn primary" data-ui-click="a20576c275fe604" data-ui-click-args="${uiActionArgs([key])}">Salvar</button></td></tr>`}).join('')||empty(15)}
 async function loadPayments(){if(!me||me.role!=='admin'||paymentActiveView!=='daily')return;const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';if($('paymentDate'))$('paymentDate').value=date;try{paymentState=await api('/api/admin/payments?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:''));renderPayments();if(paymentSheetState.month!==date.slice(0,7))loadPaymentSheetConfig(date.slice(0,7))}catch(err){$('paymentTable').innerHTML=`<tr><td colspan="15"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}}
 async function savePaymentRule(){const payload={effective_from:$('paymentRuleEffective').value||spToday(),per_delivery:moneyNumber($('paymentPerDelivery').value),lunch_mon_thu:moneyNumber($('paymentLunchWeekday').value),lunch_fri_sun:moneyNumber($('paymentLunchWeekend').value),dinner_mon_thu:moneyNumber($('paymentDinnerWeekday').value),dinner_fri_sun:moneyNumber($('paymentDinnerWeekend').value),rain_bonus:moneyNumber($('paymentRainBonus').value)};if(!confirm(`Salvar esta regra a partir de ${payload.effective_from.split('-').reverse().join('/')}?`))return;try{const d=await api('/api/admin/payments/rules',{method:'PUT',body:JSON.stringify(payload)});message('paymentRuleMsg',d.message||'Regra salva.','ok');await loadPayments()}catch(err){message('paymentRuleMsg',err.message,'err')}}
 async function savePaymentRow(key,confirmReopen=false,confirmReviewed=false){const current=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!current)return;const status=$(`payStatus-${key}`).value;if(current.status==='OPEN'&&status==='REVIEWED'&&!confirm(`Conferir o pagamento de ${current.shift_label}? Os valores serão congelados.`))return;if(current.status!=='PAID'&&status==='PAID'&&!confirm(`Marcar ${current.shift_label} como PAGO?`))return;if(current.status==='PAID'&&status!=='PAID'&&!confirmReopen){if(!confirm('Este turno já está PAGO. Deseja reabrir?'))return;confirmReopen=true}if(current.status==='REVIEWED'&&status==='OPEN'&&!confirmReviewed){if(!confirm('Este turno já foi CONFERIDO. Deseja reabrir para edição?'))return;confirmReviewed=true}
-  const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
+  if(!Number.isInteger(Number($(`payAdjustment-${key}`).value))||Number($(`payAdjustment-${key}`).value)<0)return alert("LONGE deve ser um número inteiro não negativo.");const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),longe_count:Number($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
 function exportPayments(){const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';location.href='/api/admin/payments.csv?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:'')}
 
 function updatePaymentSheetLinks(data){
@@ -3387,7 +3551,7 @@ async function closePaymentDay(){
   try{
     for(const row of paymentState.rows){
       const key=paymentRowKey(row),status=$(`payStatus-${key}`)?.value||row.status;
-      const payload={shift_code:row.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`)?.value),discount_amount:moneyNumber($(`payDiscount-${key}`)?.value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`)?.value),payment_method:$(`payMethod-${key}`)?.value||'',status,notes:$(`payNotes-${key}`)?.value||'',confirm_reopen_paid:row.status==='PAID'&&status!=='PAID',confirm_reopen_reviewed:row.status==='REVIEWED'&&status==='OPEN'};
+      if(!Number.isInteger(Number($(`payAdjustment-${key}`)?.value))||Number($(`payAdjustment-${key}`)?.value)<0)throw new Error("LONGE deve ser um número inteiro não negativo.");const payload={shift_code:row.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`)?.value),discount_amount:moneyNumber($(`payDiscount-${key}`)?.value),longe_count:Number($(`payAdjustment-${key}`)?.value),payment_method:$(`payMethod-${key}`)?.value||'',status,notes:$(`payNotes-${key}`)?.value||'',confirm_reopen_paid:row.status==='PAID'&&status!=='PAID',confirm_reopen_reviewed:row.status==='REVIEWED'&&status==='OPEN'};
       await api(`/api/admin/payments/${date}/${row.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});
     }
     const result=await api('/api/admin/payments/close-day',{method:'POST',body:JSON.stringify({date,shift_code:shift})});
@@ -3481,7 +3645,7 @@ function markPaymentMonthDirty(key){
 }
 function renderPaymentMonthDays(){
   const dates=paymentMonthDates(paymentMonthState.month),rows=paymentMonthState.rows.filter(row=>row.shift_code===paymentMonthState.shift),withData=new Set(rows.map(row=>row.payment_date));
-  $('paymentMonthDays').innerHTML=dates.map(date=>{const day=date.slice(8),label=paymentMonthState.shift==='DINNER'?`${day}/${date.slice(5,7)} ${paymentDayLetter(date)}`:`${day}/${date.slice(5,7)}`;return `<button type="button" role="tab" aria-selected="${date===paymentMonthState.date}" class="${date===paymentMonthState.date?'active ':''}${withData.has(date)?'has-data':''}" onclick="setPaymentBookDate('${date}')">${label}</button>`}).join('');
+  $('paymentMonthDays').innerHTML=dates.map(date=>{const day=date.slice(8),label=paymentMonthState.shift==='DINNER'?`${day}/${date.slice(5,7)} ${paymentDayLetter(date)}`:`${day}/${date.slice(5,7)}`;return `<button type="button" role="tab" aria-selected="${date===paymentMonthState.date}" class="${date===paymentMonthState.date?'active ':''}${withData.has(date)?'has-data':''}" data-ui-click="a5511c4a74a726b" data-ui-click-args="${uiActionArgs([date])}">${label}</button>`}).join('');
   $('paymentMonthDays').querySelector('button.active')?.scrollIntoView({block:'nearest',inline:'center'});
 }
 function renderPaymentMonth(){
@@ -3497,13 +3661,13 @@ function renderPaymentMonth(){
     const key=paymentMonthRowKey(row),disabled=row.locked?'disabled':'',lockedClass=row.locked?' payment-locked':'',dirty=paymentMonthState.dirty.has(key)?' month-dirty':'',paid=row.status==='PAID',encosta=row.encosta_amount??paymentEncostaValue(row);
     return `<tr class="${paid?'sheet-paid':'sheet-pending'}${lockedClass}${dirty}" data-payment-month-key="${key}">
       <td class="sheet-name">${escapeHtml(row.courier_name)}</td><td class="sheet-nickname">${escapeHtml(row.nickname||'')}</td><td class="sheet-pix">${escapeHtml(row.pix_key||'')}</td><td>${escapeHtml(row.pix_type||'')}</td><td><b>${Number(row.delivery_count||0)}</b></td>
-      <td><input id="monthEncosta-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(encosta||0).toFixed(2)}" ${disabled} oninput="markPaymentMonthDirty('${key}')"></td>
-      <td><input id="monthTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="markPaymentMonthDirty('${key}')"></td>
-      <td><input id="monthDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="markPaymentMonthDirty('${key}')"></td>
-      <td><select id="monthMethod-${key}" class="payment-select" ${disabled} onchange="markPaymentMonthDirty('${key}')">${sheetPaymentMethodOptions(row.payment_method)}</select></td>
-      <td><select id="monthPaid-${key}" class="payment-select" onchange="markPaymentMonthDirty('${key}')"><option value="Não" ${paid?'':'selected'}>Não</option><option value="Sim" ${paid?'selected':''}>Sim</option></select></td>
+      <td><input id="monthEncosta-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(encosta||0).toFixed(2)}" ${disabled} data-ui-input="ab6662e3532ec57" data-ui-input-args="${uiActionArgs([key])}"></td>
+      <td><input id="monthTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} data-ui-input="ab6662e3532ec57" data-ui-input-args="${uiActionArgs([key])}"></td>
+      <td><input id="monthDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} data-ui-input="ab6662e3532ec57" data-ui-input-args="${uiActionArgs([key])}"></td>
+      <td><select id="monthMethod-${key}" class="payment-select" ${disabled} data-ui-change="a543128f21d268d" data-ui-change-args="${uiActionArgs([key])}">${sheetPaymentMethodOptions(row.payment_method)}</select></td>
+      <td><select id="monthPaid-${key}" class="payment-select" data-ui-change="a543128f21d268d" data-ui-change-args="${uiActionArgs([key])}"><option value="Não" ${paid?'':'selected'}>Não</option><option value="Sim" ${paid?'selected':''}>Sim</option></select></td>
       <td id="monthStatus-${key}" class="sheet-status">${paid?'PAGO':'PENDENTE'}</td><td id="monthTotal-${key}" class="sheet-total">${brl(row.total_amount)}</td>
-      <td><input id="monthNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled} oninput="markPaymentMonthDirty('${key}')"></td>
+      <td><input id="monthNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled} data-ui-input="ab6662e3532ec57" data-ui-input-args="${uiActionArgs([key])}"></td>
     </tr>`;
   }).join('')||`<tr><td colspan="13" class="payment-month-empty">${paymentMonthState.loading?'Carregando a planilha...':'Nenhum motoboy registrado neste turno.'}</td></tr>`;
 }
@@ -3772,7 +3936,7 @@ function courierDeliveryCopyButton(x){
   if(!address)return '';
   const complement=typeof x?.delivery_details?.complement==='string'?x.delivery_details.complement.trim():'';
   const complete=address+(complement?', '+complement:'');
-  return '<button type="button" class="delivery-copy-button" data-address="'+escapeHtml(complete)+'" onclick="copyCourierAddress(this)">'+
+  return '<button type="button" class="delivery-copy-button" data-address="'+escapeHtml(complete)+'" data-ui-click="a5b7f1f19abbfc8">'+
     '<span class="delivery-info-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span>'+
     '<span class="delivery-copy-text">Copiar endereço completo</span>'+
     '<span class="delivery-copy-icon" aria-hidden="true">⧉</span></button>';
@@ -3855,8 +4019,8 @@ function courierDeliveryRow(x){
   const platformLabel=platform==='anotaai'?'Anota AI':'iFood';
   const btn=canConfirm
     ? (platform==='anotaai'
-      ? `<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
-      : `<button type="button" class="btn success" onclick='openDeliveryConfirmModal(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`)
+      ? `<button type="button" class="btn success" data-ui-click="a03dc73b758e58b" data-ui-click-args="${uiActionArgs([x.order_id,x.display_id||x.local_order_number||""])}">✅ Confirmar entrega</button>`
+      : `<button type="button" class="btn success" data-ui-click="a1801af1b27eeb8" data-ui-click-args="${uiActionArgs([x.order_id,x.display_id||x.local_order_number||""])}">✅ Confirmar entrega</button>`)
     : '';
 
   return `<div class="delivery-item">
@@ -4023,8 +4187,8 @@ async function loadCourier({related=true}={}){
       <div class="courier-route-orders">${ordersHtml(x)}</div>
       <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${resolved} de ${total} pedidos resolvidos</span></div>
       <div class="courier-route-clock"><span>Saída às <b>${localTime(x.departed_at)}</b></span><strong class="big live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</strong><small>Tempo de entrega • encerramento automático após a última confirmação</small></div>
-      <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" onclick="requestAdminRelease(${x.id})">Solicitar liberação ao admin</button></div>
-      <button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>
+      <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" data-ui-click="a18cb949c9b9796" data-ui-click-args="${uiActionArgs([x.id])}">Solicitar liberação ao admin</button></div>
+      <button type="button" class="btn outline courier-route-action" data-ui-click="aef3eb03d81c59c">+ Adicionar pedido à rota atual</button>
     </section>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');note.id='currentDepartureNote';note.className='current-active-note';
@@ -4311,7 +4475,7 @@ function addManualOrderField(){
   if(n>=5)return;
   const row=document.createElement('div');
   row.className='order-row';
-  row.innerHTML=`<input class="manual-order-input" placeholder="Pedido ${n+1}" maxlength="50" required style="padding:11px;border:1px solid var(--line);border-radius:9px;width:100%">${n>0?'<button type="button" class="btn danger" onclick="this.parentElement.remove();updateManualOrderUi()">×</button>':'<span></span>'}`;
+  row.innerHTML=`<input class="manual-order-input" placeholder="Pedido ${n+1}" maxlength="50" required style="padding:11px;border:1px solid var(--line);border-radius:9px;width:100%">${n>0?'<button type="button" class="btn danger" data-ui-click="a6bc8aedc7285d6">×</button>':'<span></span>'}`;
   $('manualOrderFields').appendChild(row);
   updateManualOrderUi();
   row.querySelector('input').focus();
@@ -4423,7 +4587,7 @@ function renderNotificationCount(){
   $('notificationSubtitle').textContent=`${notificationState.unread} não lida(s)`;
 }
 function notificationItemHtml(n){
-  return `<div class="notification-item ${n.read_at?'':'unread'}" onclick="markNotificationRead(${n.id})">
+  return `<div class="notification-item ${n.read_at?'':'unread'}" data-ui-click="a212e3d104c53ba" data-ui-click-args="${uiActionArgs([n.id])}">
     <div style="display:flex;justify-content:space-between;gap:10px"><div class="notification-title">${escapeHtml(n.title)}</div>${notificationSeverityBadge(n.severity)}</div>
     <div class="notification-message">${escapeHtml(n.message)}</div>
     <div class="notification-meta">${localDate(n.created_at)}${n.read_at?' • lida':''}</div>
@@ -4583,7 +4747,7 @@ function kdsOrderCard(row,stage){
   const prep=stage==='PREPARING'?kdsPreparationMarkup(row):'';
   const assign=me?.role==='admin' && !row.linked_dispatch_id && !row.courier_name &&
     String(row.delivered_by||'').toUpperCase()==='MERCHANT' && ['ON_ROAD','CONFIRMED'].includes(stage)
-    ? `<button type="button" class="btn outline" data-order-id="${escapeHtml(row.order_id)}" onclick="openUnassignedOrder(this.dataset.orderId)">Alocar motoboy</button>` : '';
+    ? `<button type="button" class="btn outline" data-order-id="${escapeHtml(row.order_id)}" data-ui-click="a70aa944e09372d">Alocar motoboy</button>` : '';
   return `<article class="kds-order-card">
     <div class="kds-order-top"><div class="kds-order-idblock"><div class="kds-order-number">#${escapeHtml(row.display_id||row.order_id||'—')}</div>${prep}</div><div class="kds-order-time">${when?localTime(when):'—'}</div></div>
     <div class="kds-order-main">${escapeHtml(kdsPrimaryText(row,stage))}</div>
@@ -4709,12 +4873,12 @@ function healthComponentCard(name,status,main,meta){
   </div>`;
 }
 function healthExceptionAction(x){
-  if(x.action==='RETRY_IFOOD')return `<button class="btn outline" onclick='retryIfoodFromHealth(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
-  if(x.action==='RETRY_ANOTAAI')return `<button class="btn outline" onclick='retryAnotaAiFromHealth(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
-  if(x.action==='SYNC_IFOOD')return '<button class="btn outline" onclick="syncIfoodFromHealth()">Sincronizar iFood</button>';
-  if(x.action==='SYNC_ANOTAAI')return '<button class="btn outline" onclick="syncAnotaAiFromHealth()">Sincronizar Anota AI</button>';
-  if(x.action==='RESOLVE_CONFLICT')return `<button class="btn outline" onclick="resolveConflictFromHealth(${Number(x.conflict_id)})">Resolver</button>`;
-  if(x.action==='OPEN_MONITORING')return '<button class="btn outline" onclick="activateAdminPage(\'security\',\'system\')">Ver monitoramento</button>';
+  if(x.action==='RETRY_IFOOD')return `<button class="btn outline" data-ui-click="a0162fccb9e326c" data-ui-click-args="${uiActionArgs([x.order_id])}">Tentar novamente</button>`;
+  if(x.action==='RETRY_ANOTAAI')return `<button class="btn outline" data-ui-click="ac0c3df33fe6dd6" data-ui-click-args="${uiActionArgs([x.order_id])}">Tentar novamente</button>`;
+  if(x.action==='SYNC_IFOOD')return '<button class="btn outline" data-ui-click="afdf1dc50be4b13">Sincronizar iFood</button>';
+  if(x.action==='SYNC_ANOTAAI')return '<button class="btn outline" data-ui-click="a67a357a5824646">Sincronizar Anota AI</button>';
+  if(x.action==='RESOLVE_CONFLICT')return `<button class="btn outline" data-ui-click="addf116b98cd2a0" data-ui-click-args="${uiActionArgs([Number(x.conflict_id)])}">Resolver</button>`;
+  if(x.action==='OPEN_MONITORING')return '<button class="btn outline" data-ui-click="ad115926c8babf7">Ver monitoramento</button>';
   return '';
 }
 async function retryIfoodFromHealth(orderId){
@@ -4984,7 +5148,7 @@ async function loadIfoodStatus(){
                 ? (String(m.id)===String(d.configuredMerchantId||'')
                     ? '<span class="badge green">MERCHANT ID</span>'
                     : '')
-                : `<button class="btn outline" type="button" onclick='checkIfoodMerchantOperational(${JSON.stringify(m.id)})'>Verificar loja</button>`
+                : `<button class="btn outline" type="button" data-ui-click="a688b4e4fe79787" data-ui-click-args="${uiActionArgs([m.id])}">Verificar loja</button>`
               }
             </div>
           </div>`).join('')
@@ -5004,11 +5168,11 @@ async function loadIfoodStatus(){
           ['CONFIRMED','READY_TO_PICKUP','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED'].includes(canonical) &&
           !['API_ACCEPTED','DISPATCHED','CONCLUDED'].includes(String(x.ifood_dispatch_status||'').toUpperCase())
         ){
-          button=`<button class="btn outline" style="margin-top:6px" onclick='dispatchIfoodTestOrder(${JSON.stringify(x.order_id)})'>Despachar teste</button>`;
+          button=`<button class="btn outline" style="margin-top:6px" data-ui-click="a5b4bff7d17d9e8" data-ui-click-args="${uiActionArgs([x.order_id])}">Despachar teste</button>`;
         }
 
         if(String(x.dispatch_job_status||'').toUpperCase()==='FAILED'){
-          button=`<button class="btn danger" style="margin-top:6px" onclick='retryIfoodDispatch(${JSON.stringify(x.order_id)})'>Tentar novamente</button>`;
+          button=`<button class="btn danger" style="margin-top:6px" data-ui-click="a1ae3d66ab753a2" data-ui-click-args="${uiActionArgs([x.order_id])}">Tentar novamente</button>`;
         }
 
         const deliveryConfirm=ifoodDeliveryConfirmationBadge(x.delivery_confirmation_status,x.status);
@@ -5022,12 +5186,12 @@ async function loadIfoodStatus(){
             : ''
         }</div>`;
       }else if(canConfirmTest){
-        action=`<button class="btn outline" onclick='confirmIfoodTestOrder(${JSON.stringify(x.order_id)})'>Confirmar teste</button>`;
+        action=`<button class="btn outline" data-ui-click="a114ca16b746396" data-ui-click-args="${uiActionArgs([x.order_id])}">Confirmar teste</button>`;
       }else if(
         x.is_test===true &&
         ['CONFIRMED','READY_TO_PICKUP','PREPARATION_STARTED','SEPARATION_STARTED','SEPARATION_ENDED'].includes(canonical)
       ){
-        action=`<button class="btn danger" onclick='cancelIfoodTestOrder(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.order_id)})'>Cancelar teste</button>`;
+        action=`<button class="btn danger" data-ui-click="a3f7b7fadc5806f" data-ui-click-args="${uiActionArgs([x.order_id,x.display_id||x.order_id])}">Cancelar teste</button>`;
       }
 
       return `<tr>
@@ -5100,14 +5264,14 @@ async function loadAnotaAiStatus(){
       if(order.local_courier_name){
         const dispatchBadge=anotaAiDispatchBadge(order.anotaai_dispatch_status);
         const retry=String(order.anotaai_dispatch_status||'').toUpperCase()==='DEAD'
-          ? `<button class="btn outline" type="button" onclick='retryAnotaAiDispatch(${JSON.stringify(order.order_id)})'>Tentar novamente</button>`
+          ? `<button class="btn outline" type="button" data-ui-click="a88d70e348d885d" data-ui-click-args="${uiActionArgs([order.order_id])}">Tentar novamente</button>`
           : '';
         const error=order.dispatch_last_error
           ? `<div class="small muted" style="margin-top:5px">${escapeHtml(order.dispatch_last_error)}</div>`
           : '';
         action=`<span class="badge green">Com ${escapeHtml(order.local_courier_name)}</span> ${dispatchBadge} ${retry}${error}`;
       }else if(orderType==='DELIVERY'&&['PRODUCTION','READY','FINISHED'].includes(status)){
-        action=`<button class="btn outline" type="button" onclick='openUnassignedAnotaAiOrder(${JSON.stringify(order.order_id)},${JSON.stringify(order.display_id||order.order_id)})'>Alocar</button>`;
+        action=`<button class="btn outline" type="button" data-ui-click="a194abf43fd5344" data-ui-click-args="${uiActionArgs([order.order_id,order.display_id||order.order_id])}">Alocar</button>`;
       }
       return `<tr>
         <td><b>#${escapeHtml(order.display_id||order.order_id)}</b><div class="small muted">${escapeHtml(order.order_id)}</div></td>
@@ -5460,7 +5624,7 @@ async function loadConflicts(){
     $('conflictsTable').innerHTML=d.rows.map(x=>{
       const orders=Array.isArray(x.order_numbers)?x.order_numbers.join(', '):'';
       const sev=x.severity==='critical'?'<span class="badge red">CRÍTICO</span>':x.severity==='warning'?'<span class="badge yellow">ATENÇÃO</span>':'<span class="badge blue">INFO</span>';
-      return `<tr class="${x.severity==='critical'?'conflict-critical':x.severity==='warning'?'conflict-warning':''}"><td>${localDate(x.created_at)}</td><td>${escapeHtml(conflictLabel(x.conflict_type))}</td><td>${escapeHtml(x.courier_name||x.actor_name||'—')}</td><td>${escapeHtml(orders)}</td><td>${sev}</td><td>${x.resolved_at?'<span class="badge green">RESOLVIDO</span>':`<button class="btn outline" onclick="resolveConflict(${x.id})">Resolver</button>`}</td></tr>`;
+      return `<tr class="${x.severity==='critical'?'conflict-critical':x.severity==='warning'?'conflict-warning':''}"><td>${localDate(x.created_at)}</td><td>${escapeHtml(conflictLabel(x.conflict_type))}</td><td>${escapeHtml(x.courier_name||x.actor_name||'—')}</td><td>${escapeHtml(orders)}</td><td>${sev}</td><td>${x.resolved_at?'<span class="badge green">RESOLVIDO</span>':`<button class="btn outline" data-ui-click="a3f865fb2659f12" data-ui-click-args="${uiActionArgs([x.id])}">Resolver</button>`}</td></tr>`;
     }).join('')||empty(6);
   }catch(err){alert(err.message)}
 }
@@ -5612,15 +5776,26 @@ function openPasswordModal(force=false){$('passwordModal').classList.toggle('adm
 function closePasswordModal(){if($('passwordModal').dataset.force==='1'&&me?.mustChangePassword)return alert('Você precisa alterar a senha temporária para continuar.');$('passwordModal').style.display='none';$('passwordForm').reset()}
 async function changePassword(e){
   e.preventDefault();
+  if(passwordChangeInProgress)return;
   if($('newPassword').value!==$('newPassword2').value)return message('passwordMsg','As novas senhas não conferem.','err');
+  passwordChangeInProgress=true;
+  sessionRotationGeneration++;
+  const submit=$('passwordForm').querySelector('button[type="submit"]');
+  if(submit)submit.disabled=true;
+  socket.disconnect();
   try{
     const d=await api('/api/account/password',{method:'POST',body:JSON.stringify({current_password:$('currentPassword').value,new_password:$('newPassword').value})});
+    sessionRotationGeneration++;
+    apiGetInFlight.clear();
+    if(d.reauthenticate){me=null;redirectExpiredSession();return;}
     me.mustChangePassword=false;
     message('passwordMsg',d.message,'ok');
+    ensureRealtimeConnected();
     if(me.role==='courier')await loadCourier();
     if(me.role==='admin')await loadSecurity();
     setTimeout(()=>{ $('passwordModal').dataset.force='0'; closePasswordModal(); },700);
   }catch(err){message('passwordMsg',err.message,'err')}
+  finally{passwordChangeInProgress=false;if(submit)submit.disabled=false;ensureRealtimeConnected();}
 }
 
 const auditNames={
@@ -5889,6 +6064,7 @@ socket.on('connect',()=>{
   }
 });
 socket.on('connect_error',err=>{
+  if(passwordChangeInProgress)return;
   if(me&&err?.data?.code==='SOCKET_AUTH_REQUIRED'){
     me=null;
     location.reload();
@@ -5896,6 +6072,7 @@ socket.on('connect_error',err=>{
 });
 socket.on('disconnect',reason=>{
   if(reason==='io server disconnect'){
+    if(passwordChangeInProgress)return;
     if(me){me=null;location.reload();}
     return;
   }
@@ -6002,5 +6179,7 @@ loadPublicConfig();
 
 $('transferOrderForm')?.addEventListener('submit',submitTransferOrder);
 </script>
+<script src="/password-recovery.js?v=security-actions-session-v1"></script>
+<script src="/ui-actions.js?v=security-actions-session-v1"></script>
 </body>
 </html>

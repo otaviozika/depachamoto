@@ -13,18 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+      - run: npm ci --ignore-scripts
       - run: node --check server.js
       - name: Testes de regressão e rotas
-        run: |
-          failed=0
-          for test in scripts/selftest-*.js; do
-            echo "::group::$test"
-            node "$test" || failed=$((failed+1))
-            echo "::endgroup::"
-          done
-          echo "Failed test scripts: $failed"
-          test "$failed" -eq 0
+        run: npm run test:regression
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: complete-regression
+          path: artifacts/regression/
 
   dispatch-flow:
     runs-on: ubuntu-latest
@@ -34,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+      - run: npm ci --ignore-scripts
       - name: Check production prestart transformations
         run: |
           npm run prestart
@@ -51,3 +48,29 @@ jobs:
           node scripts/selftest-delivery-details.js
           node scripts/selftest-courier-customer-card.js
           node scripts/selftest-approved-courier-layout.js
+
+  security-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run prestart
+      - name: Install pinned isolated browser tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/security-browser" --no-save --ignore-scripts playwright@1.62.1
+          "$RUNNER_TEMP/security-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "SECURITY_PLAYWRIGHT_MODULE=$RUNNER_TEMP/security-browser/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Verify actual browser, API and isolated database
+        env:
+          SECURITY_BROWSER_OUTPUT_DIR: artifacts/security-browser
+        run: npm run verify:security-browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-browser
+          path: artifacts/security-browser/

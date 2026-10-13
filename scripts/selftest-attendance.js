@@ -1,10 +1,12 @@
 import fs from 'fs';
 import assert from 'assert';
+import crypto from 'node:crypto';
 
 const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const ui = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const sw = fs.readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8');
 const jsQr = fs.readFileSync(new URL('../public/vendor/jsQR.js', import.meta.url), 'utf8');
+const qrCode = fs.readFileSync(new URL('../public/vendor/qrcode.min.js', import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const courierDepart = server.match(/app\.post\("\/api\/courier\/depart"[\s\S]*?\n\}\)\);/)?.[0] || '';
@@ -34,7 +36,8 @@ const checks = {
   daily_report_attendance: /FROM courier_attendance a/.test(dailyReport) && /checked_in_at/.test(dailyReport),
   daily_report_received_orders: /FROM ifood_orders o/.test(dailyReport),
   ui_attendance_nav: /\['attendance','Presença'\]/.test(ui) && /Presença do dia/.test(ui),
-  ui_dynamic_qr: /qrcodejs\/1\.0\.0\/qrcode\.min\.js/.test(ui) && /refreshAttendanceQr/.test(ui),
+  ui_dynamic_qr: /\/vendor\/qrcode\.min\.js\?v=qrcodejs-1\.0\.0/.test(ui) && /refreshAttendanceQr/.test(ui)
+    && qrCode.length > 19000 && ui.includes('integrity="sha384-' + crypto.createHash('sha384').update(qrCode).digest('base64') + '"'),
   ui_qr_login_survival: /ATTENDANCE_TOKEN_KEY/.test(ui) && /captureAttendanceTokenFromUrl/.test(ui) && /processPendingAttendanceToken/.test(ui),
   ui_in_app_qr_button: /id="attendanceScannerBtn"/.test(ui) && /openAttendanceScanner/.test(ui),
   ui_in_app_qr_camera: /id="scannerVideo"/.test(ui) && /getUserMedia/.test(ui) && /BarcodeDetector/.test(ui),

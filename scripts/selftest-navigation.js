@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import { hasUiAction } from './test-support/ui-action-source.js';
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const checks={
   fiveMainGroups:['dashboard','operations','ifood','management','system'].every(g=>html.includes(`data-admin-group="${g}"`)),
@@ -10,7 +11,7 @@ const checks={
   systemTabs:["['alerts','Alertas']","['notifications','Notificações']","['security','Segurança']","['audit','Auditoria']"].every(x=>html.includes(x)),
   plainMainLabels:['Dashboard','Operação','Integrações','Gestão','Sistema'].every(label=>html.includes(`<span>${label}</span>`)),
   subnav:html.includes('id="adminSubnav"')&&html.includes('function renderAdminSubnav')&&html.includes('async function activateAdminPage'),
-  historyShortcut:html.includes("onclick=\"activateAdminPage('history')\""),
+  historyShortcut:hasUiAction(html, "activateAdminPage('history')"),
   mobileConsolidated:html.includes('class="mobile-nav admin-mobile-nav"')
 };
 for(const [name,ok] of Object.entries(checks))assert.ok(ok,`FAIL: ${name}`);

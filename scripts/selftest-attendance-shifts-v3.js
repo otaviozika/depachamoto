@@ -16,10 +16,10 @@ const checks = {
   admin_list_shift_filter: /attendanceView\.shift_code/.test(server),
   checkout_has_shift: /shift_code: attendanceView\.shift_code/.test(server),
   courier_dashboard_has_shift: /shift_label: attendanceView\.shift_label/.test(server),
-  courier_departure_shift_gate: /departureShift = getCurrentOperationalShift\(\)/.test(server) && /getCourierAttendance\(req\.session\.user\.id, attendanceDate, departureShift\.shift_code\)/.test(server),
+  courier_departure_shift_gate: /departureShift = dispatchShiftAt\(\)/.test(server) && /getCourierAttendance\(req\.session\.user\.id, attendanceDate, departureShift\.shift_code\)/.test(server),
   admin_departure_shift_gate: /getCourierAttendance\(courierId, attendanceDate, departureShift\.shift_code\)/.test(server),
-  route_add_shift_gate: /routeShift = getCurrentOperationalShift\(\)/.test(server),
-  between_shifts_blocked: /OUTSIDE_OPERATIONAL_SHIFT/.test(server),
+  route_add_shift_gate: /routeShift = dispatchShiftAt\(\)/.test(server),
+  outside_dispatch_window_blocked: /if \(!departureShift\)/.test(server) && /if \(!routeShift\)/.test(server) && /OUTSIDE_OPERATIONAL_SHIFT/.test(server),
   legacy_history_preserved: /WORK_SHIFT_CUTOVER_DATE = "2026-09-12"/.test(server) && /a\.shift_code IS NULL/.test(server)
 };
 

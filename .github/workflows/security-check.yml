@@ -4,6 +4,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   audit-and-test:
     runs-on: ubuntu-latest
@@ -14,10 +16,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Install and refresh lockfile
-        run: npm install --ignore-scripts
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Complete regression on production preparation
+        run: npm run test:regression
       - name: Syntax checks
         run: |
           node --check server.js
@@ -25,10 +29,9 @@ jobs:
           node --check scripts/apply-payment-longe.js
           node --check public/service-worker.js
           node --check scripts/selftest-bandwidth-stage1.js
-      - name: Payment and shift regression tests
-        run: |
-          npm run selftest:payments
-          npm run selftest:shift-control
-          node scripts/selftest-bandwidth-stage1.js
-          npm run selftest:delivery-confirmation
-          npm run selftest:socket-security
+      - name: Upload isolated regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-regression
+          path: artifacts/regression/

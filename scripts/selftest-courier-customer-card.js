@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import { hasUiAction } from './test-support/ui-action-source.js';
 
 const server=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
@@ -20,6 +21,7 @@ function include(source,start,end){
 }
 include(server,'function parseJsonPayload(','function normalizeDeliveryCode(');
 include(html,'function escapeHtml(','\n');
+include(html,'function uiActionArgs(','\n');
 include(html,'function courierDeliveryBadge(','async function loadCourierDeliveries(');
 
 const payload={
@@ -68,8 +70,8 @@ const anotaCard=context.courierDeliveryRow({
   state:'WAITING_CONFIRMATION',can_confirm:true,order_id:'anota-test'
 });
 assert.match(anotaCard,/Ana Clara/);
-assert.match(anotaCard,/confirmAnotaAiDelivery/);
-assert.doesNotMatch(anotaCard,/openDeliveryConfirmModal/);
+assert.ok(hasUiAction(anotaCard, 'confirmAnotaAiDelivery(args[0],args[1])'));
+assert.ok(!hasUiAction(anotaCard, 'openDeliveryConfirmModal(args[0],args[1])'));
 
 const copyButton=context.courierDeliveryCopyButton(cardBase);
 assert.match(copyButton,/data-address="[^"]*Rua Conselheiro Lafayette[^"]*Apto 91/);

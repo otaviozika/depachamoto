@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import assert from "node:assert/strict";
+import { hasUiAction } from './test-support/ui-action-source.js';
 const html=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
 const server=fs.readFileSync(new URL("../server.js",import.meta.url),"utf8");
 const checks={
@@ -10,7 +11,7 @@ const checks={
   redActiveBar:html.includes('.admin-nav button.active:before')&&html.includes('background:var(--admin-red)'),
   navIcons:html.includes('admin-nav-icon')&&html.includes('admin-nav-ifood')&&html.includes('<span>Dashboard</span>')&&html.includes('<span>Operação</span>')&&html.includes('<span>Gestão</span>')&&html.includes('<span>Sistema</span>'),
   topClean:html.includes('manual-dispatch-top')&&html.includes('bell-btn')&&!html.includes('id="adminName"')&&!html.includes('class="btn outline logout-top"'),
-  profileMenu:html.includes('id="adminProfileMenu"')&&html.includes('Minha conta')&&html.includes('Alterar minha senha')&&html.includes('Instalar aplicativo')&&html.includes('onclick="logout()"'),
+  profileMenu:html.includes('id="adminProfileMenu"')&&html.includes('Minha conta')&&html.includes('Alterar minha senha')&&html.includes('Instalar aplicativo')&&hasUiAction(html, 'logout()'),
   accountModal:html.includes('id="adminAccountModal"')&&html.includes('id="adminAccountName"')&&html.includes('id="adminAccountUsername"'),
   statusNoEmoji:html.includes("el.innerHTML=`<i class=\"status-dot\"></i>${state==='online'?'Online'"),
   darkSubnav:html.includes('#adminApp .admin-subnav{background:#0b1015'),

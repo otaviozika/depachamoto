@@ -1,6 +1,8 @@
 import fs from "fs";
 import crypto from "crypto";
 import assert from "assert/strict";
+import vm from "node:vm";
+import { hasUiAction } from "./test-support/ui-action-source.js";
 import { googleSheetsConfig, paymentDaySheetTitle, paymentRowsToDailySheetData, paymentRowsToSheetValues, paymentSheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets } from "../lib/google-sheets.js";
 
 const server=fs.readFileSync(new URL("../server.js",import.meta.url),"utf8");
@@ -82,9 +84,41 @@ const checks={
   close_day_ui:html.includes('id="paymentCloseDay"')&&html.includes('Fechar / atualizar planilha'),
   connection_test_endpoint:server.includes('app.get("/api/admin/payments/sheets/test-connection"'),
   connection_test_ui:html.includes('id="paymentSheetTestConnection"')&&html.includes('Testar conexão Google'),
-  no_monthly_access:!html.includes('id="paymentMonthView"')&&!html.includes('onclick="setPaymentView(\'month\')"'),
+  monthly_view_initially_hidden:html.includes('<section id="paymentMonthView" class="hidden">'),
+  daily_and_monthly_actions:hasUiAction(html,"setPaymentView('daily')")&&hasUiAction(html,"setPaymentView('month')"),
   monthly_sheet_links:html.includes('id="paymentSheetLunchUrl"')&&html.includes('id="paymentSheetDinnerUrl"'),
   render_env:envExample.includes('GOOGLE_SERVICE_ACCOUNT_EMAIL=')&&envExample.includes('GOOGLE_SHEETS_SPREADSHEET_ID=')
 };
 assert.ok(Object.values(checks).every(Boolean),JSON.stringify(checks));
+
+// Execute the shipped view switcher: initial daily view, monthly loading,
+// tab accessibility and the unsaved-edits confirmation must remain intact.
+const elements=new Map();
+for(const id of ['paymentDailyView','paymentMonthView','paymentDailyToolbar','paymentDailyTab','paymentMonthTab']){
+  const classes=new Set(id==='paymentMonthView'?['hidden']:[]);
+  elements.set(id,{classes,attributes:{},classList:{toggle(name,enabled){enabled?classes.add(name):classes.delete(name);}},setAttribute(name,value){this.attributes[name]=value;}});
+}
+let monthLoads=0,dayLoads=0,confirmation=false;
+const context=vm.createContext({$:id=>elements.get(id),paymentActiveView:'daily',paymentMonthState:{month:'',dirty:new Set()},
+  courierMonthToday:()=> '2026-10',loadPaymentMonth:month=>{assert.equal(month,'2026-10');monthLoads++;},
+  loadPayments:()=>{dayLoads++;},confirm:()=>confirmation});
+const viewStart=html.indexOf('function setPaymentView(view){');
+assert.ok(viewStart>=0);
+vm.runInContext(html.slice(viewStart,html.indexOf('function paymentMonthRowKey',viewStart)),context);
+context.setPaymentView('month');
+assert.equal(context.paymentActiveView,'month');assert.equal(monthLoads,1);
+assert.equal(elements.get('paymentMonthView').classes.has('hidden'),false);
+assert.equal(elements.get('paymentDailyView').classes.has('hidden'),true);
+assert.equal(elements.get('paymentMonthTab').attributes['aria-selected'],'true');
+assert.equal(elements.get('paymentDailyTab').attributes['aria-selected'],'false');
+context.paymentMonthState.month='2026-10';context.setPaymentView('month');assert.equal(monthLoads,1);
+context.paymentMonthState.dirty.add('synthetic-row');context.setPaymentView('daily');
+assert.equal(context.paymentActiveView,'month');assert.equal(dayLoads,0);
+confirmation=true;context.setPaymentView('daily');
+assert.equal(context.paymentActiveView,'daily');assert.equal(dayLoads,1);
+assert.equal(elements.get('paymentMonthView').classes.has('hidden'),true);
+assert.equal(elements.get('paymentDailyView').classes.has('hidden'),false);
+assert.equal(elements.get('paymentDailyToolbar').classes.has('hidden'),false);
+assert.equal(elements.get('paymentDailyTab').attributes['aria-selected'],'true');
+assert.equal(elements.get('paymentMonthTab').attributes['aria-selected'],'false');
 console.log(JSON.stringify({result:"PASS",checks},null,2));

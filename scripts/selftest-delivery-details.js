@@ -12,6 +12,7 @@ function include(source, start, end) {
 }
 include(server, 'function parseJsonPayload(', 'function normalizeDeliveryCode(');
 include(html, 'function escapeHtml(', '\n');
+include(html, 'function uiActionArgs(', '\n');
 include(html, 'function courierDeliveryBadge(', 'async function loadCourierDeliveries(');
 const address = { streetName: 'Rua de Teste', streetNumber: '100',
   complement: ' Apto 192 Bloco C ', reference: 'Portaria lateral' };
