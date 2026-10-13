@@ -11930,6 +11930,14 @@ app.get("/api/health", async (req, res) => {
   try {
     const started = Date.now();
     await pool.query("SELECT 1");
+    // Visitantes anônimos recebem só o estado básico. Os detalhes de
+    // integrações (iFood pausado, flags, sincronização) ficam para o admin
+    // logado e para a homologação segura (STAGING_SAFE_MODE), cujo gate de CI
+    // valida esses campos. Não depende de APP_ENV estar definido em produção.
+    const showDetails = STAGING_SAFE_MODE || req.session?.user?.role === "admin";
+    if (!showDetails) {
+      return res.json({ ok: true, database: "connected", time: new Date().toISOString() });
+    }
     const ifoodControl = await getIfoodRuntimeControl().catch(() => ({ dispatch_paused: null }));
 
     res.json({
@@ -11959,8 +11967,7 @@ app.get("/api/health", async (req, res) => {
     res.status(503).json({
       ok: false,
       database: "unavailable",
-      time: new Date().toISOString(),
-      version: VERSION
+      time: new Date().toISOString()
     });
   }
 });
@@ -12218,8 +12225,16 @@ app.use((err, req, res, next) => {
   const status = err.status || 500;
   console.error(`[${req.requestId || "-"}]`, err);
   recordSystemError(req, status, err).catch(() => {});
+  // Erros criados de propósito (com status) já trazem mensagem para o usuário.
+  // Erros inesperados podem conter detalhes internos (SQL, integrações): só o
+  // admin vê a mensagem original; os demais recebem texto genérico + código.
+  const deliberate = Boolean(err.status);
+  const isAdmin = req.session?.user?.role === "admin";
+  const message = deliberate || isAdmin
+    ? (err.message || "Erro interno do servidor.")
+    : "Erro interno do servidor. Se persistir, informe o código ao administrador.";
   res.status(status).json({
-    error: err.message || "Erro interno do servidor.",
+    error: message,
     request_id: req.requestId || null
   });
 });
