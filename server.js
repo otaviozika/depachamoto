@@ -5697,6 +5697,17 @@ function paymentStatusLabel(status) {
 
 const PIX_TYPES = new Set(["CPF","Celular","E-mail","Chave aleatória"]);
 
+// Nomes de pessoas aparecem no painel administrativo. Além do escape feito na
+// interface, o servidor recusa caracteres de marcação e de controle como
+// segunda camada de defesa contra XSS armazenado. Apóstrofo continua permitido
+// (ex.: D'Ávila).
+function personNameError(name, missingMessage) {
+  if (name.length < 3) return missingMessage;
+  if (name.length > 80) return "O nome deve ter no máximo 80 caracteres.";
+  if (/[<>\u0000-\u001F\u007F]/.test(name)) return "O nome contém caracteres não permitidos.";
+  return null;
+}
+
 function normalizePixInput(body = {}) {
   const key = String(body.pix_key || "").trim().slice(0, 220);
   const type = String(body.pix_type || "").trim().slice(0, 40);
@@ -5975,7 +5986,8 @@ app.post("/api/register", registrationLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
-  if (name.length < 3) return res.status(400).json({ error: "Informe o nome completo." });
+  const nameError = personNameError(name, "Informe o nome completo.");
+  if (nameError) return res.status(400).json({ error: nameError });
   if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
     return res.status(400).json({ error: "Usuário deve ter 3 a 30 caracteres: letras, números, ponto, hífen ou underline." });
   }
@@ -11163,6 +11175,8 @@ app.post("/api/admin/couriers", auth, adminOnly, asyncRoute(async (req, res) => 
   if (name.length < 3 || username.length < 3 || password.length < 8) {
     return res.status(400).json({ error: "Preencha nome, usuário e senha de pelo menos 8 caracteres." });
   }
+  const nameError = personNameError(name, "Informe o nome completo do motoboy.");
+  if (nameError) return res.status(400).json({ error: nameError });
 
   try {
     const q = await pool.query(`
@@ -11387,7 +11401,8 @@ app.patch("/api/admin/couriers/:id/profile", auth, adminOnly, asyncRoute(async (
   const nickname = String(req.body.nickname || "").trim().slice(0, 80) || null;
   const pix = normalizePixInput(req.body);
 
-  if (name.length < 3) return res.status(400).json({ error: "Informe o nome completo do motoboy." });
+  const nameError = personNameError(name, "Informe o nome completo do motoboy.");
+  if (nameError) return res.status(400).json({ error: nameError });
 
   const existing = (await pool.query(`
     SELECT id,pix_key,pix_type,pix_holder_name,pix_status
