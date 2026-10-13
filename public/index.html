@@ -2440,7 +2440,7 @@ function renderPlatformChoice(input,data){
     const reason=candidate.valid===false&&candidate.message
       ? `<div class="small" style="margin-top:4px">${escapeHtml(candidate.label||platform)}: ${escapeHtml(candidate.message)}</div>`
       : '';
-    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),'${platform}')">${escapeHtml(candidate.label||platform)}</button>${reason}`;
+    return `<button type="button" class="btn outline" style="margin:6px 6px 0 0"${disabled} data-platform="${escapeHtml(platform)}" onclick="applyOrderPlatformChoice(this.closest('.order-row').querySelector('.order-input'),this.dataset.platform)">${escapeHtml(candidate.label||platform)}</button>${reason}`;
   }).join('');
   box.className='order-validation warn';
   box.innerHTML=`<b>Pedido encontrado em mais de uma plataforma.</b><div class="small">Qual pedido você está levando?</div>${buttons}`;
@@ -2956,7 +2956,7 @@ function renderAttendance(){
     const action=x.present
       ? (x.active_dispatch_id
           ? '<span class="small muted">Finalize a entrega antes</span>'
-          : `<button class="btn danger" type="button" onclick="checkoutCourier(${x.courier_id},decodeURIComponent('${encodeURIComponent(x.name)}'))">Encerrar expediente</button>`)
+          : `<button class="btn danger" type="button" data-courier-name="${escapeHtml(x.name)}" onclick="checkoutCourier(${Number(x.courier_id)},this.dataset.courierName)">Encerrar expediente</button>`)
       : '—';
     return `<tr>
       <td><b>${escapeHtml(x.name)}</b><div class="small muted">@${escapeHtml(x.username)}</div></td>
@@ -3217,7 +3217,7 @@ function renderCouriers(){
       <td>${approvalBadge(x.approval_status)}</td>
       <td><span class="badge ${x.active?'green':'gray'}">${x.active?'ATIVA':'INATIVA'}</span></td>
       <td>${x.must_change_password?'<span class="badge yellow">TROCA OBRIGATÓRIA</span>':'<span class="badge green">OK</span>'}</td>
-      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" onclick="resetCourierPassword(${x.id},'${escapeHtml(x.name).replaceAll("'","&#39;")}')">Resetar senha</button>${deleteAction}</div></td>
+      <td><div class="actions"><button class="btn outline" onclick="openCourierProfileModal(${x.id})">Dados / PIX</button>${pixAction}${accessActions}<button class="btn outline" data-courier-name="${escapeHtml(x.name)}" onclick="resetCourierPassword(${Number(x.id)},this.dataset.courierName)">Resetar senha</button>${deleteAction}</div></td>
     </tr>`;
   }).join('')||empty(11)
 }
