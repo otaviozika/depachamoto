@@ -11972,7 +11972,11 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-app.get("/{*splat}", (req, res) => {
+// Rotas do app (SPA) devolvem o index.html. Caminhos /api/ nunca caem aqui:
+// seguem para as rotas registradas depois (ex.: fila pública da Tagme) ou para
+// o 404 em JSON no fim do arquivo.
+app.get("/{*splat}", (req, res, next) => {
+  if (req.path === "/api" || req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
@@ -12219,6 +12223,12 @@ app.get("/api/public/oldman/queue",async(req,res)=>{
     if(!rows.length)return res.json({available:false,reason:"stale_or_pending"});
     return res.json({available:true,waiting_groups:rows[0].waiting_groups,updated_at:rows[0].received_at});
   }catch{return res.status(503).json({available:false,reason:"temporarily_unavailable"});}
+});
+
+// Deve ser o último registro de rota: qualquer /api/ não encontrado responde
+// 404 em JSON (em vez da página do app com status 200).
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Rota não encontrada.", request_id: req.requestId || null });
 });
 
 app.use((err, req, res, next) => {
