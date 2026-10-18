@@ -32,3 +32,5 @@ services:
         sync: false
       - key: ANOTAAI_PAGE_ID
         sync: false
+      - key: GOOGLE_ROUTES_API_KEY
+        sync: false

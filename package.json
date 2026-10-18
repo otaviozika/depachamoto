@@ -38,6 +38,7 @@
     "selftest:platform-selection": "node scripts/selftest-platform-selection.js",
     "selftest:socket-security": "node scripts/selftest-socket-security.js",
     "selftest:dispatch-recovery": "node scripts/selftest-dispatch-recovery.js",
+    "selftest:longe": "node scripts/selftest-longe-zone.js && node scripts/selftest-longe-payments.js && node scripts/selftest-longe-ui.js",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {

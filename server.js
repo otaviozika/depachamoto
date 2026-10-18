@@ -18,6 +18,8 @@ import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operatio
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
+import { createLongeService } from "./lib/longe-service.js";
+import { LONGE_RADIUS_METERS, longeUnitAmount, modeAt } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
 const { Pool } = pg;
@@ -1060,6 +1062,73 @@ WHERE (
         'DISPATCHED','CONCLUDED','CANCELLED','DELIVERED'
       )
   );
+
+-- Regra LONGE: zona de 6,7 km pela rota do Google, modo teste/ativo e
+-- classificação por pedido. Vale só para saídas depois da publicação.
+CREATE TABLE IF NOT EXISTS longe_zones (
+  id BIGSERIAL PRIMARY KEY,
+  radius_meters INTEGER NOT NULL CHECK (radius_meters > 0),
+  store_address TEXT NOT NULL,
+  store_latitude DOUBLE PRECISION NOT NULL,
+  store_longitude DOUBLE PRECISION NOT NULL,
+  polygon JSONB NOT NULL,
+  method JSONB NOT NULL DEFAULT '{}'::jsonb,
+  generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- A zona é gerada uma única vez: o banco recusa uma segunda linha.
+CREATE UNIQUE INDEX IF NOT EXISTS longe_zones_single_idx ON longe_zones((TRUE));
+
+CREATE TABLE IF NOT EXISTS longe_mode_history (
+  id BIGSERIAL PRIMARY KEY,
+  mode TEXT NOT NULL CHECK (mode IN ('OFF','TEST','ACTIVE')),
+  effective_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reason TEXT
+);
+CREATE INDEX IF NOT EXISTS longe_mode_history_effective_idx ON longe_mode_history(effective_at,id);
+
+-- rule_mode é o modo em vigor no horário da saída: só ACTIVE altera o pagamento.
+CREATE TABLE IF NOT EXISTS dispatch_order_longe (
+  dispatch_order_id BIGINT PRIMARY KEY REFERENCES dispatch_orders(id) ON DELETE CASCADE,
+  zone_id BIGINT REFERENCES longe_zones(id),
+  rule_mode TEXT NOT NULL CHECK (rule_mode IN ('OFF','TEST','ACTIVE')),
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  auto_status TEXT NOT NULL CHECK (auto_status IN ('NORMAL','LONGE','NO_LOCATION')),
+  manual_longe BOOLEAN,
+  manual_reason TEXT,
+  manual_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  manual_at TIMESTAMPTZ,
+  longe BOOLEAN GENERATED ALWAYS AS (COALESCE(manual_longe, auto_status='LONGE')) STORED,
+  classified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS dispatch_order_longe_mode_idx ON dispatch_order_longe(rule_mode,longe);
+
+CREATE TABLE IF NOT EXISTS longe_route_cache (
+  cell_key TEXT PRIMARY KEY,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  distance_meters INTEGER,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS longe_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('PREVIEW','ZONE')),
+  status TEXT NOT NULL CHECK (status IN ('RUNNING','DONE','FAILED')),
+  started_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  progress JSONB NOT NULL DEFAULT '{}'::jsonb,
+  result JSONB,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS longe_jobs_kind_idx ON longe_jobs(kind,id DESC);
+
+ALTER TABLE courier_payments ADD COLUMN IF NOT EXISTS longe_count_snapshot INTEGER;
+ALTER TABLE courier_payments ADD COLUMN IF NOT EXISTS longe_unit_snapshot NUMERIC(12,2);
 `);
 
 await pool.query(`
@@ -3815,11 +3884,14 @@ async function getCourierIfoodDeliveries(courierId) {
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,d.status AS dispatch_status,
       c.status AS confirmation_status,c.attempts AS confirmation_attempts,
-      c.last_error AS confirmation_last_error,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at
+      c.last_error AS confirmation_last_error,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at,
+      ${COURIER_LONGE_COLUMNS}
     FROM ifood_dispatch_links l
     JOIN ifood_orders o ON o.order_id=l.ifood_order_id
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
+    LEFT JOIN dispatch_orders lo ON lo.dispatch_id=l.dispatch_id AND LOWER(lo.order_number)=LOWER(l.local_order_number)
+    LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=lo.id
     WHERE d.courier_id=$1
       AND d.departed_at >= NOW()-INTERVAL '48 hours'
       AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
@@ -3853,6 +3925,7 @@ async function getCourierIfoodDeliveries(courierId) {
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
       payment: buildIfoodPaymentInfo(row.payload),
+      longe: courierLongeBadge(row),
       ...ui
     };
 
@@ -3880,12 +3953,15 @@ async function getCourierAnotaAiDeliveries(courierId) {
       a.order_id,a.display_id,a.status AS order_status,a.status_code,a.customer_name,a.payload,
       l.dispatch_id,l.local_order_number,
       d.departed_at,d.status AS dispatch_status,
-      c.confirmed_at
+      c.confirmed_at,
+      ${COURIER_LONGE_COLUMNS}
     FROM anotaai_dispatch_links l
     JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN anotaai_delivery_confirmations c
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
+    LEFT JOIN dispatch_orders lo ON lo.dispatch_id=l.dispatch_id AND LOWER(lo.order_number)=LOWER(l.local_order_number)
+    LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=lo.id
     WHERE d.courier_id=$1
       AND d.departed_at >= NOW()-INTERVAL '48 hours'
     ORDER BY
@@ -3926,7 +4002,8 @@ async function getCourierAnotaAiDeliveries(courierId) {
           : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código."),
       delivery_details: buildAnotaAiDeliveryCardAddress(row.payload)?.complement ?
         { complement: buildAnotaAiDeliveryCardAddress(row.payload).complement } : null,
-      payment: buildAnotaAiPaymentInfo(row.payload)
+      payment: buildAnotaAiPaymentInfo(row.payload),
+      longe: courierLongeBadge(row)
     };
 
     if (confirmed) completed.push(item);
@@ -3935,6 +4012,22 @@ async function getCourierAnotaAiDeliveries(courierId) {
   }
 
   return { current, pending, completed };
+}
+
+// Selo do card: "LONGE · R$ 12" (2x o valor por entrega da regra do dia da saída).
+const COURIER_LONGE_COLUMNS=`lg.rule_mode AS longe_rule_mode,lg.longe AS longe_flag,lg.auto_status AS longe_auto_status,lg.manual_longe AS longe_manual,
+      (SELECT r.per_delivery FROM payment_rate_rules r WHERE r.effective_from<=COALESCE(d.operational_date,(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date)
+        ORDER BY r.effective_from DESC,r.id DESC LIMIT 1) AS longe_per_delivery`;
+function courierLongeBadge(row) {
+  if (!row?.longe_rule_mode || row.longe_rule_mode === "OFF") return null;
+  const longe = row.longe_flag === true;
+  const unknown = !longe && row.longe_auto_status === "NO_LOCATION" && row.longe_manual === null;
+  return {
+    status: longe ? "LONGE" : unknown ? "NO_LOCATION" : "NORMAL",
+    mode: row.longe_rule_mode,
+    amount: longeUnitAmount(row.longe_per_delivery ?? 6),
+    corrected: row.longe_manual !== null && row.longe_manual !== undefined
+  };
 }
 
 async function acknowledgeIfoodEvents(eventIds) {
@@ -5819,13 +5912,13 @@ async function getPaymentRateRule(date) {
   };
 }
 
-function calculatePaymentAmounts({ date, shiftCode=null, deliveryCount, rule, worked=null, rain=false, tip=0, discount=0, adjustment=0 }) {
-  if (shiftCode) return calculateShiftPayment({date,shiftCode,deliveryCount,rule,worked,rain,tip,discount,adjustment});
+function calculatePaymentAmounts({ date, shiftCode=null, deliveryCount, rule, worked=null, rain=false, tip=0, discount=0, adjustment=0, longeCount=0 }) {
+  if (shiftCode) return calculateShiftPayment({date,shiftCode,deliveryCount,rule,worked,rain,tip,discount,adjustment,longeCount});
   const count=Math.max(0,Number(deliveryCount)||0);
   const perDelivery=roundMoney(rule?.per_delivery||0);
   const base=count>0?roundMoney(isFriSun(date)?rule?.base_fri_sun||0:rule?.base_mon_thu||0):0;
   const tipAmount=roundMoney(tip),discountAmount=Math.max(0,roundMoney(discount)),adjustmentAmount=roundMoney(adjustment);
-  return {shift_code:null,shift_label:'Legado',worked:count>0,delivery_count:count,per_delivery:perDelivery,base_amount:base,rain:false,rain_bonus:0,
+  return {shift_code:null,shift_label:'Legado',worked:count>0,delivery_count:count,normal_count:count,longe_count:0,longe_unit_amount:longeUnitAmount(perDelivery),longe_extra_amount:0,per_delivery:perDelivery,base_amount:base,rain:false,rain_bonus:0,
     tip_amount:tipAmount,discount_amount:discountAmount,adjustment_amount:adjustmentAmount,
     total_amount:roundMoney(count*perDelivery+base+tipAmount-discountAmount+adjustmentAmount)};
 }
@@ -5839,6 +5932,24 @@ async function getCourierDeliveryCount(courierId,date,shiftCode=null,client=pool
   return Number(q.rows[0]?.c||0);
 }
 
+// LONGE do turno: só pedidos com saída em modo ATIVO entram no pagamento; os de
+// teste e os sem localização aparecem apenas como informação para o admin.
+const LONGE_COUNT_COLUMNS=`COUNT(o.id) FILTER (WHERE lg.longe AND lg.rule_mode='ACTIVE')::int longe_count,
+  COUNT(o.id) FILTER (WHERE lg.longe AND lg.rule_mode='TEST')::int longe_test_count,
+  COUNT(o.id) FILTER (WHERE lg.rule_mode IN ('TEST','ACTIVE') AND lg.auto_status='NO_LOCATION' AND lg.manual_longe IS NULL)::int longe_unknown_count,
+  COALESCE(BOOL_OR(lg.rule_mode='ACTIVE'),FALSE) longe_rule_active,COALESCE(BOOL_OR(lg.rule_mode='TEST'),FALSE) longe_rule_test`;
+function longeCountsFrom(row){
+  return {longe_count:Number(row?.longe_count||0),longe_test_count:Number(row?.longe_test_count||0),longe_unknown_count:Number(row?.longe_unknown_count||0),
+    longe_rule_active:row?.longe_rule_active===true,longe_rule_test:row?.longe_rule_test===true};
+}
+async function getCourierLongeCounts(courierId,date,shiftCode=null,client=pool) {
+  const shift=['LUNCH','DINNER'].includes(String(shiftCode||'').trim().toUpperCase())?String(shiftCode).trim().toUpperCase():null;
+  if(!shift)return longeCountsFrom(null);
+  const q=await client.query(`SELECT ${LONGE_COUNT_COLUMNS} FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+    LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=o.id WHERE d.courier_id=$1 AND d.operational_date=$2::date AND d.shift_code=$3`,[courierId,date,shift]);
+  return longeCountsFrom(q.rows[0]);
+}
+
 async function courierWorkedShift(courierId,date,shiftCode,liveCount=0,client=pool) {
   if (!shiftCode) return Number(liveCount)>0;
   if (Number(liveCount)>0) return true;
@@ -5846,17 +5957,23 @@ async function courierWorkedShift(courierId,date,shiftCode,liveCount=0,client=po
   return q.rowCount>0;
 }
 
-async function buildPaymentRow(courier,payment,date,rule,liveCount=null,shiftCode=null,worked=null) {
+async function buildPaymentRow(courier,payment,date,rule,liveCount=null,shiftCode=null,worked=null,liveLonge=null) {
   const shift=normalizeShiftCode(payment?.shift_code||shiftCode);
   const status=payment?.status||'OPEN',locked=status==='REVIEWED'||status==='PAID',pixLocked=status==='PAID';
   const count=locked&&payment?.delivery_count_snapshot!=null?Number(payment.delivery_count_snapshot):Number(liveCount??await getCourierDeliveryCount(courier.id,date,shift));
   const didWork=worked===null?await courierWorkedShift(courier.id,date,shift,count):!!worked;
-  const calc=locked&&payment?.total_snapshot!=null?{
+  const longeInfo=liveLonge||await getCourierLongeCounts(courier.id,date,shift);
+  const frozen=locked&&payment?.total_snapshot!=null;
+  // Turno conferido/pago mantém as longas congeladas no fechamento (antes da regra = 0).
+  const frozenLonge=Math.min(count,Number(payment?.longe_count_snapshot||0)),frozenPer=Number(payment?.per_delivery_snapshot||0);
+  const frozenUnit=payment?.longe_unit_snapshot!=null?Number(payment.longe_unit_snapshot):longeUnitAmount(frozenPer);
+  const calc=frozen?{
     shift_code:shift,shift_label:shift?shiftLabel(shift):'Legado',worked:didWork,delivery_count:count,
-    per_delivery:Number(payment.per_delivery_snapshot||0),base_amount:Number(payment.base_snapshot||0),
+    normal_count:count-frozenLonge,longe_count:frozenLonge,longe_unit_amount:frozenUnit,longe_extra_amount:roundMoney(frozenLonge*(frozenUnit-frozenPer)),
+    per_delivery:frozenPer,base_amount:Number(payment.base_snapshot||0),
     rain:!!payment.rain,rain_bonus:Number(payment.rain_bonus_snapshot||0),tip_amount:Number(payment.tip_amount||0),
     discount_amount:Number(payment.discount_amount||0),adjustment_amount:Number(payment.adjustment_amount||0),total_amount:Number(payment.total_snapshot||0)
-  }:calculatePaymentAmounts({date,shiftCode:shift,deliveryCount:count,rule,worked:didWork,rain:!!payment?.rain,tip:payment?.tip_amount||0,discount:payment?.discount_amount||0,adjustment:payment?.adjustment_amount||0});
+  }:calculatePaymentAmounts({date,shiftCode:shift,deliveryCount:count,rule,worked:didWork,rain:!!payment?.rain,tip:payment?.tip_amount||0,discount:payment?.discount_amount||0,adjustment:payment?.adjustment_amount||0,longeCount:longeInfo.longe_count});
   const currentPixStatus=normalizedPixStatus(courier.pix_status,!!courier.pix_key);
   const lockedPixStatus=normalizedPixStatus(payment?.pix_status_snapshot,!!payment?.pix_key_snapshot);
   return {id:payment?.id||null,payment_date:date,courier_id:courier.id,courier_name:courier.name,nickname:courier.nickname||null,username:courier.username,
@@ -5865,19 +5982,23 @@ async function buildPaymentRow(courier,payment,date,rule,liveCount=null,shiftCod
     pix_holder_name:pixLocked?(payment?.pix_holder_name_snapshot??courier.pix_holder_name??null):(courier.pix_holder_name||null),
     pix_status:pixLocked?lockedPixStatus:currentPixStatus,pix_status_label:pixStatusLabel(pixLocked?lockedPixStatus:currentPixStatus),...calc,
     payment_method:payment?.payment_method||'',status,status_label:paymentStatusLabel(status),notes:payment?.notes||'',reviewed_at:payment?.reviewed_at||null,paid_at:payment?.paid_at||null,
+    longe_test_count:frozen?0:longeInfo.longe_test_count,longe_unknown_count:frozen?0:longeInfo.longe_unknown_count,
+    longe_rule_active:longeInfo.longe_rule_active,longe_rule_test:longeInfo.longe_rule_test,
     locked,rate_effective_from:rule?.effective_from||null};
 }
 
 async function getCourierPaymentPeriodShifts(courier,startDate,endDate) {
   const legacyRows=(await pool.query(`WITH deliveries AS (SELECT (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date payment_date,COUNT(o.id)::int delivery_count FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id WHERE d.courier_id=$1 AND (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND LEAST($3::date,($4::date-1)) GROUP BY 1), worked AS (SELECT payment_date FROM deliveries UNION SELECT payment_date FROM courier_payments WHERE courier_id=$1 AND shift_code IS NULL AND payment_date BETWEEN $2::date AND LEAST($3::date,($4::date-1))) SELECT to_char(w.payment_date,'YYYY-MM-DD') summary_date,NULL::text shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,p.* FROM worked w LEFT JOIN deliveries d ON d.payment_date=w.payment_date LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code IS NULL ORDER BY w.payment_date`,[courier.id,startDate,endDate,WORK_SHIFT_CUTOVER_DATE])).rows;
   const rows=(await pool.query(`WITH deliveries AS (
-      SELECT d.operational_date AS payment_date,d.shift_code,COUNT(o.id)::int delivery_count FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+      SELECT d.operational_date AS payment_date,d.shift_code,COUNT(o.id)::int delivery_count,${LONGE_COUNT_COLUMNS} FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+      LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=o.id
       WHERE d.courier_id=$1 AND d.operational_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND d.shift_code IS NOT NULL GROUP BY 1,2
     ), worked AS (
       SELECT attendance_date AS payment_date,shift_code FROM courier_attendance WHERE courier_id=$1 AND attendance_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
       UNION SELECT payment_date,shift_code FROM deliveries
       UNION SELECT payment_date,shift_code FROM courier_payments WHERE courier_id=$1 AND payment_date BETWEEN GREATEST($2::date,$4::date) AND $3::date AND shift_code IS NOT NULL
-    ) SELECT p.*,to_char(w.payment_date,'YYYY-MM-DD') summary_date,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count
+    ) SELECT p.*,to_char(w.payment_date,'YYYY-MM-DD') summary_date,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,
+      d.longe_count,d.longe_test_count,d.longe_unknown_count,d.longe_rule_active,d.longe_rule_test
       FROM worked w LEFT JOIN deliveries d ON d.payment_date=w.payment_date AND d.shift_code=w.shift_code
       LEFT JOIN courier_payments p ON p.courier_id=$1 AND p.payment_date=w.payment_date AND p.shift_code=w.shift_code ORDER BY w.payment_date,w.shift_code`,[courier.id,startDate,endDate,WORK_SHIFT_CUTOVER_DATE])).rows;
   const rules=(await pool.query(`SELECT id,to_char(effective_from,'YYYY-MM-DD') effective_from,per_delivery,base_mon_thu,base_fri_sun,lunch_mon_thu,lunch_fri_sun,dinner_mon_thu,dinner_fri_sun,rain_bonus,created_at
@@ -5885,12 +6006,13 @@ async function getCourierPaymentPeriodShifts(courier,startDate,endDate) {
       ...r,per_delivery:Number(r.per_delivery),base_mon_thu:Number(r.base_mon_thu),base_fri_sun:Number(r.base_fri_sun),lunch_mon_thu:Number(r.lunch_mon_thu??45),lunch_fri_sun:Number(r.lunch_fri_sun??55),dinner_mon_thu:Number(r.dinner_mon_thu??60),dinner_fri_sun:Number(r.dinner_fri_sun??75),rain_bonus:Number(r.rain_bonus??10)}));
   rows.unshift(...legacyRows);
   const out=[]; for(const row of rows){const rule=rules.find(r=>r.effective_from<=row.summary_date)||{effective_from:'2000-01-01',...defaultShiftPaymentRule(),base_mon_thu:60,base_fri_sun:75};
-    out.push(await buildPaymentRow(courier,row.id?row:null,row.summary_date,rule,Number(row.live_delivery_count||0),row.shift_code,true));}
+    out.push(await buildPaymentRow(courier,row.id?row:null,row.summary_date,rule,Number(row.live_delivery_count||0),row.shift_code,true,longeCountsFrom(row)));}
   return out;
 }
 
 function summarizeCourierPaymentShifts(rows){
   return {total_amount:roundMoney(rows.reduce((s,r)=>s+Number(r.total_amount||0),0)),delivery_count:rows.reduce((s,r)=>s+Number(r.delivery_count||0),0),
+    longe_count:rows.reduce((s,r)=>s+Number(r.longe_count||0),0),
     worked_shifts:rows.filter(r=>r.worked).length,worked_days:new Set(rows.filter(r=>r.worked).map(r=>r.payment_date)).size,paid_shifts:rows.filter(r=>r.status==='PAID').length};
 }
 
@@ -5904,16 +6026,18 @@ async function getPaymentRows(date,requestedShift=null){
     const out=[];for(const r of rows)out.push(await buildPaymentRow(r,r.payment_id?r:null,date,rule,Number(r.live_delivery_count||0),null));return {rule,rows:out,shift_code:null,shift_label:'Legado'};
   }
   const params=[date,shift];
-  const rows=(await pool.query(`WITH deliveries AS (SELECT d.courier_id,d.shift_code,COUNT(o.id)::int delivery_count FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+  const rows=(await pool.query(`WITH deliveries AS (SELECT d.courier_id,d.shift_code,COUNT(o.id)::int delivery_count,${LONGE_COUNT_COLUMNS} FROM dispatches d JOIN dispatch_orders o ON o.dispatch_id=d.id
+      LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=o.id
       WHERE d.operational_date=$1::date AND ($2::text IS NULL OR d.shift_code=$2) GROUP BY d.courier_id,d.shift_code),
     worked AS (SELECT courier_id,shift_code FROM courier_attendance WHERE attendance_date=$1::date AND shift_code IS NOT NULL AND ($2::text IS NULL OR shift_code=$2)
       UNION SELECT courier_id,shift_code FROM deliveries UNION SELECT courier_id,shift_code FROM courier_payments WHERE payment_date=$1::date AND shift_code IS NOT NULL AND ($2::text IS NULL OR shift_code=$2))
     SELECT u.id,u.name,u.username,u.nickname,u.pix_key,u.pix_type,u.pix_holder_name,u.pix_status,w.shift_code,COALESCE(d.delivery_count,0)::int live_delivery_count,
-      p.id payment_id,p.tip_amount,p.discount_amount,p.adjustment_amount,p.payment_method,p.status,p.notes,p.rain,p.delivery_count_snapshot,p.per_delivery_snapshot,p.base_snapshot,p.rain_bonus_snapshot,p.total_snapshot,
+      d.longe_count,d.longe_test_count,d.longe_unknown_count,d.longe_rule_active,d.longe_rule_test,
+      p.id payment_id,p.tip_amount,p.discount_amount,p.adjustment_amount,p.payment_method,p.status,p.notes,p.rain,p.delivery_count_snapshot,p.per_delivery_snapshot,p.base_snapshot,p.rain_bonus_snapshot,p.total_snapshot,p.longe_count_snapshot,p.longe_unit_snapshot,
       p.pix_key_snapshot,p.pix_type_snapshot,p.pix_holder_name_snapshot,p.pix_status_snapshot,p.reviewed_at,p.paid_at
     FROM worked w JOIN users u ON u.id=w.courier_id LEFT JOIN deliveries d ON d.courier_id=w.courier_id AND d.shift_code=w.shift_code
     LEFT JOIN courier_payments p ON p.courier_id=w.courier_id AND p.payment_date=$1::date AND p.shift_code=w.shift_code WHERE u.role='courier' ORDER BY u.name,w.shift_code`,params)).rows;
-  const out=[];for(const r of rows)out.push(await buildPaymentRow(r,r.payment_id?r:null,date,rule,Number(r.live_delivery_count||0),r.shift_code,true));
+  const out=[];for(const r of rows)out.push(await buildPaymentRow(r,r.payment_id?r:null,date,rule,Number(r.live_delivery_count||0),r.shift_code,true,longeCountsFrom(r)));
   return {rule,rows:out,shift_code:shift,shift_label:shift?shiftLabel(shift):'Todos os turnos'};
 }
 
@@ -5941,13 +6065,14 @@ async function getAdminMonthlyPaymentRows(month) {
   rows.sort((a,b)=>String(a.payment_date).localeCompare(String(b.payment_date))||String(a.courier_name).localeCompare(String(b.courier_name),'pt-BR')||String(a.shift_code||'').localeCompare(String(b.shift_code||'')));
   const summary=rows.reduce((acc,row)=>{
     acc.deliveries+=Number(row.delivery_count||0);
+    acc.longe+=Number(row.longe_count||0);
     acc.total=roundMoney(acc.total+Number(row.total_amount||0));
     acc.courierIds.add(Number(row.courier_id));
     acc.shifts+=1;
     if(row.status==='PAID'){acc.paid=roundMoney(acc.paid+Number(row.total_amount||0));acc.paidCount+=1}
     else acc.pending=roundMoney(acc.pending+Number(row.total_amount||0));
     return acc;
-  },{courierIds:new Set(),shifts:0,deliveries:0,total:0,paid:0,pending:0,paidCount:0});
+  },{courierIds:new Set(),shifts:0,deliveries:0,longe:0,total:0,paid:0,pending:0,paidCount:0});
   summary.couriers=summary.courierIds.size;
   delete summary.courierIds;
   return {month,start,end,through,rows,summary};
@@ -6566,7 +6691,7 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,r
   const periodStart=boundaries.week_start<boundaries.month_start?boundaries.week_start:boundaries.month_start;
   const period=await getCourierPaymentPeriodShifts(courier,periodStart,date),week=period.filter(x=>x.payment_date>=boundaries.week_start),month=period.filter(x=>x.payment_date>=boundaries.month_start);
   res.json({payment:row,summary:{today:summarizeCourierPaymentShifts(todayRows),week:summarizeCourierPaymentShifts(week),month:summarizeCourierPaymentShifts(month),week_start:boundaries.week_start,month_start:boundaries.month_start,through:date},
-    formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
+    formula:'normais × valor por entrega + longas × valor longa (2x) + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
 }));
 
 
@@ -10829,17 +10954,17 @@ app.get("/api/admin/payments", auth, adminOnly, asyncRoute(async (req,res)=>{
   const date=validDate(req.query.date)?String(req.query.date):await getSPDate();
   const requested=String(req.query.shift_code||req.query.shift||'').trim()||null;
   const {rule,rows,shift_code,shift_label}=await getPaymentRows(date,requested);
-  const summary=rows.reduce((a,r)=>{a.deliveries+=Number(r.delivery_count||0);a.total=roundMoney(a.total+Number(r.total_amount||0));a.courier_ids.add(Number(r.courier_id));a.shifts+=1;
+  const summary=rows.reduce((a,r)=>{a.deliveries+=Number(r.delivery_count||0);a.longe+=Number(r.longe_count||0);a.longe_test+=Number(r.longe_test_count||0);a.total=roundMoney(a.total+Number(r.total_amount||0));a.courier_ids.add(Number(r.courier_id));a.shifts+=1;
     if(r.status==='PAID'){a.paid=roundMoney(a.paid+Number(r.total_amount||0));a.paid_count++}else a.pending=roundMoney(a.pending+Number(r.total_amount||0));if(r.status==='REVIEWED')a.reviewed_count++;return a},
-    {courier_ids:new Set(),shifts:0,deliveries:0,total:0,paid:0,pending:0,paid_count:0,reviewed_count:0});
+    {courier_ids:new Set(),shifts:0,deliveries:0,longe:0,longe_test:0,total:0,paid:0,pending:0,paid_count:0,reviewed_count:0});
   summary.couriers=summary.courier_ids.size;delete summary.courier_ids;
-  res.json({date,shift_code,shift_label,day_group:isFriSun(date)?'SEX_DOM':'SEG_QUI',rule,formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',rows,summary,server_now:new Date().toISOString()});
+  res.json({date,shift_code,shift_label,day_group:isFriSun(date)?'SEX_DOM':'SEG_QUI',rule,formula:'normais × valor por entrega + longas × valor longa (2x) + base do turno + chuva + gorjeta - desconto + ajuste',rows,summary,server_now:new Date().toISOString()});
 }));
 
 app.get("/api/admin/payments/month", auth, adminOnly, asyncRoute(async (req,res)=>{
   const month=String(req.query.month||'').trim();
   const data=await getAdminMonthlyPaymentRows(month);
-  res.json({...data,formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
+  res.json({...data,formula:'normais × valor por entrega + longas × valor longa (2x) + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
 }));
 
 app.get("/api/admin/payments/sheets", auth, adminOnly, asyncRoute(async (req,res)=>{
@@ -10967,29 +11092,105 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
   if(!['OPEN','REVIEWED','PAID'].includes(status))return res.status(400).json({error:'Status de pagamento inválido.'});if(![tip,discount,adjustment].every(Number.isFinite)||tip<0||discount<0)return res.status(400).json({error:'Gorjeta, desconto ou ajuste inválido.'});
   if(existing?.status==='PAID'&&status!=='PAID'&&req.body.confirm_reopen_paid!==true)return res.status(409).json({error:'Este pagamento já está marcado como PAGO. Confirme explicitamente para reabrir.',code:'PAYMENT_REOPEN_CONFIRMATION'});
   if(existing?.status==='REVIEWED'&&status==='OPEN'&&req.body.confirm_reopen_reviewed!==true)return res.status(409).json({error:'Este pagamento já foi CONFERIDO. Confirme explicitamente para reabrir.',code:'PAYMENT_REVIEWED_REOPEN_CONFIRMATION'});
-  const liveCount=await getCourierDeliveryCount(courierId,date,shift),worked=await courierWorkedShift(courierId,date,shift,liveCount),rule=await getPaymentRateRule(date);
+  const liveCount=await getCourierDeliveryCount(courierId,date,shift),worked=await courierWorkedShift(courierId,date,shift,liveCount),rule=await getPaymentRateRule(date),liveLonge=await getCourierLongeCounts(courierId,date,shift);
   const preserve=!!existing&&['REVIEWED','PAID'].includes(existing.status)&&['REVIEWED','PAID'].includes(status),finalTip=preserve?Number(existing.tip_amount||0):tip,finalDiscount=preserve?Number(existing.discount_amount||0):discount,finalAdjustment=preserve?Number(existing.adjustment_amount||0):adjustment,finalRain=preserve?!!existing.rain:rain;
-  const calc=preserve?{delivery_count:Number(existing.delivery_count_snapshot||0),per_delivery:Number(existing.per_delivery_snapshot||0),base_amount:Number(existing.base_snapshot||0),rain_bonus:Number(existing.rain_bonus_snapshot||0),total_amount:Number(existing.total_snapshot||0)}:
-    calculatePaymentAmounts({date,shiftCode:shift,deliveryCount:liveCount,rule,worked,rain:finalRain,tip:finalTip,discount:finalDiscount,adjustment:finalAdjustment});
+  // Com a regra LONGE ativa no turno, a contagem manual antiga não soma de novo: a correção é feita pedido a pedido.
+  if(!preserve&&liveLonge.longe_rule_active&&req.body.longe_count!==undefined&&roundMoney(adjustment)!==roundMoney(Number(existing?.adjustment_amount||0)))
+    return res.status(409).json({error:'Com a regra LONGE ativa neste turno, as longas são calculadas pelo endereço. Corrija pedido a pedido na coluna Longas.',code:'LONGE_MANUAL_COUNT_BLOCKED'});
+  const calc=preserve?{delivery_count:Number(existing.delivery_count_snapshot||0),per_delivery:Number(existing.per_delivery_snapshot||0),base_amount:Number(existing.base_snapshot||0),rain_bonus:Number(existing.rain_bonus_snapshot||0),total_amount:Number(existing.total_snapshot||0),
+      longe_count:Number(existing.longe_count_snapshot||0),longe_unit_amount:existing.longe_unit_snapshot!=null?Number(existing.longe_unit_snapshot):longeUnitAmount(existing.per_delivery_snapshot)}:
+    calculatePaymentAmounts({date,shiftCode:shift,deliveryCount:liveCount,rule,worked,rain:finalRain,tip:finalTip,discount:finalDiscount,adjustment:finalAdjustment,longeCount:liveLonge.longe_count});
   const currentPixStatus=normalizedPixStatus(courier.pix_status,!!courier.pix_key),existingPixStatus=normalizedPixStatus(existing?.pix_status_snapshot,!!existing?.pix_key_snapshot),preservingPaidPix=existing?.status==='PAID'&&status==='PAID';
   if(status==='PAID'&&String(paymentMethod||'').toUpperCase()==='PIX'&&!((preservingPaidPix?existingPixStatus==='VERIFIED'&&!!existing?.pix_key_snapshot:currentPixStatus==='VERIFIED'&&!!courier.pix_key&&!!courier.pix_type&&!!courier.pix_holder_name)))
     return res.status(409).json({error:'O PIX deste motoboy ainda não foi confirmado.',code: "PIX_NOT_VERIFIED"});
   const lock=status==='REVIEWED'||status==='PAID',reviewedAt=lock?(existing?.reviewed_at||new Date()):null,paidAt=status==='PAID'?(existing?.paid_at||new Date()):null;
   const pix=lock?(preservingPaidPix?{key:existing.pix_key_snapshot,type:existing.pix_type_snapshot,holder:existing.pix_holder_name_snapshot,status:existingPixStatus}:{key:courier.pix_key,type:courier.pix_type,holder:courier.pix_holder_name,status:currentPixStatus}):{key:null,type:null,holder:null,status:null};
-  let q;if(shift){q=await pool.query(`INSERT INTO courier_payments(payment_date,courier_id,shift_code,rain,tip_amount,discount_amount,adjustment_amount,payment_method,status,notes,delivery_count_snapshot,per_delivery_snapshot,base_snapshot,rain_bonus_snapshot,total_snapshot,pix_key_snapshot,pix_type_snapshot,pix_holder_name_snapshot,pix_status_snapshot,reviewed_at,reviewed_by,paid_at,paid_by,updated_at)
-    VALUES($1::date,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW()) ON CONFLICT(payment_date,courier_id,shift_code) WHERE shift_code IS NOT NULL DO UPDATE SET rain=EXCLUDED.rain,tip_amount=EXCLUDED.tip_amount,discount_amount=EXCLUDED.discount_amount,adjustment_amount=EXCLUDED.adjustment_amount,payment_method=EXCLUDED.payment_method,status=EXCLUDED.status,notes=EXCLUDED.notes,delivery_count_snapshot=EXCLUDED.delivery_count_snapshot,per_delivery_snapshot=EXCLUDED.per_delivery_snapshot,base_snapshot=EXCLUDED.base_snapshot,rain_bonus_snapshot=EXCLUDED.rain_bonus_snapshot,total_snapshot=EXCLUDED.total_snapshot,pix_key_snapshot=EXCLUDED.pix_key_snapshot,pix_type_snapshot=EXCLUDED.pix_type_snapshot,pix_holder_name_snapshot=EXCLUDED.pix_holder_name_snapshot,pix_status_snapshot=EXCLUDED.pix_status_snapshot,reviewed_at=EXCLUDED.reviewed_at,reviewed_by=EXCLUDED.reviewed_by,paid_at=EXCLUDED.paid_at,paid_by=EXCLUDED.paid_by,updated_at=NOW() RETURNING *`,
-    [date,courierId,shift,finalRain,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,lock?calc.delivery_count:null,lock?calc.per_delivery:null,lock?calc.base_amount:null,lock?calc.rain_bonus:null,lock?calc.total_amount:null,pix.key,pix.type,pix.holder,pix.status,reviewedAt,lock?req.session.user.id:null,paidAt,status==='PAID'?req.session.user.id:null]);}
+  let q;if(shift){q=await pool.query(`INSERT INTO courier_payments(payment_date,courier_id,shift_code,rain,tip_amount,discount_amount,adjustment_amount,payment_method,status,notes,delivery_count_snapshot,per_delivery_snapshot,base_snapshot,rain_bonus_snapshot,total_snapshot,pix_key_snapshot,pix_type_snapshot,pix_holder_name_snapshot,pix_status_snapshot,reviewed_at,reviewed_by,paid_at,paid_by,longe_count_snapshot,longe_unit_snapshot,updated_at)
+    VALUES($1::date,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW()) ON CONFLICT(payment_date,courier_id,shift_code) WHERE shift_code IS NOT NULL DO UPDATE SET rain=EXCLUDED.rain,tip_amount=EXCLUDED.tip_amount,discount_amount=EXCLUDED.discount_amount,adjustment_amount=EXCLUDED.adjustment_amount,payment_method=EXCLUDED.payment_method,status=EXCLUDED.status,notes=EXCLUDED.notes,delivery_count_snapshot=EXCLUDED.delivery_count_snapshot,per_delivery_snapshot=EXCLUDED.per_delivery_snapshot,base_snapshot=EXCLUDED.base_snapshot,rain_bonus_snapshot=EXCLUDED.rain_bonus_snapshot,total_snapshot=EXCLUDED.total_snapshot,pix_key_snapshot=EXCLUDED.pix_key_snapshot,pix_type_snapshot=EXCLUDED.pix_type_snapshot,pix_holder_name_snapshot=EXCLUDED.pix_holder_name_snapshot,pix_status_snapshot=EXCLUDED.pix_status_snapshot,reviewed_at=EXCLUDED.reviewed_at,reviewed_by=EXCLUDED.reviewed_by,paid_at=EXCLUDED.paid_at,paid_by=EXCLUDED.paid_by,longe_count_snapshot=EXCLUDED.longe_count_snapshot,longe_unit_snapshot=EXCLUDED.longe_unit_snapshot,updated_at=NOW() RETURNING *`,
+    [date,courierId,shift,finalRain,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,lock?calc.delivery_count:null,lock?calc.per_delivery:null,lock?calc.base_amount:null,lock?calc.rain_bonus:null,lock?calc.total_amount:null,pix.key,pix.type,pix.holder,pix.status,reviewedAt,lock?req.session.user.id:null,paidAt,status==='PAID'?req.session.user.id:null,lock?Number(calc.longe_count||0):null,lock?calc.longe_unit_amount:null]);}
   else {if(existing)q=await pool.query(`UPDATE courier_payments SET tip_amount=$3,discount_amount=$4,adjustment_amount=$5,payment_method=$6,status=$7,notes=$8,delivery_count_snapshot=$9,per_delivery_snapshot=$10,base_snapshot=$11,total_snapshot=$12,pix_key_snapshot=$13,pix_type_snapshot=$14,pix_holder_name_snapshot=$15,pix_status_snapshot=$16,reviewed_at=$17,reviewed_by=$18,paid_at=$19,paid_by=$20,updated_at=NOW() WHERE id=$1 AND courier_id=$2 RETURNING *`,[existing.id,courierId,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes,lock?calc.delivery_count:null,lock?calc.per_delivery:null,lock?calc.base_amount:null,lock?calc.total_amount:null,pix.key,pix.type,pix.holder,pix.status,reviewedAt,lock?req.session.user.id:null,paidAt,status==='PAID'?req.session.user.id:null]);else q=await pool.query(`INSERT INTO courier_payments(payment_date,courier_id,tip_amount,discount_amount,adjustment_amount,payment_method,status,notes) VALUES($1::date,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[date,courierId,finalTip,finalDiscount,finalAdjustment,paymentMethod,status,notes]);}
-  const row=await buildPaymentRow(courier,q.rows[0],date,rule,liveCount,shift,worked);await audit(req.session.user.id,'PAYMENT_UPDATED','courier_payment',q.rows[0].id,{payment_date:date,shift_code:shift,courier_id:courierId,courier_name:courier.name,delivery_count:row.delivery_count,total_amount:row.total_amount,status,rain:finalRain});
+  const row=await buildPaymentRow(courier,q.rows[0],date,rule,liveCount,shift,worked,liveLonge);await audit(req.session.user.id,'PAYMENT_UPDATED','courier_payment',q.rows[0].id,{payment_date:date,shift_code:shift,courier_id:courierId,courier_name:courier.name,delivery_count:row.delivery_count,longe_count:row.longe_count,total_amount:row.total_amount,status,rain:finalRain});
   emitRealtime('payment:changed',{courier_id:courierId,shift_code:shift});res.json({payment:row,message:`Pagamento de ${row.shift_label} atualizado.`,server_now:new Date().toISOString()});
 }));
 
 app.get("/api/admin/payments.csv", auth, adminOnly, asyncRoute(async (req,res)=>{
   const date=validDate(req.query.date)?String(req.query.date):await getSPDate(),requested=String(req.query.shift_code||req.query.shift||'').trim()||null;const {rows}=await getPaymentRows(date,requested);
-  const header=['Data','Turno','Motoboy','Apelido','Titular PIX','Chave PIX','Tipo PIX','Status PIX','Nº Entregas','Valor por Entrega','Base','Chuva','Adicional chuva','Gorjeta','Desconto','Ajuste','Forma PGMT','Status','Total','Observações'];
-  const lines=[header.map(csvCell).join(';')];for(const r of rows)lines.push([date,r.shift_label,r.courier_name,r.nickname||'',r.pix_holder_name||'',r.pix_key||'',r.pix_type||'',r.pix_status_label||'',r.delivery_count,r.per_delivery,r.base_amount,r.rain?'SIM':'NÃO',r.rain_bonus,r.tip_amount,r.discount_amount,r.adjustment_amount,r.payment_method||'',paymentStatusLabel(r.status),r.total_amount,r.notes||''].map(csvCell).join(';'));
+  const header=['Data','Turno','Motoboy','Apelido','Titular PIX','Chave PIX','Tipo PIX','Status PIX','Nº Entregas','Normais','Longas','Valor longa','Valor por Entrega','Base','Chuva','Adicional chuva','Gorjeta','Desconto','Ajuste','Forma PGMT','Status','Total','Observações'];
+  const lines=[header.map(csvCell).join(';')];for(const r of rows)lines.push([date,r.shift_label,r.courier_name,r.nickname||'',r.pix_holder_name||'',r.pix_key||'',r.pix_type||'',r.pix_status_label||'',r.delivery_count,r.normal_count??r.delivery_count,r.longe_count||0,r.longe_unit_amount??longeUnitAmount(r.per_delivery),r.per_delivery,r.base_amount,r.rain?'SIM':'NÃO',r.rain_bonus,r.tip_amount,r.discount_amount,r.adjustment_amount,r.payment_method||'',paymentStatusLabel(r.status),r.total_amount,r.notes||''].map(csvCell).join(';'));
   res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition',`attachment; filename="despachefull-pagamentos-${date}${requested?'-'+requested.toLowerCase():''}.csv"`);res.send('\uFEFF'+lines.join('\r\n'));
   await audit(req.session.user.id,'PAYMENT_REPORT_EXPORTED','payment',null,{date,shift_code:requested,rows:rows.length});
+}));
+
+// ---- Regra LONGE (6,7 km pela rota do Google) ----
+function longeDestinationFromOrder(order) {
+  const nav = buildDeliveryDestination(order);
+  const fields = deliveryAddressFields(ifoodDeliveryAddress(order));
+  return { latitude: nav?.latitude ?? null, longitude: nav?.longitude ?? null, neighborhood: fields.neighborhood, city: fields.city };
+}
+const longeRule = createLongeService({ pool, describeDestination: longeDestinationFromOrder, emitRealtime });
+await longeRule.recoverInterruptedJobs();
+
+function longeBoolean(value) {
+  if (value === true || value === false || value === null) return value;
+  const text = String(value ?? "").trim().toUpperCase();
+  if (["LONGE","TRUE","1"].includes(text)) return true;
+  if (["NORMAL","FALSE","0"].includes(text)) return false;
+  if (["AUTO","AUTOMATIC","AUTOMATICO","AUTOMÁTICO"].includes(text)) return null;
+  return undefined;
+}
+
+app.get("/api/admin/longe", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const [state,rule]=await Promise.all([longeRule.getState(),getPaymentRateRule(await getSPDate())]);
+  res.json({...state,per_delivery:rule.per_delivery,longe_unit_amount:longeUnitAmount(rule.per_delivery),server_now:new Date().toISOString()});
+}));
+
+app.post("/api/admin/longe/preview", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const {job}=await longeRule.startJob({kind:"PREVIEW",actorUserId:req.session.user.id});
+  res.status(202).json({job,message:"Prévia iniciada: calculando a rota do Google para as entregas já registradas (endereços próximos agrupados)."});
+}));
+
+app.post("/api/admin/longe/zone", auth, adminOnly, asyncRoute(async (req,res)=>{
+  if(req.body?.confirm!==true)return res.status(400).json({error:"Confirme a geração única da zona.",code:"LONGE_ZONE_CONFIRMATION"});
+  const {job}=await longeRule.startJob({kind:"ZONE",actorUserId:req.session.user.id});
+  res.status(202).json({job,message:"Gerando a zona de 6,7 km pela rota do Google. Isso é feito uma única vez."});
+}));
+
+app.get("/api/admin/longe/jobs/:id", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const job=await longeRule.getJob(req.params.id);
+  if(!job)return res.status(404).json({error:"Cálculo não encontrado."});
+  res.json({job});
+}));
+
+app.put("/api/admin/longe/mode", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const result=await longeRule.setMode({actorUserId:req.session.user.id,mode:req.body?.mode,reason:req.body?.reason});
+  setImmediate(()=>longeRule.classifyPending().catch(error=>console.error("LONGE classify:",String(error?.message||error))));
+  const labels={OFF:"desligada",TEST:"em teste (sem alterar o pagamento)",ACTIVE:"ativa no pagamento"};
+  res.json({...result,message:`Regra LONGE ${labels[result.to]}. Vale para saídas a partir de agora.`});
+}));
+
+app.get("/api/admin/longe/orders", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const date=String(req.query.date||"");
+  if(!validDate(date))return res.status(400).json({error:"Data inválida."});
+  const shift=String(req.query.shift_code||"").trim().toUpperCase()||null;
+  if(shift&&!["LUNCH","DINNER"].includes(shift))return res.status(400).json({error:"Turno inválido."});
+  const courierId=req.query.courier_id?Number(req.query.courier_id):null;
+  if(courierId!==null&&(!Number.isInteger(courierId)||courierId<1))return res.status(400).json({error:"Motoboy inválido."});
+  const rule=await getPaymentRateRule(date);
+  res.json({date,shift_code:shift,courier_id:courierId,longe_unit_amount:longeUnitAmount(rule.per_delivery),per_delivery:rule.per_delivery,orders:await longeRule.listOrders({date,shiftCode:shift,courierId})});
+}));
+
+app.put("/api/admin/longe/orders/:orderItemId", auth, adminOnly, asyncRoute(async (req,res)=>{
+  const longe=longeBoolean(req.body?.longe);
+  if(longe===undefined)return res.status(400).json({error:"Informe LONGE, NORMAL ou AUTOMÁTICO."});
+  const result=await longeRule.correctOrder({actorUserId:req.session.user.id,orderItemId:req.params.orderItemId,longe,reason:req.body?.reason});
+  res.json({...result,message:`Pedido ${result.order_number} corrigido para ${result.longe?"LONGE":"normal"}. Motivo registrado no histórico.`});
+}));
+
+// Mapa da zona para motoboys e admins: polígono salvo, sem chamar o Google.
+app.get("/api/longe/zone", auth, asyncRoute(async (req,res)=>{
+  const [zone,history,rule]=await Promise.all([longeRule.getZone(),longeRule.getModeHistory(),getPaymentRateRule(await getSPDate())]);
+  res.json({mode:modeAt(history,new Date()),radius_meters:LONGE_RADIUS_METERS,per_delivery:rule.per_delivery,longe_unit_amount:longeUnitAmount(rule.per_delivery),
+    zone:zone?{polygon:zone.polygon,store:{address:zone.store_address,latitude:Number(zone.store_latitude),longitude:Number(zone.store_longitude)},generated_at:zone.generated_at}:null});
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
@@ -12170,6 +12371,8 @@ async function runPaymentSheetRetryWorkerOnce(){
 }
 
 setInterval(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry:',String(err?.message||err))),60*1000);
+// Regra LONGE: classifica as saídas novas fora da transação de despacho (falha aqui nunca bloqueia uma saída).
+setInterval(()=>longeRule.classifyPending().catch(err=>console.error('LONGE classify:',String(err?.message||err))),15*1000);
 setTimeout(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry startup:',String(err?.message||err))),20_000);
 
 // Tagme queue: independent from dispatch/payment systems. No personal data is persisted.

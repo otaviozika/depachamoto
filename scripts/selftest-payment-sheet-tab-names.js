@@ -44,7 +44,7 @@ const result = await syncPaymentDayToGoogleSheets({ date: "2026-10-13", shiftCod
 assert.equal(result.tabTitle, "13/10");
 assert.equal(result.rows, 2);
 const clear = calls.find(c => c.u.includes("batchClear")).body.ranges;
-assert.deepEqual(clear, ["'13/10'!A4:A200", "'13/10'!E4:J200", "'13/10'!M4:M200"]);
+assert.deepEqual(clear, ["'13/10'!A4:A200", "'13/10'!E4:J200", "'13/10'!M4:M200", "'13/10'!N4:P200"]);
 assert.deepEqual(written["'13/10'!A4:A5"], [["Ana"], ["João D'Ávila"]]);
 assert.deepEqual(written["'13/10'!E4:J5"][0], [12, 55, 5, "", "PIX", "Sim"]);
 assert.deepEqual(written["'13/10'!E4:J5"][1], [9, 45, "", 2.5, "Dinheiro", "Não"]);

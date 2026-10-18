@@ -18,7 +18,9 @@ const values=paymentRowsToSheetValues("2026-09",[{
 }]);
 assert.equal(values.length,2);
 assert.equal(values[1][2],"Danielle");
-assert.equal(values[1][12],162);
+assert.deepEqual(values[0].slice(4,9),["Entregas","Normais","Longas","Valor longa","Valor por entrega"]);
+assert.deepEqual(values[1].slice(4,8),[12,12,0,12],"sem LONGE: todas normais, valor longa = 2x");
+assert.equal(values[1][15],162);
 
 assert.equal(paymentDaySheetTitle("2026-09-26","LUNCH"),"26/09 S");
 assert.equal(paymentDaySheetTitle("2026-10-01","LUNCH"),"01/10 Q");
@@ -69,9 +71,9 @@ assert.equal(closed.rows,1);
 assert.ok(dailyCalls.some(call=>call.url.includes("values:batchClear")));
 assert.ok(dailyCalls.some(call=>call.url.includes("values:batchUpdate")));
 const clearBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchClear")).options.body);
-assert.deepEqual(clearBody.ranges,["'26/09 S'!A4:A200","'26/09 S'!E4:J200","'26/09 S'!M4:M200"]);
+assert.deepEqual(clearBody.ranges,["'26/09 S'!A4:A200","'26/09 S'!E4:J200","'26/09 S'!M4:M200","'26/09 S'!N4:P200"]);
 const updateBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchUpdate")).options.body);
-assert.deepEqual(updateBody.data.map(item=>item.range),["'26/09 S'!A4:A4","'26/09 S'!E4:J4","'26/09 S'!M4:M4"]);
+assert.deepEqual(updateBody.data.map(item=>item.range),["'26/09 S'!A4:A4","'26/09 S'!E4:J4","'26/09 S'!M4:M4","'26/09 S'!N3:P3","'26/09 S'!N4:P4"],"sem longas a fórmula TOTAL PAGO da planilha não é tocada");
 
 const checks={
   admin_month_endpoint:server.includes('app.get("/api/admin/payments/month"'),
