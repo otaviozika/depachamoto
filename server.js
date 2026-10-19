@@ -19,7 +19,7 @@ import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-sh
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
-import { LONGE_RADIUS_METERS, longeUnitAmount, modeAt } from "./lib/longe-zone.js";
+import { longeUnitAmount } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
 const { Pool } = pg;
@@ -3884,14 +3884,11 @@ async function getCourierIfoodDeliveries(courierId) {
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,d.status AS dispatch_status,
       c.status AS confirmation_status,c.attempts AS confirmation_attempts,
-      c.last_error AS confirmation_last_error,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at,
-      ${COURIER_LONGE_COLUMNS}
+      c.last_error AS confirmation_last_error,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at
     FROM ifood_dispatch_links l
     JOIN ifood_orders o ON o.order_id=l.ifood_order_id
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
-    LEFT JOIN dispatch_orders lo ON lo.dispatch_id=l.dispatch_id AND LOWER(lo.order_number)=LOWER(l.local_order_number)
-    LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=lo.id
     WHERE d.courier_id=$1
       AND d.departed_at >= NOW()-INTERVAL '48 hours'
       AND UPPER(COALESCE(o.order_type,''))='DELIVERY'
@@ -3925,7 +3922,6 @@ async function getCourierIfoodDeliveries(courierId) {
       navigation: buildIfoodDeliveryDestination(row.payload),
       delivery_details: buildIfoodDeliveryDetails(row.payload),
       payment: buildIfoodPaymentInfo(row.payload),
-      longe: courierLongeBadge(row),
       ...ui
     };
 
@@ -3953,15 +3949,12 @@ async function getCourierAnotaAiDeliveries(courierId) {
       a.order_id,a.display_id,a.status AS order_status,a.status_code,a.customer_name,a.payload,
       l.dispatch_id,l.local_order_number,
       d.departed_at,d.status AS dispatch_status,
-      c.confirmed_at,
-      ${COURIER_LONGE_COLUMNS}
+      c.confirmed_at
     FROM anotaai_dispatch_links l
     JOIN anotaai_orders a ON a.order_id=l.anotaai_order_id
     JOIN dispatches d ON d.id=l.dispatch_id
     LEFT JOIN anotaai_delivery_confirmations c
       ON c.anotaai_order_id=a.order_id AND c.dispatch_id=d.id
-    LEFT JOIN dispatch_orders lo ON lo.dispatch_id=l.dispatch_id AND LOWER(lo.order_number)=LOWER(l.local_order_number)
-    LEFT JOIN dispatch_order_longe lg ON lg.dispatch_order_id=lo.id
     WHERE d.courier_id=$1
       AND d.departed_at >= NOW()-INTERVAL '48 hours'
     ORDER BY
@@ -4002,8 +3995,7 @@ async function getCourierAnotaAiDeliveries(courierId) {
           : "Ao entregar ao cliente, toque em Confirmar entrega. Não é necessário código."),
       delivery_details: buildAnotaAiDeliveryCardAddress(row.payload)?.complement ?
         { complement: buildAnotaAiDeliveryCardAddress(row.payload).complement } : null,
-      payment: buildAnotaAiPaymentInfo(row.payload),
-      longe: courierLongeBadge(row)
+      payment: buildAnotaAiPaymentInfo(row.payload)
     };
 
     if (confirmed) completed.push(item);
@@ -4012,22 +4004,6 @@ async function getCourierAnotaAiDeliveries(courierId) {
   }
 
   return { current, pending, completed };
-}
-
-// Selo do card: "LONGE · R$ 12" (2x o valor por entrega da regra do dia da saída).
-const COURIER_LONGE_COLUMNS=`lg.rule_mode AS longe_rule_mode,lg.longe AS longe_flag,lg.auto_status AS longe_auto_status,lg.manual_longe AS longe_manual,
-      (SELECT r.per_delivery FROM payment_rate_rules r WHERE r.effective_from<=COALESCE(d.operational_date,(d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date)
-        ORDER BY r.effective_from DESC,r.id DESC LIMIT 1) AS longe_per_delivery`;
-function courierLongeBadge(row) {
-  if (!row?.longe_rule_mode || row.longe_rule_mode === "OFF") return null;
-  const longe = row.longe_flag === true;
-  const unknown = !longe && row.longe_auto_status === "NO_LOCATION" && row.longe_manual === null;
-  return {
-    status: longe ? "LONGE" : unknown ? "NO_LOCATION" : "NORMAL",
-    mode: row.longe_rule_mode,
-    amount: longeUnitAmount(row.longe_per_delivery ?? 6),
-    corrected: row.longe_manual !== null && row.longe_manual !== undefined
-  };
 }
 
 async function acknowledgeIfoodEvents(eventIds) {
@@ -6012,7 +5988,6 @@ async function getCourierPaymentPeriodShifts(courier,startDate,endDate) {
 
 function summarizeCourierPaymentShifts(rows){
   return {total_amount:roundMoney(rows.reduce((s,r)=>s+Number(r.total_amount||0),0)),delivery_count:rows.reduce((s,r)=>s+Number(r.delivery_count||0),0),
-    longe_count:rows.reduce((s,r)=>s+Number(r.longe_count||0),0),
     worked_shifts:rows.filter(r=>r.worked).length,worked_days:new Set(rows.filter(r=>r.worked).map(r=>r.payment_date)).size,paid_shifts:rows.filter(r=>r.status==='PAID').length};
 }
 
@@ -6677,6 +6652,11 @@ app.post("/api/courier/dispatches/:id/arrive", auth, courierOnly, asyncRoute(asy
   res.status(410).json({ error: "A chegada à loja não é mais necessária. A saída é finalizada automaticamente quando todas as entregas forem confirmadas.", code: "ARRIVAL_CHECKIN_REMOVED" });
 }));
 
+// O app do motoboy não mostra nada da regra LONGE: só o total, que já inclui as longas pagas.
+function courierPaymentView(row){
+  return Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('longe_')&&key!=='normal_count'));
+}
+
 app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,res)=>{
   await touchPresence(req.session.user.id,'COURIER_WEB');
   const date=await getSPDate(),rule=await getPaymentRateRule(date);
@@ -6690,8 +6670,8 @@ app.get("/api/courier/payment/today", auth, courierOnly, asyncRoute(async (req,r
   const boundaries=(await pool.query(`SELECT to_char(date_trunc('week',$1::date)::date,'YYYY-MM-DD') week_start,to_char(date_trunc('month',$1::date)::date,'YYYY-MM-DD') month_start`,[date])).rows[0];
   const periodStart=boundaries.week_start<boundaries.month_start?boundaries.week_start:boundaries.month_start;
   const period=await getCourierPaymentPeriodShifts(courier,periodStart,date),week=period.filter(x=>x.payment_date>=boundaries.week_start),month=period.filter(x=>x.payment_date>=boundaries.month_start);
-  res.json({payment:row,summary:{today:summarizeCourierPaymentShifts(todayRows),week:summarizeCourierPaymentShifts(week),month:summarizeCourierPaymentShifts(month),week_start:boundaries.week_start,month_start:boundaries.month_start,through:date},
-    formula:'normais × valor por entrega + longas × valor longa (2x) + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
+  res.json({payment:courierPaymentView(row),summary:{today:summarizeCourierPaymentShifts(todayRows),week:summarizeCourierPaymentShifts(week),month:summarizeCourierPaymentShifts(month),week_start:boundaries.week_start,month_start:boundaries.month_start,through:date},
+    formula:'entregas × valor por entrega + base do turno + chuva + gorjeta - desconto + ajuste',server_now:new Date().toISOString()});
 }));
 
 
@@ -11184,13 +11164,6 @@ app.put("/api/admin/longe/orders/:orderItemId", auth, adminOnly, asyncRoute(asyn
   if(longe===undefined)return res.status(400).json({error:"Informe LONGE, NORMAL ou AUTOMÁTICO."});
   const result=await longeRule.correctOrder({actorUserId:req.session.user.id,orderItemId:req.params.orderItemId,longe,reason:req.body?.reason});
   res.json({...result,message:`Pedido ${result.order_number} corrigido para ${result.longe?"LONGE":"normal"}. Motivo registrado no histórico.`});
-}));
-
-// Mapa da zona para motoboys e admins: polígono salvo, sem chamar o Google.
-app.get("/api/longe/zone", auth, asyncRoute(async (req,res)=>{
-  const [zone,history,rule]=await Promise.all([longeRule.getZone(),longeRule.getModeHistory(),getPaymentRateRule(await getSPDate())]);
-  res.json({mode:modeAt(history,new Date()),radius_meters:LONGE_RADIUS_METERS,per_delivery:rule.per_delivery,longe_unit_amount:longeUnitAmount(rule.per_delivery),
-    zone:zone?{polygon:zone.polygon,store:{address:zone.store_address,latitude:Number(zone.store_latitude),longitude:Number(zone.store_longitude)},generated_at:zone.generated_at}:null});
 }));
 
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {

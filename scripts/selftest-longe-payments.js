@@ -1,7 +1,8 @@
 // Regra LONGE ponta a ponta em PostgreSQL isolado (PGlite), com as funções e o SQL
 // de produção: zona gerada uma vez, prévia por mês, teste sem mexer no pagamento,
 // ativação só após o primeiro fim de semana, pedidos antigos e turnos conferidos/pagos
-// intactos, correção manual com motivo no histórico, card do motoboy, CSV e planilha.
+// intactos, correção manual com motivo no histórico, CSV e planilha — e nada disso
+// aparece para o motoboy (card e API de ganhos sem campos LONGE).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -58,7 +59,7 @@ function include(start, end) {
 include("function parseJsonPayload(", "function normalizeDeliveryCode(");
 include("function validDate(v)", 'app.get("/api/public/config"');
 include("async function getCourierIfoodDeliveries(", "async function getCourierAnotaAiDeliveries(");
-include("const COURIER_LONGE_COLUMNS=", "async function acknowledgeIfoodEvents(");
+include("function courierPaymentView(", 'app.get("/api/courier/payment/today"');
 include("function longeDestinationFromOrder(", "const longeRule = createLongeService");
 include('app.put("/api/admin/payments/:date/:courierId"', 'app.get("/api/admin/payments.csv"');
 // Funções de exibição do card que dependem só do payload.
@@ -183,7 +184,7 @@ await test("teste: classifica só saídas a partir da publicação, sem mexer no
   assert.equal(row.total_amount, 3 * 6 + 55);
   assert.deepEqual(await rowOf("2026-10-17"), before, "turno anterior idêntico");
   const card = (await context.getCourierIfoodDeliveries(2)).completed.find(x => x.order_id === "if-" + far.n);
-  assert.deepEqual(plain(card.longe), { status: "LONGE", mode: "TEST", amount: 12, corrected: false }, "card mostra LONGE em teste");
+  assert.ok(card && !JSON.stringify(card).toLowerCase().includes("longe"), "card do motoboy não mostra nada da regra");
 });
 
 await test("ativação liberada só depois do primeiro fim de semana completo", async () => {
@@ -213,10 +214,12 @@ await test("ativa: LONGE = 2x o valor por entrega e só para saídas depois da a
   const monday = await rowOf("2026-10-26", 3);
   assert.equal(monday.longe_count, 1, "saída após a ativação no mesmo dia");
   const card = (await context.getCourierIfoodDeliveries(2)).completed.find(x => x.order_id === "if-" + farActive.n);
-  assert.deepEqual(plain(card.longe), { status: "LONGE", mode: "ACTIVE", amount: 12, corrected: false });
-  const normalCard = (await context.getCourierIfoodDeliveries(2)).completed.find(x => x.order_id === "if-" + nearActive.n);
-  assert.equal(normalCard.longe.status, "NORMAL");
-  assert.ok(events.some(e => e.event === "delivery:changed" && e.payload.courier_ids?.includes(2)));
+  assert.ok(card && !JSON.stringify(card).toLowerCase().includes("longe"), "card do motoboy segue igual com a regra ativa");
+  const courierView = plain(context.courierPaymentView(row));
+  assert.equal(courierView.total_amount, 6 + 12 + 45, "o motoboy vê só o total");
+  assert.ok(!Object.keys(courierView).some(key => key.startsWith("longe_") || key === "normal_count"), "API de ganhos do motoboy sem campos LONGE");
+  assert.ok(events.some(e => e.event === "payment:changed" && e.payload.courier_id === 2), "total do motoboy atualiza");
+  assert.ok(!events.some(e => e.event === "delivery:changed"), "nenhum aviso novo para os cards do motoboy");
 });
 
 await test("contagem LONGE manual antiga não soma de novo num turno com a regra ativa", async () => {
