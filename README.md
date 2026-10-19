@@ -37,7 +37,7 @@ Pedido entregue fora da zona de 6,7 km da loja (R. Tapajós, 846, Barcelona, Sã
 Ativação, em **Financeiro → Regra LONGE**:
 
 1. Configure `GOOGLE_ROUTES_API_KEY` somente no Render (chave com a Routes API habilitada e restrita a ela).
-2. **Calcular prévia**: distância pela rota do Google de todas as entregas já registradas, agrupando endereços a ~100 m (uma consulta por grupo, com cache). Mostra quantas teriam sido LONGE por mês e os bairros na borda (entregas a até 500 m do limite ou com endereços dos dois lados).
+2. **Calcular prévia**: distância pela rota do Google de todas as entregas próprias já registradas (iFood entregue pela loja, Anota AI e saídas manuais; frota do iFood e retirada ficam de fora), agrupando endereços a ~100 m (uma consulta por grupo, com cache). Mostra quantas teriam sido LONGE por mês e os bairros na borda (entregas a até 500 m do limite ou com endereços dos dois lados).
 3. **Gerar zona (uma única vez)**: 96 direções a partir da loja, amostras a cada 200 m e 4 refinamentos por direção (~3.650 elementos da Route Matrix). O banco recusa uma segunda zona. Depois da zona, a prévia também informa quanto o polígono concorda com a distância direta.
 4. **Teste**: cards, resumo do turno e mapa mostram LONGE, mas o pagamento não muda. O pagamento só pode ser ativado depois do primeiro fim de semana completo em teste (sexta 11:00 até segunda 02:00).
 5. **Ativa**: vale só para saídas a partir desse momento. Pedidos anteriores à publicação nunca são classificados, e turnos conferidos ou pagos mantêm as longas congeladas no fechamento (`longe_count_snapshot`).

@@ -88,13 +88,13 @@ await query("INSERT INTO users(id,name,username,password_hash,role,pix_key,pix_t
 const store = LONGE_STORE.approx;
 const at = (meters, bearing = 30) => destinationPoint(store, bearing, meters);
 let seq = 0;
-async function delivery({ courier = 2, departedAt, date, shift = "LUNCH", point, neighborhood = "Barcelona", city = "São Caetano do Sul", platform = "ifood" }) {
+async function delivery({ courier = 2, departedAt, date, shift = "LUNCH", point, neighborhood = "Barcelona", city = "São Caetano do Sul", platform = "ifood", orderType = "DELIVERY", deliveredBy = "MERCHANT" }) {
   const n = ++seq;
   const d = (await query("INSERT INTO dispatches(dispatch_code,order_number,courier_id,departed_at,status,operational_date,shift_code) VALUES($1,$2,$3,$4,'RELEASED',$5,$6) RETURNING id", ["T" + n, "#" + n, courier, departedAt, date, shift])).rows[0];
   const o = (await query("INSERT INTO dispatch_orders(dispatch_id,order_number,platform) VALUES($1,$2,$3) RETURNING id", [d.id, "#" + n, platform])).rows[0];
   if (platform === "ifood") {
     const payload = { delivery: { deliveryAddress: { streetName: "Rua Teste", streetNumber: String(n), neighborhood, city, state: "SP", coordinates: point ? { latitude: point.latitude, longitude: point.longitude } : undefined } } };
-    await query("INSERT INTO ifood_orders(order_id,display_id,status,order_type,delivered_by,payload) VALUES($1,$2,'CONCLUDED','DELIVERY','MERCHANT',$3)", ["if-" + n, String(n), JSON.stringify(payload)]);
+    await query("INSERT INTO ifood_orders(order_id,display_id,status,order_type,delivered_by,payload) VALUES($1,$2,'CONCLUDED',$4,$5,$3)", ["if-" + n, String(n), JSON.stringify(payload), orderType, deliveredBy]);
     await query("INSERT INTO ifood_dispatch_links(ifood_order_id,dispatch_id,local_order_number) VALUES($1,$2,$3)", ["if-" + n, d.id, "#" + n]);
   }
   return { dispatchId: d.id, orderItemId: o.id, n };
@@ -115,6 +115,9 @@ await delivery({ departedAt: "2026-09-15T15:20:00Z", date: "2026-09-15", point: 
 await delivery({ departedAt: "2026-10-10T15:00:00Z", date: "2026-10-10", point: at(7000, 120), neighborhood: "Sacomã", city: "São Paulo" });
 const legacyOld = await delivery({ departedAt: "2026-10-17T15:00:00Z", date: "2026-10-17", point: at(7000, 120), neighborhood: "Sacomã", city: "São Paulo" });
 await delivery({ departedAt: "2026-10-17T15:05:00Z", date: "2026-10-17", platform: "manual" });
+// Fora da entrega própria: frota do iFood e retirada, mesmo longe, não entram na prévia.
+await delivery({ departedAt: "2026-10-10T15:30:00Z", date: "2026-10-10", point: at(9000, 60), neighborhood: "Frota iFood", deliveredBy: "IFOOD" });
+await delivery({ departedAt: "2026-09-15T15:40:00Z", date: "2026-09-15", point: at(9000, 60), neighborhood: "Retirada", orderType: "TAKEOUT" });
 
 await test("sem chave do Google, nada é calculado", async () => {
   const noKey = createLongeService({ pool, describeDestination: context.longeDestinationFromOrder, env: {}, now: () => clock });
@@ -129,6 +132,8 @@ await test("prévia: LONGE por mês e bairros na borda, agrupando endereços pr�
   const months = Object.fromEntries(saved.result.months.map(m => [m.month, m]));
   assert.deepEqual([months["2026-09"].longe, months["2026-09"].normal], [1, 2]);
   assert.deepEqual([months["2026-10"].longe, months["2026-10"].normal, months["2026-10"].deliveries], [2, 0, 3]);
+  assert.equal(saved.result.totals.deliveries, 6, "só entrega própria (iFood da loja + manual), sem frota iFood nem retirada");
+  assert.ok(!saved.result.border_neighborhoods.some(h => ["Frota iFood", "Retirada"].includes(h.neighborhood)));
   assert.equal(saved.result.border_neighborhoods[0].neighborhood, "Ipiranga");
   assert.equal(saved.result.clusters, 4, "dois pedidos no mesmo endereço = 1 consulta");
   const elements = saved.result.google_elements;
@@ -163,11 +168,13 @@ await test("teste: classifica só saídas a partir da publicação, sem mexer no
   const far = await delivery({ departedAt: "2026-10-24T15:30:00Z", date: "2026-10-24", point: at(7000, 300) });
   const near = await delivery({ departedAt: "2026-10-24T15:40:00Z", date: "2026-10-24", point: at(2000, 300) });
   const manual = await delivery({ departedAt: "2026-10-24T15:50:00Z", date: "2026-10-24", platform: "manual" });
+  const fleet = await delivery({ courier: 3, departedAt: "2026-10-24T15:55:00Z", date: "2026-10-24", point: at(9000, 300), deliveredBy: "IFOOD" });
   await service.classifyPending();
   const classified = (await query("SELECT dispatch_order_id,rule_mode,auto_status FROM dispatch_order_longe ORDER BY dispatch_order_id")).rows;
   assert.deepEqual(classified.map(r => [Number(r.dispatch_order_id), r.rule_mode, r.auto_status]),
     [[far.orderItemId, "TEST", "LONGE"], [near.orderItemId, "TEST", "NORMAL"], [manual.orderItemId, "TEST", "NO_LOCATION"]]);
   assert.equal((await query("SELECT 1 FROM dispatch_order_longe WHERE dispatch_order_id=$1", [legacyOld.orderItemId])).rowCount, 0, "pedido anterior à publicação não entra");
+  assert.equal((await query("SELECT 1 FROM dispatch_order_longe WHERE dispatch_order_id=$1", [fleet.orderItemId])).rowCount, 0, "frota do iFood não é entrega própria");
   const row = await rowOf("2026-10-24");
   assert.equal(row.delivery_count, 3);
   assert.equal(row.longe_count, 0, "em teste a longa não é paga");
