@@ -34,3 +34,5 @@ services:
         sync: false
       - key: GOOGLE_ROUTES_API_KEY
         sync: false
+      - key: OPENROUTESERVICE_API_KEY
+        sync: false
