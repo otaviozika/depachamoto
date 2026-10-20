@@ -5,6 +5,7 @@ import {
   ROUTE_PLANNER_DEFAULTS, factorial, normalizePlannerParams, permutations, planPendingStops, planRoute, validateMatrix
 } from "../lib/route-planner.js";
 import { createRoutesClient } from "../lib/longe-zone.js";
+import { configuredRouteProvider, createOpenRouteServiceClient, createTravelClient } from "../lib/route-providers.js";
 import { SCENARIOS, render120, syntheticMatrix } from "./simulate-route-planner.js";
 
 let count = 0;
@@ -97,6 +98,56 @@ await test("Routes API: matriz completa, DRIVE sem trânsito ao vivo, segundos e
   await assert.rejects(client.travelMatrix(Array.from({ length: 26 }, () => points[0])), e => e.code === "GOOGLE_ROUTES_MATRIX_SIZE");
   const geo = createRoutesClient({ apiKey: "k", fetchFn: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ routes: [] }) }) });
   await assert.rejects(geo.geocodeAddress("Rua X, 1", points[0]), e => e.code === "GOOGLE_ROUTES_ADDRESS_NOT_FOUND");
+});
+
+await test("openrouteservice (gratuito): matriz, localização precisa × aproximada e erros sem a chave", async () => {
+  const requests = [];
+  const respond = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+  const fetchFn = async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes("/v2/matrix/driving-car")) {
+      const n = JSON.parse(options.body).locations.length;
+      return respond(200, {
+        durations: Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => i === j ? 0 : (i === 1 && j === 2 ? null : 60 * (i + j)))),
+        distances: Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => 1000 * (i + j)))
+      });
+    }
+    const text = new URL(String(url)).searchParams.get("text");
+    if (/inexistente/i.test(text)) return respond(200, { features: [] });
+    const props = /centro/i.test(text) ? { layer: "street", confidence: 0.6, match_type: "fallback", label: "Rua X, São Caetano do Sul" } : { layer: "address", confidence: 1, match_type: "exact", label: "Rua X, 10" };
+    return respond(200, { features: [{ geometry: { coordinates: [-46.556, -23.621] }, properties: props }] });
+  };
+  const client = createOpenRouteServiceClient({ apiKey: "ORS-KEY-123", fetchFn });
+  const points = [{ latitude: -23.62, longitude: -46.55 }, { latitude: -23.61, longitude: -46.56 }, { latitude: -23.63, longitude: -46.54 }];
+  const m = await client.travelMatrix(points);
+  const matrixCall = requests[0];
+  assert.match(matrixCall.url, /\/v2\/matrix\/driving-car$/);
+  assert.equal(matrixCall.options.headers.Authorization, "ORS-KEY-123");
+  assert.deepEqual(JSON.parse(matrixCall.options.body).locations[0], [-46.55, -23.62], "ORS usa [longitude, latitude]");
+  assert.deepEqual(JSON.parse(matrixCall.options.body).metrics, ["duration", "distance"]);
+  assert.equal(m.seconds[0][1], 60); assert.equal(m.seconds[1][2], null); assert.equal(m.seconds[2][2], 0);
+  const exact = await client.geocodeAddress("Rua X, 10, São Caetano do Sul", points[0]);
+  assert.equal(exact.precise, true); assert.equal(exact.latitude, -23.621);
+  const rough = await client.geocodeAddress("Rua X, Centro, São Caetano do Sul", points[0]);
+  assert.equal(rough.precise, false, "só a rua: aproximado");
+  const geocodeUrl = new URL(requests[1].url);
+  assert.equal(geocodeUrl.searchParams.get("boundary.country"), "BR");
+  assert.ok(geocodeUrl.searchParams.get("focus.point.lat"));
+  await assert.rejects(client.geocodeAddress("Rua Inexistente, 1", points[0]), e => e.code === "ROUTES_ADDRESS_NOT_FOUND");
+  await assert.rejects(client.resolveAddress("Rua X, Centro", points[0]), e => e.code === "ROUTES_STORE_IMPRECISE");
+  const denied = createOpenRouteServiceClient({ apiKey: "SECRET-ORS", fetchFn: async () => respond(403, { error: "Access to this API has been disallowed for SECRET-ORS" }) });
+  await assert.rejects(denied.travelMatrix(points), e => e.code === "ROUTES_KEY_REJECTED" && !e.message.includes("SECRET-ORS"));
+  const limited = createOpenRouteServiceClient({ apiKey: "k", fetchFn: async () => respond(429, { error: "Rate limit exceeded" }) });
+  await assert.rejects(limited.travelMatrix(points), e => e.code === "ROUTES_RATE_LIMITED");
+});
+
+await test("serviço de rotas escolhido pela chave no Render: Google, openrouteservice ou nenhum", () => {
+  assert.equal(configuredRouteProvider({}), null);
+  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o" }), "openrouteservice");
+  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o", GOOGLE_ROUTES_API_KEY: "g" }), "google");
+  assert.equal(createTravelClient({ env: { OPENROUTESERVICE_API_KEY: "o" } }).provider, "openrouteservice");
+  assert.equal(createTravelClient({ env: { GOOGLE_ROUTES_API_KEY: "g" } }).provider, "google");
+  assert.throws(() => createTravelClient({ env: {} }), e => e.code === "ROUTES_NOT_CONFIGURED");
 });
 
 console.log(`PASS: ${count} verificações do motor de sequência.`);

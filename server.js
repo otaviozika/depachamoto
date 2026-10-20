@@ -11556,6 +11556,12 @@ app.put("/api/admin/pre-departure/settings", auth, adminOnly, serviceRoute(async
   res.json({ settings, server_now: new Date().toISOString() });
 }));
 
+// Ponto de partida das rotas: o admin confirma no mapa o local da loja (R. Tapajós, 846).
+app.put("/api/admin/pre-departure/store-origin", auth, adminOnly, serviceRoute(async (req, res) => {
+  const origin = await preDepartureService.confirmStoreOrigin({ adminId: req.session.user.id, latitude: req.body?.latitude, longitude: req.body?.longitude, reason: req.body?.reason });
+  res.json({ store_origin: origin });
+}));
+
 app.post("/api/admin/pre-departures/:id/cancel", auth, adminOnly, serviceRoute(async (req, res) => {
   const preDeparture = await preDepartureService.cancel({ actorUserId: req.session.user.id, id: routeId(req.params.id), reason: req.body?.reason, byAdmin: true });
   res.json({ pre_departure: preDeparture });

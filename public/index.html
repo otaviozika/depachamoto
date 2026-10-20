@@ -1999,7 +1999,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   <div class="modal-box" style="width:min(820px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
       <div>
-        <h2 style="margin:0">Corrigir endereço</h2>
+        <h2 id="addressFixHeading" style="margin:0">Corrigir endereço</h2>
         <div id="addressFixTitle" class="small muted" style="margin-top:4px"></div>
       </div>
       <button class="btn outline" type="button" onclick="closeAddressFix()">×</button>
@@ -4235,7 +4235,7 @@ function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,e
 function preDepartureRouteHtml(pd){
   const r=pd.route;
   const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
-  const source=r.source==='GOOGLE_ROUTES'
+  const source=['ROAD_MATRIX','GOOGLE_ROUTES'].includes(r.source)
     ? `Melhor sequência entre ${Number(r.evaluated)} possível(is), calculada pelas vias (sem trânsito ao vivo).`
     : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
   const stops=r.stops.map((s,i)=>{
@@ -4246,7 +4246,8 @@ function preDepartureRouteHtml(pd){
   return `<div class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${pd.counts.total} entrega(s)</h2>
     <div class="my-route-meta">Motoboy: ${escapeHtml(pd.courier?.name||'')} · Sacolas conferidas: ${pd.counts.checked}/${pd.counts.total}</div>
     <div class="route-hint">${escapeHtml(source)}</div><div class="route-stops">${stops}</div>
-    ${r.duration_minutes!=null?`<div class="route-total">Tempo total estimado da rota: <b>${preDepartureMinutes(r.duration_minutes)}</b></div>`:''}</div>`;
+    ${r.duration_minutes!=null?`<div class="route-total">Tempo total estimado da rota: <b>${preDepartureMinutes(r.duration_minutes)}</b></div>`:''}
+    ${r.attribution?`<div class="route-hint">Rotas: ${escapeHtml(r.attribution)}</div>`:''}</div>`;
 }
 function renderPreDeparture(){
   const card=$('preDepartureCard');if(!card)return;
@@ -5950,10 +5951,13 @@ function renderPreDepartureAdmin(){
   const s=st.settings,p=s.params||{};
   const flag=(key,title,desc)=>`<div class="pd-flag"><b>${title}</b><p class="small muted">${desc}</p><span class="pd-flag-state ${s[key]?'on':'off'}">${s[key]?'LIGADA':'DESLIGADA'}</span><button type="button" class="btn ${s[key]?'outline':'primary'}" data-flag="${key}" data-value="${s[key]?'false':'true'}" onclick="togglePreDepartureFlag(this.dataset.flag,this.dataset.value==='true')">${s[key]?'Desligar':'Ligar'}</button></div>`;
   $('preDepartureFlags').innerHTML=flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
-    flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pela rota do Google, sem trânsito ao vivo. Depende da conferência.')+
+    flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pelas vias, sem trânsito ao vivo. Depende da conferência e da chave do serviço de rotas.')+
     flag('address_correction','Correção de endereço','O admin corrige o endereço operacional antes e durante a rota.');
+  const origin=st.store_origin;
+  const providerLabel={openrouteservice:'openrouteservice (gratuito, OpenStreetMap)',google:'Google Routes'}[s.route_provider]||'não configurado (falta a chave no Render)';
+  const originLabel=origin?`${origin.source==='ADMIN_CONFIRMED'?'confirmado no mapa pelo admin':origin.source==='LONGE_ZONE'?'da zona LONGE':'localizado pelo serviço de rotas'} · ${Number(origin.latitude).toFixed(5)}, ${Number(origin.longitude).toFixed(5)}`:'ainda não confirmado';
   const num=(id,label,v,step,min,max)=>`<label>${label}<input id="${id}" type="number" step="${step}" min="${min}" max="${max}" value="${escapeHtml(String(v??''))}"></label>`;
-  $('preDepartureParams').innerHTML=`<div class="pd-params">
+  $('preDepartureParams').innerHTML=`<div class="pd-admin-search"><span class="small"><b>Serviço de rotas:</b> ${escapeHtml(providerLabel)}</span><span class="small"><b>Ponto de partida (loja):</b> ${escapeHtml(originLabel)}</span><button type="button" class="btn outline" onclick="openStoreOriginFix()">Conferir local da loja</button></div><div class="pd-params">
     ${num('pdAlpha','α · peso da duração (por min)',p.alpha,'0.1',0,10)}${num('pdBeta','β · peso das esperas (por min)',p.beta,'0.1',0,10)}
     ${num('pdGamma','γ · atraso crítico (por min²)',p.gamma,'0.05',0,10)}${num('pdLimit','L · limite de espera (min)',p.wait_limit_minutes,'1',5,240)}
     ${num('pdStop','Parada por entrega (min)',p.stop_minutes,'0.5',0,15)}
@@ -6049,6 +6053,7 @@ async function openAddressFix(platform,externalId){
     addressFixState={...d.address,point:null,location_source:null};
   }catch(err){return alert(err.message)}
   const a=addressFixState,f=a.current?.fields||{};
+  $('addressFixHeading').textContent='Corrigir endereço';
   $('addressFixTitle').textContent=`Pedido ${a.order_number?'#'+String(a.order_number).replace(/^#/,''):''} · ${a.platform==='ifood'?'iFood':'Anota AI'} · ${ADDRESS_STAGE_LABEL[a.stage]||a.stage}${a.customer_name?' · '+a.customer_name:''}`;
   const field=(id,label,v,cls='')=>`<label class="${cls}">${label}<input id="${id}" value="${escapeHtml(v||'')}"></label>`;
   const history=a.history.length?`<div class="address-history"><b>Histórico</b>${a.history.map(h=>`<div>v${Number(h.version)} · ${escapeHtml(localDate(h.changed_at))} · ${escapeHtml(h.changed_by||'admin')} · ${escapeHtml(h.reason)} → ${escapeHtml(h.address)}</div>`).join('')}</div>`:'';
@@ -6115,6 +6120,33 @@ async function saveAddressFix(){
     message('addressFixMsg',err.message,'err');
     $('addressFixSave').disabled=false;
   }
+}
+// Local da loja: o admin confirma no mapa o ponto de partida de todas as rotas.
+async function openStoreOriginFix(){
+  const origin=preDepartureAdminState?.store_origin;
+  addressFixState={mode:'store',point:null,location_source:null,current:origin||null};
+  if(addressFixMap){addressFixMap.map.remove();addressFixMap=null}
+  message('addressFixMsg','','');
+  $('addressFixHeading').textContent='Local da loja';
+  $('addressFixTitle').textContent='R. Tapajós, 846 - Barcelona, São Caetano do Sul · ponto de partida de todas as rotas';
+  $('addressFixBody').innerHTML=`<p class="small muted" style="margin-top:12px">Arraste o pino até a porta da loja. Este ponto é usado como saída de todas as rotas; sem ele confirmado, o sistema usa a localização encontrada pelo serviço de rotas.</p>
+    <div id="addressFixMap" class="address-map hidden"></div>
+    <div class="form address-form"><label class="full">Motivo (obrigatório)<textarea id="afReason" rows="2" maxlength="300" placeholder="Ex.: conferido no local"></textarea></label></div>
+    <div class="actions" style="margin-top:12px"><button id="addressFixSave" type="button" class="btn primary" disabled onclick="saveStoreOrigin()">Salvar local da loja</button></div>`;
+  $('addressFixModal').style.display='grid';
+  await showAddressFixPoint(origin?{latitude:origin.latitude,longitude:origin.longitude}:{latitude:-23.62446,longitude:-46.55491},'ADMIN_PIN');
+}
+async function saveStoreOrigin(){
+  const a=addressFixState;if(!a?.point)return;
+  const reason=$('afReason').value.trim();
+  if(reason.length<5)return message('addressFixMsg','Informe o motivo (mínimo de 5 caracteres).','err');
+  $('addressFixSave').disabled=true;
+  try{
+    await api('/api/admin/pre-departure/store-origin',{method:'PUT',body:JSON.stringify({latitude:a.point.latitude,longitude:a.point.longitude,reason})});
+    message('addressFixMsg','Local da loja confirmado. As próximas rotas partem deste ponto.','ok');
+    await loadPreDepartureAdmin();
+    setTimeout(closeAddressFix,1400);
+  }catch(err){message('addressFixMsg',err.message,'err');$('addressFixSave').disabled=false}
 }
 async function saveAddressOccurrence(){
   const a=addressFixState;if(!a)return;

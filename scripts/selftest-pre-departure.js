@@ -42,14 +42,17 @@ const minutesAgo = m => new Date(clock - m * 60000).toISOString();
 const STORE = { latitude: -23.62446, longitude: -46.55491 };
 const google = { matrix: 0, geocode: 0, resolve: 0, down: false, configured: true, onMatrix: null };
 const fakeRoutes = {
+  provider: "openrouteservice",
+  attribution: "© openrouteservice.org by HeiGIT · dados © OpenStreetMap",
   async resolveAddress() { google.resolve++; return { latitude: STORE.latitude + 0.0002, longitude: STORE.longitude }; },
   async geocodeAddress(address) {
     google.geocode++;
     if (google.down) throw Object.assign(new Error("Google indisponível (simulado)"), { status: 503, code: "GOOGLE_ROUTES_FAILED" });
     if (/inexistente/i.test(address)) throw Object.assign(new Error("O Google não localizou esse endereço."), { status: 503, code: "GOOGLE_ROUTES_ADDRESS_NOT_FOUND" });
-    if (/campinas/i.test(address)) return destinationPoint(STORE, 300, 80000);
+    if (/campinas/i.test(address)) return { ...destinationPoint(STORE, 300, 80000), precise: true };
     let h = 0; for (const c of address) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return destinationPoint(STORE, h % 360, 800 + (h % 2500));
+    // "Sem número" simula o serviço achando só a rua (aproximado).
+    return { ...destinationPoint(STORE, h % 360, 800 + (h % 2500)), precise: !/sem n[uú]mero/i.test(address) };
   },
   async travelMatrix(points) {
     google.matrix++;
@@ -61,7 +64,7 @@ const fakeRoutes = {
   }
 };
 const routesClientFactory = () => {
-  if (!google.configured) throw Object.assign(new Error("Configure GOOGLE_ROUTES_API_KEY no Render para usar a rota do Google."), { status: 503, code: "GOOGLE_ROUTES_NOT_CONFIGURED" });
+  if (!google.configured) throw Object.assign(new Error("Rota indisponível: configure OPENROUTESERVICE_API_KEY (gratuita) ou GOOGLE_ROUTES_API_KEY no Render."), { status: 503, code: "ROUTES_NOT_CONFIGURED" });
   return fakeRoutes;
 };
 
@@ -119,9 +122,11 @@ include("function preDepartureOrderDetails", "const preDepartureService = create
 include("const SERVICE_ERROR_FIELDS", "// Endereço corrigido pelo admin vale");
 include("async function applyOperationalAddresses", 'app.get("/api/admin/dashboard"');
 
+// Chave do serviço de rotas "configurada" (o cliente é o falso acima).
+let routesEnv = { OPENROUTESERVICE_API_KEY: "test-key" };
 const makeService = () => createPreDepartureService({
   pool, describeOrder: context.preDepartureOrderDetails, emitRealtime: context.emitRealtime, audit: context.auditBestEffort,
-  routesClientFactory, now: () => new Date(clock), logger: { error() {} }
+  routesClientFactory, now: () => new Date(clock), logger: { error() {} }, env: routesEnv
 });
 let service = makeService();
 context.preDepartureService = service;
@@ -431,7 +436,7 @@ await scenario(21, "Falha no serviço de roteirização", async () => {
   google.configured = false;
   const notConfigured = await makeService().computeRoute(pd.id, { force: true });
   google.configured = true;
-  assert.equal(notConfigured.route_error.code, "GOOGLE_ROUTES_NOT_CONFIGURED");
+  assert.equal(notConfigured.route_error.code, "ROUTES_NOT_CONFIGURED");
   const ex = await call("POST /api/admin/pre-departures/:id/sequence", { user: admin, params: { id: String(pd.id) }, body: { reason: "Google fora do ar no pico" } });
   pd = ex.body.pre_departure;
   assert.equal(pd.route_status, "ADMIN"); assert.equal(pd.ack_required, true); assert.equal(pd.can_dispatch, false);
@@ -446,16 +451,17 @@ await scenario(22, "Endereço incompleto ou ambíguo", async () => {
   const incomplete = await ifood(1800, null, { noCoords: true, number: "" });
   const far = await ifood(1801, null, { noCoords: true, city: "Campinas", street: "Av. Brasil", number: "10" });
   const missing = await anota(1802, null, { noCoords: true, street: "Rua Inexistente", number: "5" });
+  const rough = await anota(1803, null, { noCoords: true, street: "Rua Sem Número Conhecido", number: "5" });
   const codes = [];
-  for (const [c, o] of [[19, incomplete], [20, far], [21, missing]]) {
+  for (const [c, o] of [[19, incomplete], [20, far], [21, missing], [21, rough]]) {
     const pd = await checkAll(c, (await createPd(c, [o])).body.pre_departure);
     const v = (await route(c, pd)).body.pre_departure;
     assert.equal(v.route_status, "NEEDS_ADMIN"); assert.equal(v.status, "BLOCKED"); assert.equal(v.route, null);
     codes.push(v.route_error.code);
     await service.cancel({ actorUserId: c, courierId: c, id: pd.id });
   }
-  assert.deepEqual(codes, ["ADDRESS_INCOMPLETE", "ADDRESS_OUT_OF_REGION", "ADDRESS_NOT_FOUND"]);
-  return `sem número e sem pino → ${codes[0]}; localizado a 80 km → ${codes[1]}; não localizado → ${codes[2]}; todos vão para o admin, sem rota fictícia`;
+  assert.deepEqual(codes, ["ADDRESS_INCOMPLETE", "ADDRESS_OUT_OF_REGION", "ADDRESS_NOT_FOUND", "ADDRESS_AMBIGUOUS"]);
+  return `sem número e sem pino → ${codes[0]}; localizado a 80 km → ${codes[1]}; não localizado → ${codes[2]}; só a rua (aproximado) → ${codes[3]}; todos vão para o admin, sem rota fictícia`;
 });
 
 await scenario(23, "Recuperação de uma rota após perda de conexão", async () => {
@@ -824,6 +830,32 @@ await scenario("S4", "Rollback em um toque: desligar a conferência libera os pe
   const turnOn = await call("PUT /api/admin/pre-departure/settings", { user: admin, body: { flags: { route_planner: true }, reason: "Tentativa sem a conferência" } });
   assert.equal(turnOn.body.code, "ROUTE_PLANNER_REQUIRES_PRE_DEPARTURE");
   return `um PUT desliga conferência e sequência, cancela a pré-saída aberta e libera o pedido; outro motoboy sai direto (HTTP ${legacy.status}); sequência sem conferência é recusada`;
+});
+
+await scenario("S5", "Serviço de rotas gratuito: chave obrigatória e local da loja confirmado pelo admin", async () => {
+  await setFlags({ pre_departure: true, route_planner: false });
+  routesEnv = {};
+  service = makeService(); context.preDepartureService = service;
+  const refused = await call("PUT /api/admin/pre-departure/settings", { user: admin, body: { flags: { route_planner: true }, reason: "Ligar sem chave" } });
+  assert.equal(refused.status, 409); assert.equal(refused.body.code, "ROUTE_PROVIDER_NOT_CONFIGURED");
+  routesEnv = { OPENROUTESERVICE_API_KEY: "test-key" };
+  service = makeService(); context.preDepartureService = service;
+  const on = await call("PUT /api/admin/pre-departure/settings", { user: admin, body: { flags: { route_planner: true }, reason: "Chave gratuita configurada" } });
+  assert.equal(on.status, 200); assert.equal(on.body.settings.route_provider, "openrouteservice");
+  const far = await call("PUT /api/admin/pre-departure/store-origin", { user: admin, body: { latitude: -23.70, longitude: -46.60, reason: "Teste longe" } });
+  assert.equal(far.body.code, "STORE_ORIGIN_INVALID");
+  const store = destinationPoint(STORE, 90, 40);
+  const ok = await call("PUT /api/admin/pre-departure/store-origin", { user: admin, body: { ...store, reason: "Conferido na porta da loja" } });
+  assert.equal(ok.body.store_origin.source, "ADMIN_CONFIRMED");
+  const o = await ifood(3800, at(30, 1500));
+  let pd = await checkAll(38, (await createPd(38, [o])).body.pre_departure);
+  pd = (await route(38, pd)).body.pre_departure;
+  const stored = (await query("SELECT route FROM pre_departures WHERE id=$1", [pd.id])).rows[0].route;
+  assert.equal(stored.origin.source, "ADMIN_CONFIRMED"); assert.ok(Math.abs(stored.origin.latitude - store.latitude) < 1e-9);
+  assert.equal(stored.provider, "openrouteservice"); assert.match(pd.route.attribution, /OpenStreetMap/);
+  assert.ok(audits.some(a => a[1] === "ROUTE_STORE_ORIGIN_CONFIRMED"));
+  await service.cancel({ actorUserId: 38, courierId: 38, id: pd.id });
+  return `sem chave a sequência não liga (ROUTE_PROVIDER_NOT_CONFIGURED); com a chave gratuita liga; ponto fora da R. Tapajós recusado; rota parte do local confirmado pelo admin e mostra a atribuição do OpenStreetMap`;
 });
 
 const failed = results.filter(r => r.result === "FAIL");

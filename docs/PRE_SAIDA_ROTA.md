@@ -1,6 +1,6 @@
 # Pré-saída: conferência de sacolas, sequência de até 5 entregas e correção de endereço
 
-**Estado real (item 15):** desenvolvido e testado localmente. **Não homologado** com dados reais e **não publicado**. As três funções ficam atrás de feature flags que começam desligadas; com elas desligadas o app se comporta como antes (teste 40). A Routes API do Google não foi chamada com a chave real nesta entrega: os testes usam um Google simulado e a execução no navegador usou uma matriz de tempos sintética.
+**Estado real (item 15):** desenvolvido e testado localmente. **Não homologado** com dados reais e **não publicado**. As três funções ficam atrás de feature flags que começam desligadas; com elas desligadas o app se comporta como antes (teste 40). O serviço de rotas não foi chamado com uma chave real nesta entrega: os testes usam um serviço simulado e a execução no navegador usou uma matriz de tempos sintética. **Serviço de rotas padrão: openrouteservice (gratuito, OpenStreetMap)**, porque o Google pediu um pré-pagamento de R$ 200. Se um dia houver `GOOGLE_ROUTES_API_KEY`, o Google passa a ser usado automaticamente, sem mudar código.
 
 Este documento cobre os 15 itens pedidos. As simulações completas e as 120 sequências estão em [`ROTEIRIZACAO_SIMULACOES.md`](ROTEIRIZACAO_SIMULACOES.md).
 
@@ -37,7 +37,7 @@ MOTOBOY (flag "Conferência de sacolas" ligada)
                    PRÉ-SAÍDA  ──► POST …/orders/:id/check      (uma sacola por chamada, com versão da composição)
                          │       POST …/orders/:id/replace     (troca invalida só a sacola trocada e a rota)
                          ▼
-                   POST …/route ──► motor (lib/route-planner.js) + matriz do Google (sem transação aberta)
+                   POST …/route ──► motor (lib/route-planner.js) + matriz de tempos (openrouteservice ou Google, sem transação aberta)
                          ▼
                    MINHA ROTA (sequência, ETA, tempo total)
                          ▼
@@ -114,7 +114,7 @@ Nada é apagado nem alterado nas tabelas existentes.
 
 **Expiração e recuperação:** a pré-saída fica guardada no servidor. Uma queda de conexão não perde as conferências: reabrir o app traz tudo de volta, e reenviar uma conferência não duplica nada (teste 23). Cada abertura da tela renova a atividade. A pré-saída só expira depois de **45 min parada** (configurável de 10 a 240), e aí os pedidos são liberados. Se o servidor reiniciar no meio de um cálculo, o cálculo volta para `PENDING` e é refeito (teste 34).
 
-**Exceção administrativa:** se a rota não puder ser calculada (Google fora do ar ou endereço sem localização segura), a pré-saída fica `BLOCKED` e a saída não sai. O admin pode **definir a sequência** (ou manter a ordem digitada) informando um motivo, que vai para a Auditoria. O motoboy dá Ciente e sai (teste 21). A exceção vale só para a composição atual.
+**Exceção administrativa:** se a rota não puder ser calculada (serviço de rotas fora do ar ou endereço sem localização segura), a pré-saída fica `BLOCKED` e a saída não sai. O admin pode **definir a sequência** (ou manter a ordem digitada) informando um motivo, que vai para a Auditoria. O motoboy dá Ciente e sai (teste 21). A exceção vale só para a composição atual.
 
 ---
 
@@ -122,7 +122,7 @@ Nada é apagado nem alterado nas tabelas existentes.
 
 Unidades em minutos. Para a sequência π = (π1 … πn), com π0 = loja:
 
-- chegada: `a_k = Σ_{m=1..k} t(π_{m−1}, π_m) + (k−1)·s` (t = tempo pelas vias da matriz do Google; s = tempo de parada)
+- chegada: `a_k = Σ_{m=1..k} t(π_{m−1}, π_m) + (k−1)·s` (t = tempo pelas vias da matriz do serviço de rotas; s = tempo de parada)
 - duração: `D = a_n + s` (+ volta à loja, se configurado)
 - espera projetada do cliente: `W_k = idade_k + a_k`, com idade = minutos desde a **criação do pedido na plataforma** (`order_created_at` / `remote_created_at`), nunca o horário em que o número foi digitado
 - excesso: `E_k = max(0, W_k − L)`
@@ -174,7 +174,7 @@ Cada rota gravada guarda a justificativa: origem, parâmetros, matriz de minutos
 
 ## 9. Evidências dos testes
 
-`node scripts/selftest-pre-departure.js`: funções e SQL reais do `server.js` (inclusive o `POST /api/courier/depart` e o `createDispatchTransaction` existentes) contra PostgreSQL em WASM (PGlite), com o Google simulado. Resultado: **40/40 PASS + 4 extras PASS**.
+`node scripts/selftest-pre-departure.js`: funções e SQL reais do `server.js` (inclusive o `POST /api/courier/depart` e o `createDispatchTransaction` existentes) contra PostgreSQL em WASM (PGlite), com o serviço de rotas simulado. Resultado: **40/40 PASS + 5 extras PASS**.
 
 | # | Cenário | Resultado | Evidência (saída do teste) |
 |---|---|---|---|
@@ -198,8 +198,8 @@ Cada rota gravada guarda a justificativa: origem, parâmetros, matriz de minutos
 | 18 | Muito distante altera a sequência | PASS | sem ele A→C→B; com D a 8 km B→C→A→D (A, no caminho, vai para antes) |
 | 19 | 5 próximos | PASS | 120 sequências; C→A→E→B→D em 12,6 min |
 | 20 | 5 em bairros diferentes | PASS | custo 428,3 contra 910,5 da ordem digitada |
-| 21 | Falha do serviço de rotas | PASS | Google fora → BLOCKED/NEEDS_ADMIN sem tempos inventados e saída bloqueada; sem chave → GOOGLE_ROUTES_NOT_CONFIGURED; exceção do admin com motivo + Ciente → saída |
-| 22 | Endereço incompleto ou ambíguo | PASS | sem número e sem pino → ADDRESS_INCOMPLETE; a 80 km → ADDRESS_OUT_OF_REGION; não localizado → ADDRESS_NOT_FOUND |
+| 21 | Falha do serviço de rotas | PASS | serviço fora → BLOCKED/NEEDS_ADMIN sem tempos inventados e saída bloqueada; sem chave → ROUTES_NOT_CONFIGURED; exceção do admin com motivo + Ciente → saída |
+| 22 | Endereço incompleto ou ambíguo | PASS | sem número e sem pino → ADDRESS_INCOMPLETE; a 80 km → ADDRESS_OUT_OF_REGION; não localizado → ADDRESS_NOT_FOUND; só a rua (aproximado) → ADDRESS_AMBIGUOUS |
 | 23 | Recuperação após perda de conexão | PASS | conferências preservadas; reenvio não duplica; cálculo interrompido recalculado; tela aberta renova o prazo; Minha Rota volta após a saída |
 | 24 | Correção antes da conferência | PASS | versão 1; original intacto no payload e no histórico; Ciente exigido; rota usa o ponto corrigido |
 | 25 | Correção depois da conferência, antes da saída | PASS | 3/3 conferências mantidas; rota recalculada (v1→v2); saída bloqueada até o Ciente (ACK_REQUIRED) |
@@ -222,11 +222,12 @@ Cada rota gravada guarda a justificativa: origem, parâmetros, matriz de minutos
 | S2 | Pedido muda durante a saída | PASS | 409; nenhuma saída criada |
 | S3 | Permissões e transições | PASS | todas as rotas de admin com `adminOnly` e as do motoboy com `courierOnly`; transições inválidas recusadas; pré-saída de outro motoboy → 404 |
 | S4 | Rollback em um toque | PASS | um PUT desliga conferência e sequência, cancela a pré-saída aberta e libera o pedido; outro motoboy sai direto (201); sequência sem conferência é recusada |
+| S5 | Serviço de rotas gratuito | PASS | sem chave a sequência não liga (ROUTE_PROVIDER_NOT_CONFIGURED); com a chave liga; local da loja fora da R. Tapajós recusado; rota parte do local confirmado pelo admin e mostra a atribuição do OpenStreetMap |
 
 Observações:
 - O PGlite tem uma conexão só: as chamadas "simultâneas" se serializam. Quem garante a concorrência são os índices únicos e as travas do banco, que o teste exercita. Não houve teste de carga com várias instâncias.
 - Os testes 35 e 36 simulam o efeito da confirmação no banco. Os endpoints reais de confirmação seguem cobertos pelos testes já existentes citados.
-- `node scripts/selftest-route-planner.js`: 8/8 (permutações, parâmetros, matriz incompleta, conta à mão, desempate, pendentes, as 120 linhas, cliente da matriz com DRIVE + TRAFFIC_UNAWARE).
+- `node scripts/selftest-route-planner.js`: 10/10 (permutações, parâmetros, matriz incompleta, conta à mão, desempate, pendentes, as 120 linhas, cliente do Google com DRIVE + TRAFFIC_UNAWARE, cliente do openrouteservice e escolha do serviço pela chave).
 
 ## 10. Testes de regressão
 
@@ -237,26 +238,39 @@ Observações:
 
 ## 11. Prints reais das novas telas
 
-Capturados no Chromium com o app real (após prestart), PostgreSQL 16 local e **dados sintéticos** (pedidos Anota AI fictícios e matriz de tempos sintética em cache: o app não chamou o Google). Os tiles do mapa não carregaram porque a rede desse ambiente bloqueia o OpenStreetMap; o pino e o mapa funcionam. Arquivos em `docs/prints/pre-saida/`:
+Capturados no Chromium com o app real (após prestart), PostgreSQL 16 local e **dados sintéticos** (pedidos Anota AI fictícios e matriz de tempos sintética em cache: o app não chamou nenhum serviço de rotas). Os tiles do mapa não carregaram porque a rede desse ambiente bloqueia o OpenStreetMap; o pino e o mapa funcionam. Arquivos em `docs/prints/pre-saida/`:
 
 1. `01-motoboy-nova-saida-5-pedidos.jpg`: 5 pedidos validados; o botão vira "📦 Conferir sacolas".
 2. `02-conferir-sacolas-0-de-5.jpg`, `03-…-2-de-5.jpg`, `04-…-5-de-5.jpg`: conferência individual e progresso.
 3. `05-minha-rota-antes-da-saida.jpg`: 1ª a 5ª entrega, cliente, endereço, previsão, tempo total e CONFIRMAR SAÍDA.
 4. `06-minha-rota-em-andamento.jpg`: cronômetro existente começando na saída, próxima parada destacada com Waze/Google Maps e os cards de confirmação de sempre abaixo.
 5. `07-minha-rota-2-entregues.jpg`: 2 confirmadas pelo botão existente; a navegação passa à 3ª.
-6. `08-admin-conferencia-e-rotas.jpg`: flags, parâmetros, busca de pedido e rota em andamento.
+6. `08-admin-conferencia-e-rotas.jpg`: flags, serviço de rotas, ponto de partida, parâmetros, busca de pedido e pré-saídas/rotas.
 7. `09-admin-corrigir-endereco.jpg`: original × vigente, campos, motivo e pino arrastável.
-8. `10-admin-rota-recalculada.jpg`: rota v2 aguardando o Ciente. **Sem chave do Google, o recálculo em rota ficou "precisa do admin"**: a sequência anterior foi mantida e nada foi inventado. Com o Google, o recálculo dos pendentes está provado no teste 27.
+8. `10-admin-rota-recalculada.jpg`: rota v2 aguardando o Ciente. **Sem chave do serviço de rotas, o recálculo em rota ficou "precisa do admin"**: a sequência anterior foi mantida e nada foi inventado. Com o serviço de rotas, o recálculo dos pendentes está provado no teste 27.
 9. `11-motoboy-aviso-de-alteracao.jpg`, `12-motoboy-apos-ciente.jpg`, `13-card-com-endereco-corrigido.jpg`: aviso, Ciente, navegação de volta e card com o endereço, complemento e referência corrigidos.
+10. `14-admin-local-da-loja.jpg`: o admin confirma no mapa o ponto de partida de todas as rotas. O painel (`08`) mostra o serviço de rotas em uso (openrouteservice) e esse ponto. Na Minha Rota (`05`) aparece a atribuição exigida pelo serviço gratuito.
 
 ## 12. Dependências externas e configuração
 
-- **Google Routes API**: a mesma chave da regra LONGE (`GOOGLE_ROUTES_API_KEY` no Render, com a Routes API habilitada). Cada cálculo pede uma matriz (n+1)×(n+1) em uma chamada `computeRouteMatrix` com `DRIVE` + `TRAFFIC_UNAWARE` (sem trânsito ao vivo, como decidido): 4, 9, 16, 25 ou 36 elementos para 1 a 5 pedidos (máximo da API: 625 por chamada, 25 origens). Os pares ficam em cache por 30 dias. `computeRoutes` só é usado para localizar um endereço sem pino da plataforma e no "Localizar no mapa" do admin.
-- **Consumo esperado (limite superior, sem cache)**: setembro, 2.298 saídas → 481×4 + 1.549×9 + 236×16 + 28×25 + 4×36 = **20.485 elementos**. Outubro até o dia 20: **23.424 elementos**.
-- **Custo**: segundo a Woosmap, citando a tabela do Google, Route Matrix Essentials tem 10.000 chamadas gratuitas por mês e depois US$ 5,00 por 1.000 elementos. Em setembro seriam ~10,5 mil elementos cobrados, **~US$ 52/mês** no pior caso sem cache. **Confira na página oficial de preços do Google antes de orçar.** O limite de taxa (3.000 elementos/min) fica muito acima do pico. A geração única da zona LONGE usa o mesmo SKU.
-- **Falhas**: sem chave, com erro do Google ou com endereço não localizável, a pré-saída fica BLOCKED com o motivo e vai para o admin (exceção auditada). A chave nunca aparece em mensagens de erro.
-- **Mapa do admin**: Leaflet servido pelo app (já existente) e tiles do OpenStreetMap.
-- **Origem**: a loja como o Google a localiza (zona LONGE ou, sem zona, localização com conferência de no máximo 400 m em relação à R. Tapajós, 846), guardada em `app_settings.route_store_origin`. Nenhuma coordenada inventada é usada como origem da rota.
+**Serviço de rotas** (escolhido pela chave que existir no Render; o Google tem prioridade se as duas existirem):
+
+- **openrouteservice, o padrão (gratuito)**: chave `OPENROUTESERVICE_API_KEY`, sem cartão. Usa o mapa do OpenStreetMap, perfil carro, sem trânsito ao vivo.
+  - Plano gratuito (Standard): **500 matrizes/dia e 40/min**.
+  - Cada cálculo é **uma** matriz (n+1)×(n+1) em `/v2/matrix/driving-car`. Em outubro foram até ~130 saídas por dia, e os pares repetidos saem do cache (30 dias).
+  - A localização de endereço (`/geocode/search`) só é usada para pedido sem pino da plataforma e no "Localizar no mapa" do admin. Resultado só com a rua ou o bairro (sem o número) é tratado como **ambíguo** e vai para o admin (teste 22).
+  - O serviço exige a atribuição "© openrouteservice.org by HeiGIT · dados © OpenStreetMap", que aparece na Minha Rota.
+  - **Ponto de atenção: o site não deixa claro se o plano gratuito permite uso comercial.** Antes de depender dele, vale confirmar por e-mail (enquiry@openrouteservice.org). Se não puder, basta colocar a chave do Google no Render: nada muda no código.
+- **Google Routes (opcional)**: `GOOGLE_ROUTES_API_KEY`, a mesma da regra LONGE. A matriz usa `computeRouteMatrix` com `DRIVE` + `TRAFFIC_UNAWARE`: 4, 9, 16, 25 ou 36 elementos para 1 a 5 pedidos.
+  - Consumo máximo sem cache: setembro 20.485 elementos; outubro até o dia 20, 23.424.
+  - Segundo a Woosmap, citando a tabela do Google, são 10.000 gratuitos por mês e depois US$ 5,00 por 1.000 elementos: ~US$ 52/mês no pior caso. Confira na página oficial.
+  - No Brasil, alguns métodos de pagamento pedem um pré-pagamento de R$ 200 (vira saldo e é reembolsável ao encerrar a conta).
+
+**Falhas**: sem chave, com o serviço fora do ar, com limite estourado ou com endereço não localizável, a pré-saída fica BLOCKED com o motivo e vai para o admin (exceção auditada). A Sequência automática nem liga sem uma chave configurada. A chave nunca aparece em mensagens de erro.
+
+**Ponto de partida (loja)**: o admin confirma uma vez no mapa a porta da loja (R. Tapajós, 846), em **Operação → Conferir local da loja**. O sistema só aceita um ponto a até 1,5 km do endereço, e a confirmação fica na Auditoria. Sem essa confirmação, usa o ponto da zona LONGE (quando existir) ou a localização **precisa** do endereço pelo serviço de rotas (a até 400 m do esperado). Se nada disso existir, a rota vai para o admin. Nenhuma coordenada inventada vira origem.
+
+**Mapa do admin**: Leaflet servido pelo app (já existente) e tiles do OpenStreetMap.
 
 ## 13. Riscos remanescentes
 
@@ -264,28 +278,30 @@ Capturados no Chromium com o app real (após prestart), PostgreSQL 16 local e **
 - **Tempo de parada = 0** até haver dados: a previsão é de deslocamento. Ajustável no painel.
 - **Pino da plataforma**: a rota usa o pino quando existe. Se ele estiver numa casa vizinha, o tempo erra pouco. A navegação continua usando o endereço escrito.
 - **Origem em rua**: o recálculo parte da última entrega confirmada (sem GPS, por decisão de não inventar a posição). Se o motoboy confirmou e já seguiu, a origem fica um pouco para trás.
-- **Recálculo em rua sem Google**: mantém a sequência anterior e pede ação do admin ("Reordenar pendentes").
+- **Recálculo em rua sem o serviço de rotas** (fora do ar ou sem chave): mantém a sequência anterior e pede ação do admin ("Reordenar pendentes").
+- **openrouteservice gratuito**: uso comercial a confirmar com eles; tem limite diário (500 matrizes) e, segundo o fórum deles, quedas ocasionais (respostas 503). Nesses casos a rota vai para o admin.
+- **Endereços no OpenStreetMap**: o número das casas pode faltar em algumas ruas. Pedido sem pino da plataforma e com endereço só aproximado vai para o admin marcar o ponto.
 - **Pedido incluído pelo admin depois da saída** ou **transferido**: aparece "fora da sequência", no fim.
 - **Entrega fora da ordem** é aceita (cada plataforma confirma) e fica registrada como desvio em `pre_departure_events`.
 - **Concorrência real com várias instâncias** não foi testada sob carga; a proteção é por índices únicos e travas do banco.
-- **Ligar a "Sequência automática" sem a chave do Google** manda toda rota para o admin. Configure a chave antes.
-- **Dependência do PR #75 (LONGE)**: esta branch foi criada em cima dele. Faça o merge do #75 primeiro, ou este PR o inclui.
+- **Sequência automática sem chave**: o painel recusa ligar (teste S5).
 - Observado e **não alterado** (já existia): cards do Anota AI mostram o selo "AGUARDANDO iFOOD" enquanto esperam confirmação.
 
 ## 14. Ativação e rollback
 
 **Ativação, sem deploy extra (cada passo pelo painel Operação → "Conferência de sacolas e rotas", com motivo):**
 1. Merge e deploy com tudo desligado. Só as tabelas novas são criadas, vazias. Confira que a saída normal funciona.
-2. Configure `GOOGLE_ROUTES_API_KEY` no Render (o mesmo passo da LONGE).
-3. Ligue **Correção de endereço** (só o admin usa).
-4. Ligue **Conferência de sacolas** por 1 turno com a **Sequência automática desligada** (a Minha Rota mostra a ordem digitada). Observe a adesão.
-5. Ligue a **Sequência automática**.
-6. Monitore:
+2. Crie a chave gratuita em https://openrouteservice.org/dev/#/signup e coloque `OPENROUTESERVICE_API_KEY` no Render.
+3. Em **Operação → Conferir local da loja**, arraste o pino até a porta da loja e salve.
+4. Ligue **Correção de endereço** (só o admin usa).
+5. Ligue **Conferência de sacolas** por 1 turno com a **Sequência automática desligada** (a Minha Rota mostra a ordem digitada). Observe a adesão.
+6. Ligue a **Sequência automática**.
+7. Monitore:
    ```sql
    SELECT event, COUNT(*) FROM pre_departure_events WHERE created_at > NOW()-INTERVAL '1 day' GROUP BY 1 ORDER BY 2 DESC;
    SELECT status, route_status, COUNT(*) FROM pre_departures WHERE created_at > NOW()-INTERVAL '1 day' GROUP BY 1,2;
    ```
-   Fique atento a `ROUTE_NEEDS_ADMIN`, `BLOCKED`, `EXPIRED` e `ROUTE_SEQUENCE_DEVIATION`. Acompanhe o uso da Routes API no Google Cloud.
+   Fique atento a `ROUTE_NEEDS_ADMIN`, `BLOCKED`, `EXPIRED` e `ROUTE_SEQUENCE_DEVIATION`. O uso diário da chave aparece no painel do openrouteservice.
 
 **Rollback:**
 - Imediato, sem deploy: desligue **Conferência de sacolas**. No mesmo toque a Sequência automática desliga, as pré-saídas abertas são canceladas, os pedidos reservados são liberados (extra S4) e os celulares recarregam pelo evento em tempo real: a saída volta a ser direta. As saídas já em rua seguem normais e continuam mostrando a Minha Rota (só exibição).
@@ -296,8 +312,8 @@ Capturados no Chromium com o app real (após prestart), PostgreSQL 16 local e **
 | Item | Estado |
 |---|---|
 | Desenvolvido | Sim |
-| Testado | Sim, localmente: 40/40 + 4 extras, 74/74 regressão, `dispatch-flow` após prestart, smoke de staging, navegador real com dados sintéticos |
-| Homologado (dados reais, Google real) | **Não** |
+| Testado | Sim, localmente: 40/40 + 5 extras, 74/74 regressão, `dispatch-flow` após prestart, smoke de staging, navegador real com dados sintéticos |
+| Homologado (dados reais, serviço de rotas real) | **Não** |
 | Publicado em produção | **Não**. Flags desligadas por padrão |
 
-Fonte do preço citado: [Woosmap: Google Maps API Pricing in 2026](https://www.woosmap.com/blog/google-maps-api-pricing-breakdown); documentação oficial: [Routes API Usage and Billing](https://developers.google.com/maps/documentation/routes/usage-and-billing).
+Fontes: [openrouteservice: planos](https://openrouteservice.org/plans/), [Termos de uso](https://openrouteservice.org/?p=940), [fórum: limite da matriz](https://ask.openrouteservice.org/t/matrix-api-3500-route-limit/5331), [Google Cloud: formas de pagamento](https://cloud.google.com/billing/docs/how-to/payment-methods?hl=pt). Preço do Google citado: [Woosmap: Google Maps API Pricing in 2026](https://www.woosmap.com/blog/google-maps-api-pricing-breakdown); documentação oficial: [Routes API Usage and Billing](https://developers.google.com/maps/documentation/routes/usage-and-billing).
