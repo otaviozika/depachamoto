@@ -960,7 +960,7 @@
 body.staging-mode .staging-banner{display:block}
 body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
 </style>
-<link rel="stylesheet" href="/courier-dark.css?v=3">
+<link rel="stylesheet" href="/courier-dark.css?v=4">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 <style>/* longe-rule-v1 */
 .longe-map{height:380px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
@@ -977,6 +977,82 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 #adminApp .longe-step,#adminApp .longe-order{border-color:#252b33}
 #adminApp .longe-map{border-color:#252b33}
 @media(max-width:850px){.longe-steps{grid-template-columns:1fr}}
+/* Pré-saída: conferência de sacolas e Minha Rota (motoboy) */
+#courierApp .pre-departure-card{padding:20px;border-top:4px solid var(--courier-accent);scroll-margin-top:78px}
+.pd-progress{display:flex;align-items:center;gap:12px;margin:12px 0 14px;font-weight:850;color:#111827;font-size:15px}
+.pd-progress-bar{flex:1;height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}
+.pd-progress-bar span{display:block;height:100%;background:#16a34a;border-radius:999px;transition:width .2s}
+.pd-bags{display:grid;gap:10px}
+.pd-bag{padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
+.pd-bag.checked{border-color:#86efac;background:#f0fdf4}
+.pd-bag-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pd-bag-number{font-size:25px;font-weight:950;letter-spacing:.3px;color:#111827;font-variant-numeric:tabular-nums}
+.pd-bag-state{margin-left:auto;font-size:12px;font-weight:900;padding:4px 9px;border-radius:999px;background:#fef3c7;color:#92400e}
+.pd-bag.checked .pd-bag-state{background:#dcfce7;color:#166534}
+.pd-bag-meta{margin-top:6px;font-size:13px;color:#475569;overflow-wrap:anywhere}
+.pd-check{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;font-size:15px;font-weight:750;color:#111827;cursor:pointer;min-height:54px}
+.pd-check input{width:26px;height:26px;flex:0 0 26px;margin:0;accent-color:#16a34a}
+.pd-link{background:none;border:0;padding:8px 0 0;color:#475569;font-size:13px;text-decoration:underline;cursor:pointer}
+.pd-alert{margin:12px 0;padding:13px 14px;border-radius:12px;border:1px solid #fcd34d;background:#fffbeb;color:#78350f;font-size:14px;line-height:1.45}
+.pd-alert.blocked{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d}
+.pd-alert b{display:block;margin-bottom:4px}
+.pd-alert .btn{margin-top:10px;width:100%;min-height:48px}
+.pd-actions{display:grid;gap:8px;margin-top:16px}
+.pd-actions .btn{width:100%;min-height:56px;border-radius:13px;font-size:16px}
+.pd-cancel{background:none;border:0;color:#64748b;text-decoration:underline;font-size:13px;padding:8px;cursor:pointer}
+.my-route{margin:14px 0;padding:18px;border-radius:18px;background:linear-gradient(135deg,#111827,#253247);color:#fff}
+.my-route-kicker{font-size:10px;font-weight:950;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.my-route h2{margin:4px 0 2px;font-size:23px;color:#fff}
+.my-route-meta{font-size:13px;color:rgba(255,255,255,.76)}
+.route-stops{display:grid;gap:10px;margin-top:14px}
+.route-stop{padding:14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
+.route-stop.next{background:#fff;color:#111827;border-color:#fff}
+.route-stop.done{opacity:.62}
+.route-stop-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.route-stop-pos{font-size:12px;font-weight:950;letter-spacing:.6px;text-transform:uppercase}
+.route-stop-number{font-size:21px;font-weight:950;font-variant-numeric:tabular-nums}
+.route-stop-tag{margin-left:auto;font-size:11px;font-weight:900;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.14)}
+.route-stop.next .route-stop-tag{background:#f59e0b;color:#111827}
+.route-stop.done .route-stop-tag{background:#166534;color:#fff}
+.route-stop-line{margin-top:6px;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.route-stop-line span{opacity:.72}
+.route-stop-changed{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:13px;font-weight:800}
+.route-total{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.16);font-size:14px}
+.route-total b{font-size:18px}
+.route-stop .delivery-navigation{margin-top:12px}
+.route-hint{margin-top:10px;font-size:12px;color:rgba(255,255,255,.7)}
+.my-route .pd-alert{margin:12px 0 0}
+.delivery-address-changed{margin:8px 0;padding:8px 10px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:13px;font-weight:800}
+/* Pré-saída: painel do admin (modo escuro) */
+.pd-admin-flags{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:15px}
+.pd-flag{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pd-flag p{margin:0}
+.pd-flag-state{font-weight:900}.pd-flag-state.on{color:#22c55e}.pd-flag-state.off{color:var(--muted)}
+.pd-params{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 15px 15px;align-items:end}
+.pd-params label{font-size:12px;color:var(--muted)}
+.pd-params input,.pd-params select{width:100%;margin-top:4px;padding:9px;border:1px solid var(--line);border-radius:9px;background:transparent;color:inherit}
+.pd-admin-list{display:grid;gap:12px;padding:0 15px 15px}
+.pd-admin-item{border:1px solid var(--line);border-radius:12px;padding:14px}
+.pd-admin-item-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pd-admin-orders{display:grid;gap:6px;margin-top:10px}
+.pd-admin-order{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+.pd-admin-order .btn{padding:5px 9px;font-size:11px}
+.pd-admin-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pd-admin-search{display:flex;gap:8px;flex-wrap:wrap;padding:0 15px 15px;align-items:center}
+.pd-admin-search input{flex:1;min-width:140px;padding:10px;border:1px solid var(--line);border-radius:9px;background:transparent;color:inherit}
+.address-compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.address-box{border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.address-box b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.address-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+.address-form label{font-size:12px}.address-form .wide{grid-column:span 2}.address-form .full{grid-column:1/-1}
+.address-form input,.address-form textarea{width:100%;margin-top:4px;padding:9px;border:1px solid var(--line);border-radius:9px}
+.address-map{height:260px;border-radius:12px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
+.address-history{margin-top:12px;font-size:12px;color:var(--muted)}
+.address-pin{background:none!important;border:0!important}
+.address-pin span{display:block;width:24px;height:24px;box-sizing:border-box;border-radius:50% 50% 50% 0;background:#e11d2e;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);transform:rotate(-45deg)}
+#adminApp .pd-flag,#adminApp .pd-admin-item,#adminApp .address-box,#adminApp .address-map{border-color:#252b33}
+.admin-dark-modal .address-box,.admin-dark-modal .address-map{border-color:#2c333d}.admin-dark-modal .address-box b,.admin-dark-modal .address-history,.admin-dark-modal .small.muted{color:#8b98aa}
+@media(max-width:760px){.pd-admin-flags{grid-template-columns:1fr}.pd-params{grid-template-columns:repeat(2,minmax(0,1fr))}.address-compare{grid-template-columns:1fr}.address-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -1201,6 +1277,14 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <div class="section" style="margin-top:18px">
           <div class="section-head"><div><b>⚠ Exceções de tempo</b><div class="small muted">Mostra somente quem atingiu atenção, atraso ou crítico.</div></div><button class="btn outline" onclick="loadOperations()">Atualizar</button></div>
           <div id="operationalExceptions" class="exception-list"></div>
+        </div>
+        <div id="preDepartureAdmin" class="section" style="margin-top:18px">
+          <div class="section-head"><div><b>Conferência de sacolas e rotas</b><div class="small muted">Pré-saídas abertas, sequência das entregas e correção de endereço. Tudo começa desligado.</div></div><button class="btn outline" type="button" onclick="loadPreDepartureAdmin()">Atualizar</button></div>
+          <div id="preDepartureFlags" class="pd-admin-flags"></div>
+          <div id="preDepartureParams"></div>
+          <div class="pd-admin-search"><b class="small">Corrigir endereço de um pedido</b><input id="addressLookupNumber" placeholder="#4521" onkeydown="if(event.key==='Enter')lookupOrderAddress()"><button class="btn outline" type="button" onclick="lookupOrderAddress()">Buscar pedido</button><span id="addressLookupResults" class="small"></span></div>
+          <div id="preDepartureOpen" class="pd-admin-list"></div>
+          <div id="preDepartureRoutes" class="pd-admin-list"></div>
         </div>
         <div class="analytics-grid">
           <div class="section">
@@ -1802,6 +1886,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         </form>
         <div id="departureMsg"></div>
       </div>
+      <div id="preDepartureCard" class="card pre-departure-card hidden" aria-live="polite"></div>
     </section>
 
     <section id="courierRouteTab" class="courier-tab-panel" data-courier-panel="route">
@@ -1811,6 +1896,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         <p>Acompanhe a rota ativa e confirme as entregas pendentes.</p>
       </div>
       <div id="activeDispatch"></div>
+      <div id="courierMyRoute"></div>
       <div id="courierDeliveriesCard" class="card" style="margin-bottom:18px">
         <div class="courier-card-heading">
           <div>
@@ -1909,6 +1995,19 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   </nav>
 </div>
 
+<div id="addressFixModal" class="modal admin-dark-modal">
+  <div class="modal-box" style="width:min(820px,100%)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h2 style="margin:0">Corrigir endereço</h2>
+        <div id="addressFixTitle" class="small muted" style="margin-top:4px"></div>
+      </div>
+      <button class="btn outline" type="button" onclick="closeAddressFix()">×</button>
+    </div>
+    <div id="addressFixMsg"></div>
+    <div id="addressFixBody"></div>
+  </div>
+</div>
 <div id="longeOrdersModal" class="modal">
   <div class="modal-box" style="width:min(760px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -2099,6 +2198,10 @@ let paymentSheetState={month:'',configured:false,lunch_url:'',dinner_url:'',clos
 let attendanceState={date:null,summary:{present:0,outside:0,available:0,ended:0,absent:0},rows:[]};
 let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownTimer=null;
 let courierAttendancePresent=false,courierShiftEnded=false;
+// Pré-saída (conferência de sacolas): estado carregado em loadCourierPreDeparture.
+const PRE_DEPARTURE_OPEN=['DRAFT','AWAITING_CHECK','PARTIALLY_CHECKED','CHECKED','ROUTE_READY','BLOCKED'];
+let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},pre_departure:null,route:null};
+let preDepartureBusy=false;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
 
@@ -2426,7 +2529,7 @@ function updateCourierDepartureEligibility(){
   else if(offline)btn.textContent='🔒 Conexão necessária para validar pedido';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
   else if(!valid)btn.textContent='🔒 Valide os pedidos';
-  else btn.textContent='🛵 Confirmar e sair para entrega';
+  else btn.textContent=courierPreDeparture.enabled?.pre_departure?'📦 Conferir sacolas':'🛵 Confirmar e sair para entrega';
 
   const n=$('orderFields')?.querySelectorAll('.order-row').length||0;
   if($('addOrderBtn'))$('addOrderBtn').disabled=attendanceLocked||shiftLocked||checkinLocked||n>=5;
@@ -4055,6 +4158,7 @@ function courierDeliveryRow(x){
     </div>
     ${courierDeliveryCustomerHtml(x)}
     ${courierDeliveryAddressHtml(x)}
+    ${x.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin. Siga este endereço.</div>':''}
     ${courierDeliveryDetailsHtml(x)}
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
@@ -4103,6 +4207,204 @@ async function loadCourierDeliveries(){
     $('courierDeliveriesList').innerHTML=out;
   }catch(err){
     $('courierDeliveriesList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// Pré-saída (com a flag ligada): conferir cada sacola → Minha Rota → saída definitiva
+// pelo mesmo POST /api/courier/depart, que recebe só o id da pré-saída.
+async function loadCourierPreDeparture(){
+  if(!me||me.role!=='courier')return courierPreDeparture;
+  try{courierPreDeparture=await api('/api/courier/pre-departure')}catch(err){return courierPreDeparture}
+  renderPreDeparture();
+  renderCourierMyRoute();
+  return courierPreDeparture;
+}
+function preDepartureMinutes(v){return v===null||v===undefined?'—':`${Math.max(1,Math.round(Number(v)))} min`}
+function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,eta=null,changed=false}){
+  const tag=state==='DELIVERED'?'ENTREGUE':state==='CANCELLED'?'CANCELADO':next?'PRÓXIMA':'PENDENTE';
+  const nav=showNav&&stop.navigation?courierDeliveryNavigationButtons({navigation:stop.navigation}):'';
+  return `<div class="route-stop ${next?'next':''} ${state!=='PENDING'?'done':''}">
+    <div class="route-stop-head"><span class="route-stop-pos">${Number(position)}ª entrega</span><span class="route-stop-number">Pedido ${escapeHtml(stop.order_number)}</span><span class="route-stop-tag">${tag}</span></div>
+    ${stop.customer_name?`<div class="route-stop-line"><span>Cliente:</span> ${escapeHtml(stop.customer_name)}</div>`:''}
+    ${stop.address_text?`<div class="route-stop-line"><span>Endereço:</span> ${escapeHtml(stop.address_text)}</div>`:''}
+    ${eta!==null&&eta!==undefined?`<div class="route-stop-line"><span>Previsão de chegada:</span> <b>${preDepartureMinutes(eta)}</b></div>`:''}
+    ${changed?'<div class="route-stop-changed">Endereço alterado pelo admin</div>':''}
+    ${nav}
+  </div>`;
+}
+function preDepartureRouteHtml(pd){
+  const r=pd.route;
+  const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
+  const source=r.source==='GOOGLE_ROUTES'
+    ? `Melhor sequência entre ${Number(r.evaluated)} possível(is), calculada pelas vias (sem trânsito ao vivo).`
+    : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
+  const stops=r.stops.map((s,i)=>{
+    const o=byKey.get(s.platform+':'+s.external_order_id)||{};
+    return routeStopHtml({order_number:s.order_number,customer_name:o.customer_name||s.customer_name,address_text:o.address?.text||''},
+      {position:s.sequence,next:i===0,eta:s.arrival_minutes,changed:!!o.address_override});
+  }).join('');
+  return `<div class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${pd.counts.total} entrega(s)</h2>
+    <div class="my-route-meta">Motoboy: ${escapeHtml(pd.courier?.name||'')} · Sacolas conferidas: ${pd.counts.checked}/${pd.counts.total}</div>
+    <div class="route-hint">${escapeHtml(source)}</div><div class="route-stops">${stops}</div>
+    ${r.duration_minutes!=null?`<div class="route-total">Tempo total estimado da rota: <b>${preDepartureMinutes(r.duration_minutes)}</b></div>`:''}</div>`;
+}
+function renderPreDeparture(){
+  const card=$('preDepartureCard');if(!card)return;
+  const enabled=courierPreDeparture.enabled?.pre_departure===true;
+  const pd=enabled?courierPreDeparture.pre_departure:null;
+  updateCourierDepartureEligibility();
+  $('departureCard')?.classList.toggle('hidden',!!pd);
+  card.classList.toggle('hidden',!pd);
+  if(!pd){card.innerHTML='';return}
+  const total=pd.counts.total,checked=pd.counts.checked,allChecked=checked===total,blocked=pd.status==='BLOCKED';
+  const ack=pd.ack_required?`<div class="pd-alert"><b>O admin alterou um endereço</b>Confira o endereço destacado. A conferência das sacolas continua valendo.<button type="button" class="btn primary" ${preDepartureBusy?'disabled':''} onclick="ackPreDeparture()">Ciente</button></div>`:'';
+  const block=blocked?`<div class="pd-alert blocked"><b>Aguardando o admin</b>${escapeHtml(pd.blocked_reason?.message||'Pré-saída bloqueada.')}${pd.route_error?.retryable?`<button type="button" class="btn outline" ${preDepartureBusy?'disabled':''} onclick="calculatePreDepartureRoute(true)">Tentar calcular de novo</button>`:''}</div>`:'';
+  const bags=pd.orders.map(o=>`<div class="pd-bag ${o.checked?'checked':''}">
+      <div class="pd-bag-head"><span class="pd-bag-number">${escapeHtml(o.order_number)}</span><span class="delivery-platform-logo ${o.platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(o.platform_label)}</span><span class="pd-bag-state">${o.checked?'Conferida':'Pendente'}</span></div>
+      ${o.customer_name?`<div class="pd-bag-meta">Cliente: ${escapeHtml(o.customer_name)}</div>`:''}
+      ${o.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin</div>':''}
+      <label class="pd-check"><input type="checkbox" ${o.checked?'checked':''} ${preDepartureBusy?'disabled':''} onchange="togglePreDepartureBag(${Number(o.id)},this.checked)"><span>Confirmo que a comanda corresponde à sacola.</span></label>
+      <button type="button" class="pd-link" onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
+    </div>`).join('');
+  const footer=pd.route_valid&&pd.route&&allChecked
+    ? preDepartureRouteHtml(pd)+`<div class="pd-actions"><button type="button" class="btn primary" ${pd.can_dispatch&&!preDepartureBusy?'':'disabled'} onclick="confirmPreDepartureDeparture()">🛵 CONFIRMAR SAÍDA</button></div>`
+    : `<div class="pd-actions"><button type="button" class="btn primary" ${allChecked&&!blocked&&!preDepartureBusy?'':'disabled'} onclick="calculatePreDepartureRoute(false)">CONFIRMAR SACOLAS E CALCULAR ROTA</button>${allChecked?'':`<div class="small muted">Confira ${total-checked} sacola(s) pendente(s) para liberar.</div>`}</div>`;
+  card.innerHTML=`<div class="courier-card-heading"><div><div class="courier-eyebrow">Pré-saída</div><h2>Conferir sacolas</h2><div class="small muted">Motoboy: ${escapeHtml(pd.courier?.name||me?.name||'')}</div></div><span class="badge ${allChecked?'green':'gray'}">${checked} de ${total}</span></div>
+    <p class="courier-helper">Compare cada comanda com o número da sacola e confirme uma por uma. Esta confirmação é a sua declaração de que conferiu.</p>
+    <div class="pd-progress">Sacolas conferidas: ${checked}/${total}<span class="pd-progress-bar"><span style="width:${total?Math.round(checked*100/total):0}%"></span></span></div>
+    ${ack}${block}<div class="pd-bags">${bags}</div>${footer}
+    <div id="preDepartureMsg"></div>
+    <button type="button" class="pd-cancel" onclick="cancelPreDeparture()">Cancelar pré-saída e liberar os pedidos</button>`;
+}
+async function preDepartureAction(request){
+  if(preDepartureBusy)return false;
+  preDepartureBusy=true;renderPreDeparture();
+  try{
+    const d=await request();
+    if(d?.pre_departure)courierPreDeparture.pre_departure=PRE_DEPARTURE_OPEN.includes(d.pre_departure.status)?d.pre_departure:null;
+    preDepartureBusy=false;renderPreDeparture();
+    return true;
+  }catch(err){
+    preDepartureBusy=false;
+    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND'].includes(err.code))await loadCourierPreDeparture();
+    else renderPreDeparture();
+    message('preDepartureMsg',err.message,'err');
+    return false;
+  }
+}
+function preDeparturePost(path,body={}){
+  const pd=courierPreDeparture.pre_departure;
+  return api(`/api/courier/pre-departures/${Number(pd.id)}${path}`,{method:'POST',body:JSON.stringify(body)});
+}
+function togglePreDepartureBag(orderId,checked){
+  const pd=courierPreDeparture.pre_departure;if(!pd)return;
+  preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,{composition_version:pd.composition_version,checked:checked===true}));
+}
+function calculatePreDepartureRoute(retry){
+  if(!courierPreDeparture.pre_departure)return;
+  preDepartureAction(()=>preDeparturePost('/route',{retry:retry===true}));
+}
+function ackPreDeparture(){
+  const pd=courierPreDeparture.pre_departure;if(!pd)return;
+  preDepartureAction(()=>preDeparturePost('/ack',{version:pd.version}));
+}
+async function cancelPreDeparture(){
+  if(!courierPreDeparture.pre_departure||!confirm('Cancelar a pré-saída? Os pedidos ficam livres e a conferência é descartada.'))return;
+  if(await preDepartureAction(()=>preDeparturePost('/cancel',{reason:'Cancelada pelo motoboy'})))courierPreDeparture.pre_departure=null;
+  renderPreDeparture();
+}
+async function replacePreDepartureOrder(orderId){
+  const pd=courierPreDeparture.pre_departure;if(!pd)return;
+  const typed=prompt('Número do pedido correto (ex.: #4521):');
+  if(typed===null||!typed.trim())return;
+  const body={composition_version:pd.composition_version,order_number:typed.trim()};
+  const ok=await preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/replace`,body).catch(async err=>{
+    if(err.code!=='ORDER_PLATFORM_REQUIRED')throw err;
+    const choice=prompt('Esse número existe no iFood e no Anota AI. Digite 1 para iFood ou 2 para Anota AI:');
+    if(!['1','2'].includes(String(choice||'').trim()))throw err;
+    return preDeparturePost(`/orders/${Number(orderId)}/replace`,{...body,platform:String(choice).trim()==='1'?'ifood':'anotaai'});
+  }));
+  if(ok)message('preDepartureMsg','Pedido trocado. Confira a sacola nova.','ok');
+}
+async function startPreDeparture(orders){
+  const btn=$('departureSubmit');btn.disabled=true;
+  try{
+    const d=await api('/api/courier/pre-departures',{method:'POST',body:JSON.stringify({
+      order_numbers:orders,order_count:Number($('departureCount').value),platform_selections:getOrderPlatformSelections()
+    })});
+    courierPreDeparture.pre_departure=d.pre_departure;
+    resetOrderFields();
+    message('departureMsg','','');
+    renderPreDeparture();
+    $('preDepartureCard')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(err){
+    if(err.code==='ORDER_PLATFORM_REQUIRED'&&Array.isArray(err.payload?.ambiguities)){
+      markPlatformAmbiguities(err.payload.ambiguities);
+      message('departureMsg','Escolha a plataforma dos pedidos destacados e toque em Conferir sacolas novamente.','err');
+    }else{
+      if(['PRE_DEPARTURE_OPEN','FEATURE_DISABLED'].includes(err.code))await loadCourierPreDeparture();
+      message('departureMsg',err.code==='FEATURE_DISABLED'?'A conferência de sacolas foi desligada. Toque de novo para sair direto.':err.message,'err');
+    }
+  }finally{btn.disabled=false;updateCourierDepartureEligibility()}
+}
+async function confirmPreDepartureDeparture(){
+  const pd=courierPreDeparture.pre_departure;if(!pd||preDepartureBusy)return;
+  if(!navigator.onLine)return message('preDepartureMsg','Conexão obrigatória para confirmar a saída.','err');
+  preDepartureBusy=true;renderPreDeparture();
+  // O token da saída é o da pré-saída: reenviar após queda de conexão nunca duplica.
+  const payload={pre_departure_id:pd.id,composition_version:pd.composition_version,confirm_recent_orders:false};
+  const orders=pd.orders.map(o=>o.order_number);
+  try{
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const d=await api('/api/courier/depart',{method:'POST',body:JSON.stringify(payload)});
+        courierPreDeparture.pre_departure=null;
+        showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
+        message('departureMsg',`Saída registrada com ${orders.length} pedido(s). Siga a sequência da Minha Rota.`,'ok');
+        preDepartureBusy=false;
+        await loadCourier();
+        activateCourierTab('route',null,true);
+        return;
+      }catch(err){
+        if(err.code==='RECENT_ORDER_CONFIRMATION'){
+          const text=(err.payload?.recent||[]).map(x=>`${x.order_number} já usado por ${x.courier_name}`).join('\n');
+          if(confirm(`${text}\n\nPode ser erro de digitação. Deseja continuar mesmo assim?`)){payload.confirm_recent_orders=true;continue}
+          return;
+        }
+        if(err.code==='NETWORK_ERROR'&&attempt<2){await new Promise(r=>setTimeout(r,1500));continue}
+        throw err;
+      }
+    }
+  }catch(err){
+    preDepartureBusy=false;
+    await loadCourierPreDeparture();
+    message('preDepartureMsg',err.message,'err');
+  }finally{
+    preDepartureBusy=false;
+    renderPreDeparture();
+  }
+}
+function renderCourierMyRoute(){
+  const el=$('courierMyRoute');if(!el)return;
+  const r=courierPreDeparture.route;
+  if(!r||r.dispatch_status!=='ON_ROAD'){el.innerHTML='';return}
+  const changed=r.stops.filter(s=>s.changed_unacked);
+  const ack=r.ack_required?`<div class="pd-alert"><b>Rota atualizada pelo admin</b>${changed.length?`Endereço alterado: ${changed.map(s=>escapeHtml(s.order_number)).join(', ')}. `:''}Consulte as alterações somente com a moto parada, em local seguro.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`:'';
+  const stops=r.stops.map(s=>routeStopHtml({order_number:s.order_number,customer_name:s.customer_name,address_text:s.address?.text||'',navigation:s.navigation},
+    {position:s.sequence,state:s.state,next:s.is_next,showNav:s.is_next&&!r.ack_required,changed:s.changed_unacked})).join('');
+  const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
+  el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
+    <div class="my-route-meta">${r.route_status==='ADMIN'?'Sequência definida pelo admin.':'Siga a sequência calculada.'} Confirme cada entrega no card do pedido, em Entregas e confirmações.</div>
+    ${ack}<div class="route-stops">${stops}</div>${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
+}
+async function ackCourierRoute(dispatchId,version){
+  try{
+    const d=await api(`/api/courier/routes/${Number(dispatchId)}/ack`,{method:'POST',body:JSON.stringify({route_version:Number(version)})});
+    courierPreDeparture.route=d.route;
+    renderCourierMyRoute();
+  }catch(err){
+    alert(err.message);
+    await loadCourierPreDeparture();
   }
 }
 
@@ -4171,7 +4473,7 @@ async function submitDeliveryConfirmation(e){
 let courierActiveDispatch=null;
 let courierFirstDashboardLoad=true;
 async function loadCourier({related=true}={}){
-  const d=await api('/api/courier/dashboard');
+  const [d]=await Promise.all([api('/api/courier/dashboard'),loadCourierPreDeparture()]);
   me.mustChangePassword=!!d.mustChangePassword;
   courierActiveDispatch=d.active||null;
   courierAttendancePresent=!!d.attendance?.present;
@@ -4195,7 +4497,7 @@ async function loadCourier({related=true}={}){
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
   $('myHistory').innerHTML=d.recent.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span></td></tr>`}).join('')||empty(3);
 
-  $('departureCard').classList.remove('hidden');
+  $('departureCard').classList.toggle('hidden',!!courierPreDeparture.pre_departure);
   if(!$('orderFields').querySelector('.order-row'))resetOrderFields();
 
   if(d.active){
@@ -4210,7 +4512,7 @@ async function loadCourier({related=true}={}){
       <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${resolved} de ${total} pedidos resolvidos</span></div>
       <div class="courier-route-clock"><span>Saída às <b>${localTime(x.departed_at)}</b></span><strong class="big live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</strong><small>Tempo de entrega • encerramento automático após a última confirmação</small></div>
       <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" onclick="requestAdminRelease(${x.id})">Solicitar liberação ao admin</button></div>
-      <button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>
+      ${courierPreDeparture.enabled?.pre_departure?'':'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>'}
     </section>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');note.id='currentDepartureNote';note.className='current-active-note';
@@ -4348,6 +4650,8 @@ async function depart(e){
     return message('departureMsg','Valide cada pedido e, quando o mesmo número existir nas duas plataformas, escolha iFood ou Anota AI antes de sair.','err');
   }
 
+  // Conferência de sacolas ligada: cria a pré-saída; a saída definitiva vem depois.
+  if(courierPreDeparture.enabled?.pre_departure)return startPreDeparture(orders);
   if(!confirm(`Você está saindo com ${orders.length} pedidos: ${orders.join(', ')}. Confirma?`))return;
   const btn=$('departureSubmit');
   btn.disabled=true;
@@ -4421,6 +4725,13 @@ async function depart(e){
 
       if(r.status===409&&(String(d.code||'').startsWith('IFOOD_')||String(d.code||'').startsWith('ANOTAAI_')||String(d.code||'').startsWith('ORDER_PLATFORM_'))){
         throw new Error(d.error||'Pedido indisponível para esta saída.');
+      }
+      if(r.status===409&&d.code==='PRE_DEPARTURE_REQUIRED'){
+        // O admin ligou a conferência agora: recarrega o estado e o botão vira "Conferir sacolas".
+        await loadCourierPreDeparture();
+        updateCourierDepartureEligibility();
+        message('departureMsg','A conferência de sacolas foi ligada. Toque em Conferir sacolas.','err');
+        return;
       }
 
       throw Object.assign(new Error(d.error||'Erro ao registrar saída.'),{status:r.status});
@@ -5616,7 +5927,201 @@ async function loadOperations(){
               : (x.is_online?'Conectado':'Sem conexão recente');
       return `<div class="team-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${escapeHtml(x.name)}</b><span class="team-status ${x.operational_status}">${label}</span></div><div class="small muted" style="margin-top:7px">${detail}</div><div class="small" style="margin-top:5px">${x.today_count} pedido(s) hoje</div></div>`;
     }).join('')||'<div class="empty">Nenhum motoboy.</div>';
+    await loadPreDepartureAdmin();
   }catch(err){alert(err.message)}
+}
+// Conferência de sacolas e rotas: flags, pré-saídas abertas, rotas em andamento e
+// correção de endereço com histórico. Ids e plataformas vão em data-*, nunca no onclick.
+let preDepartureAdminState=null;
+const PD_STATUS_LABEL={DRAFT:'Rascunho',AWAITING_CHECK:'Aguardando conferência',PARTIALLY_CHECKED:'Conferência parcial',CHECKED:'Sacolas conferidas',ROUTE_READY:'Rota pronta',BLOCKED:'Bloqueada',DISPATCHED:'Saiu',CANCELLED:'Cancelada',EXPIRED:'Expirada'};
+const PD_ROUTE_LABEL={PENDING:'não calculada',CALCULATING:'calculando',READY:'calculada',NEEDS_ADMIN:'precisa do admin',DISABLED:'ordem digitada',ADMIN:'definida pelo admin'};
+const ADDRESS_STAGE_LABEL={NOT_ALLOCATED:'Ainda sem motoboy',PRE_DEPARTURE_UNCHECKED:'Na pré-saída, antes da conferência',PRE_DEPARTURE_CHECKED:'Na pré-saída, sacola conferida',ON_ROUTE:'Em rota',FINISHED_ROUTE:'Saída encerrada com entrega pendente',DELIVERED:'Entregue'};
+async function loadPreDepartureAdmin(){
+  if(me?.role!=='admin'||!$('preDepartureAdmin'))return;
+  try{preDepartureAdminState=await api('/api/admin/pre-departure/overview')}
+  catch(err){$('preDepartureOpen').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;return}
+  renderPreDepartureAdmin();
+}
+function addressFixButton(platform,externalId,label='Corrigir endereço'){
+  return `<button type="button" class="btn outline" data-platform="${escapeHtml(platform)}" data-order="${escapeHtml(externalId)}" onclick="openAddressFix(this.dataset.platform,this.dataset.order)">${escapeHtml(label)}</button>`;
+}
+function renderPreDepartureAdmin(){
+  const st=preDepartureAdminState;if(!st)return;
+  const s=st.settings,p=s.params||{};
+  const flag=(key,title,desc)=>`<div class="pd-flag"><b>${title}</b><p class="small muted">${desc}</p><span class="pd-flag-state ${s[key]?'on':'off'}">${s[key]?'LIGADA':'DESLIGADA'}</span><button type="button" class="btn ${s[key]?'outline':'primary'}" data-flag="${key}" data-value="${s[key]?'false':'true'}" onclick="togglePreDepartureFlag(this.dataset.flag,this.dataset.value==='true')">${s[key]?'Desligar':'Ligar'}</button></div>`;
+  $('preDepartureFlags').innerHTML=flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
+    flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pela rota do Google, sem trânsito ao vivo. Depende da conferência.')+
+    flag('address_correction','Correção de endereço','O admin corrige o endereço operacional antes e durante a rota.');
+  const num=(id,label,v,step,min,max)=>`<label>${label}<input id="${id}" type="number" step="${step}" min="${min}" max="${max}" value="${escapeHtml(String(v??''))}"></label>`;
+  $('preDepartureParams').innerHTML=`<div class="pd-params">
+    ${num('pdAlpha','α · peso da duração (por min)',p.alpha,'0.1',0,10)}${num('pdBeta','β · peso das esperas (por min)',p.beta,'0.1',0,10)}
+    ${num('pdGamma','γ · atraso crítico (por min²)',p.gamma,'0.05',0,10)}${num('pdLimit','L · limite de espera (min)',p.wait_limit_minutes,'1',5,240)}
+    ${num('pdStop','Parada por entrega (min)',p.stop_minutes,'0.5',0,15)}
+    <label>Retorno à loja<select id="pdReturn"><option value="false" ${p.include_return?'':'selected'}>Não entra na duração</option><option value="true" ${p.include_return?'selected':''}>Entra na duração</option></select></label>
+    ${num('pdTtl','Pré-saída parada expira em (min)',s.ttl_minutes,'1',10,240)}
+    <button type="button" class="btn outline" onclick="savePreDepartureParams()">Salvar parâmetros</button></div>`;
+  const open=st.pre_departures||[];
+  $('preDepartureOpen').innerHTML=`<div class="small muted"><b>Pré-saídas abertas (${open.length})</b></div>`+(open.map(pd=>`<div class="pd-admin-item">
+      <div class="pd-admin-item-head"><b>${escapeHtml(pd.courier?.name||'Motoboy')}</b><span class="badge ${pd.status==='BLOCKED'?'red':pd.status==='ROUTE_READY'?'green':'gray'}">${escapeHtml(PD_STATUS_LABEL[pd.status]||pd.status)}</span><span class="small muted">${pd.counts.checked}/${pd.counts.total} sacolas · rota ${escapeHtml(PD_ROUTE_LABEL[pd.route_status]||pd.route_status)}${pd.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
+      ${pd.blocked_reason?`<div class="msg err" style="margin-top:8px">${escapeHtml(pd.blocked_reason.message||pd.blocked_reason.code||'Bloqueada')}</div>`:''}
+      <div class="pd-admin-orders">${pd.orders.map(o=>`<div class="pd-admin-order"><b>${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span><span class="small muted">${o.checked?'conferida':'pendente'}${o.sequence?` · ${Number(o.sequence)}ª entrega`:''}${o.address_override?` · endereço v${Number(o.address_override.version)}`:''}</span><span class="small">${escapeHtml(o.address?.text||'sem endereço')}</span>${addressFixButton(o.platform,o.external_order_id)}</div>`).join('')}</div>
+      <div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminRecalcPreDeparture(this.dataset.id)">Recalcular rota</button><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminPreDepartureSequence(this.dataset.id)">Definir sequência (exceção)</button><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminCancelPreDeparture(this.dataset.id)">Cancelar</button></div>
+    </div>`).join('')||'<div class="empty">Nenhuma pré-saída aberta.</div>');
+  const routes=st.routes||[];
+  $('preDepartureRoutes').innerHTML=`<div class="small muted"><b>Rotas em andamento com sequência (${routes.length})</b></div>`+(routes.map(r=>`<div class="pd-admin-item">
+      <div class="pd-admin-item-head"><b>${escapeHtml(r.courier_name||'Motoboy')}</b><span class="badge ${r.route_status==='NEEDS_ADMIN'?'red':'gray'}">Saída #${Number(r.dispatch_id)} · versão ${Number(r.route_version)}</span><span class="small muted">${r.counts.delivered}/${r.counts.total} entregues${r.ack_required?' · aguardando Ciente do motoboy':''}${r.route_status==='NEEDS_ADMIN'?' · recálculo precisa do admin':''}</span></div>
+      <div class="pd-admin-orders">${r.stops.map(x=>`<div class="pd-admin-order"><b>${Number(x.sequence)}ª ${escapeHtml(x.order_number)}</b><span>${escapeHtml(x.platform_label)}</span><span class="small muted">${x.state==='DELIVERED'?'entregue':x.state==='CANCELLED'?'cancelado':x.is_next?'próxima':'pendente'}${x.address_override?` · endereço v${Number(x.address_override.version)}`:''}</span><span class="small">${escapeHtml(x.address?.text||'')}</span>${x.state==='PENDING'?addressFixButton(x.platform,x.external_order_id):addressFixButton(x.platform,x.external_order_id,'Ocorrência')}</div>`).join('')}</div>
+      <div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="adminRecalcRoute(this.dataset.id)">Recalcular pendentes</button><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="adminResequenceRoute(this.dataset.id)">Reordenar pendentes (exceção)</button></div>
+    </div>`).join('')||'<div class="empty">Nenhuma rota em andamento com sequência.</div>');
+}
+function preDepartureReason(text){
+  const reason=prompt(text);
+  if(reason===null)return null;
+  if(reason.trim().length<5){alert('Informe o motivo com pelo menos 5 caracteres.');return null}
+  return reason.trim();
+}
+async function preDepartureAdminCall(url,body,ok){
+  try{await api(url,{method:body?.method||'POST',body:JSON.stringify(body?.payload||{})});if(ok)alert(ok)}
+  catch(err){alert(err.message)}
+  await loadPreDepartureAdmin();
+}
+async function togglePreDepartureFlag(flag,value){
+  const reason=preDepartureReason(`${value?'Ligar':'Desligar'} este recurso. Motivo (fica na Auditoria):`);if(!reason)return;
+  await preDepartureAdminCall('/api/admin/pre-departure/settings',{method:'PUT',payload:{flags:{[flag]:value},reason}});
+}
+async function savePreDepartureParams(){
+  const reason=preDepartureReason('Motivo da alteração dos parâmetros (fica na Auditoria):');if(!reason)return;
+  const params={alpha:Number($('pdAlpha').value),beta:Number($('pdBeta').value),gamma:Number($('pdGamma').value),wait_limit_minutes:Number($('pdLimit').value),stop_minutes:Number($('pdStop').value),include_return:$('pdReturn').value==='true'};
+  await preDepartureAdminCall('/api/admin/pre-departure/settings',{method:'PUT',payload:{params,ttl_minutes:Number($('pdTtl').value),reason}},'Parâmetros salvos. Valem para os próximos cálculos.');
+}
+function adminRecalcPreDeparture(id){preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/route`,{})}
+async function adminCancelPreDeparture(id){
+  const reason=preDepartureReason('Cancelar a pré-saída e liberar os pedidos. Motivo:');if(!reason)return;
+  await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/cancel`,{payload:{reason}});
+}
+async function adminPreDepartureSequence(id){
+  const pd=(preDepartureAdminState?.pre_departures||[]).find(x=>Number(x.id)===Number(id));if(!pd)return;
+  const listed=pd.orders.map((o,i)=>`${i+1} = ${o.order_number}`).join('\n');
+  const typed=prompt(`Exceção do admin: defina a ordem das entregas usando os números abaixo, separados por vírgula (ex.: 2,1,3). Deixe vazio para manter a ordem digitada.\n\n${listed}`);
+  if(typed===null)return;
+  let sequence=null;
+  if(typed.trim()){
+    const idx=typed.split(/[,\s]+/).filter(Boolean).map(Number);
+    if(idx.length!==pd.orders.length||new Set(idx).size!==idx.length||idx.some(n=>!pd.orders[n-1]))return alert('Use cada número uma vez.');
+    sequence=idx.map(n=>pd.orders[n-1].id);
+  }
+  const reason=preDepartureReason('Motivo da exceção (o motoboy precisará dar Ciente):');if(!reason)return;
+  await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/sequence`,{payload:{sequence,reason}});
+}
+async function adminRecalcRoute(id){
+  const reason=preDepartureReason('Recalcular as entregas pendentes. Motivo:');if(!reason)return;
+  await preDepartureAdminCall(`/api/admin/dispatches/${Number(id)}/route/recalculate`,{payload:{reason}});
+}
+async function adminResequenceRoute(id){
+  const route=(preDepartureAdminState?.routes||[]).find(x=>Number(x.dispatch_id)===Number(id));if(!route)return;
+  const pending=route.stops.filter(x=>x.state==='PENDING');
+  if(!pending.length)return alert('Não há entregas pendentes.');
+  const typed=prompt(`Nova ordem das entregas pendentes (ex.: 2,1,3):\n\n${pending.map((x,i)=>`${i+1} = ${x.order_number}`).join('\n')}`);
+  if(!typed)return;
+  const idx=typed.split(/[,\s]+/).filter(Boolean).map(Number);
+  if(idx.length!==pending.length||new Set(idx).size!==idx.length||idx.some(n=>!pending[n-1]))return alert('Use cada número uma vez.');
+  const reason=preDepartureReason('Motivo da exceção (o motoboy precisará dar Ciente):');if(!reason)return;
+  await preDepartureAdminCall(`/api/admin/dispatches/${Number(id)}/route/sequence`,{method:'PUT',payload:{sequence:idx.map(n=>pending[n-1].platform+':'+pending[n-1].external_order_id),reason}});
+}
+async function lookupOrderAddress(){
+  const number=$('addressLookupNumber').value.trim();if(!number)return;
+  try{
+    const d=await api('/api/admin/orders/address-lookup?number='+encodeURIComponent(number));
+    $('addressLookupResults').innerHTML=d.orders.length?d.orders.map(o=>addressFixButton(o.platform,o.external_order_id,`${o.platform==='ifood'?'iFood':'Anota AI'} #${o.display_id} · ${o.created_at?localTime(o.created_at):'—'}`)).join(' '):'Nenhum pedido com esse número nas últimas 36 h.';
+  }catch(err){$('addressLookupResults').textContent=err.message}
+}
+let addressFixState=null,addressFixMap=null;
+function closeAddressFix(){$('addressFixModal').style.display='none';addressFixState=null;if(addressFixMap){addressFixMap.map.remove();addressFixMap=null}}
+function addressFixBox(title,a){
+  if(!a)return `<div class="address-box"><b>${title}</b>Sem endereço.</div>`;
+  const f=a.fields||{};
+  return `<div class="address-box"><b>${title}</b>${escapeHtml(a.address||[f.street,f.number].filter(Boolean).join(', ')||'—')}${f.complement?`<br>Complemento: ${escapeHtml(f.complement)}`:''}${f.reference?`<br>Referência: ${escapeHtml(f.reference)}`:''}</div>`;
+}
+async function openAddressFix(platform,externalId){
+  message('addressFixMsg','','');
+  try{
+    const d=await api(`/api/admin/orders/${encodeURIComponent(platform)}/${encodeURIComponent(externalId)}/address`);
+    addressFixState={...d.address,point:null,location_source:null};
+  }catch(err){return alert(err.message)}
+  const a=addressFixState,f=a.current?.fields||{};
+  $('addressFixTitle').textContent=`Pedido ${a.order_number?'#'+String(a.order_number).replace(/^#/,''):''} · ${a.platform==='ifood'?'iFood':'Anota AI'} · ${ADDRESS_STAGE_LABEL[a.stage]||a.stage}${a.customer_name?' · '+a.customer_name:''}`;
+  const field=(id,label,v,cls='')=>`<label class="${cls}">${label}<input id="${id}" value="${escapeHtml(v||'')}"></label>`;
+  const history=a.history.length?`<div class="address-history"><b>Histórico</b>${a.history.map(h=>`<div>v${Number(h.version)} · ${escapeHtml(localDate(h.changed_at))} · ${escapeHtml(h.changed_by||'admin')} · ${escapeHtml(h.reason)} → ${escapeHtml(h.address)}</div>`).join('')}</div>`:'';
+  const body=a.editable?`<div class="form address-form">
+      ${field('afStreet','Rua ou avenida',f.street,'wide')}${field('afNumber','Número',f.number)}${field('afComplement','Complemento',f.complement)}
+      ${field('afNeighborhood','Bairro',f.neighborhood)}${field('afCity','Cidade',f.city)}${field('afState','UF',f.state)}${field('afPostal','CEP',f.postal_code)}
+      ${field('afReference','Referência',f.reference,'full')}
+      <label class="full">Motivo da alteração (obrigatório)<textarea id="afReason" rows="2" maxlength="300" placeholder="Ex.: cliente ligou informando o número correto"></textarea></label>
+    </div>
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn outline" onclick="geocodeAddressFix()">Localizar no mapa</button><span class="small muted">Confira o ponto. Se precisar, arraste o marcador até a porta certa.</span></div>
+    <div id="addressFixMap" class="address-map hidden"></div>
+    <div class="actions" style="margin-top:12px"><button id="addressFixSave" type="button" class="btn primary" disabled onclick="saveAddressFix()">Salvar correção</button></div>
+    <p class="small muted">O endereço original da plataforma fica guardado. A correção vale no DespacheFull; o iFood/Anota AI não é alterado.</p>`
+    : `<div class="msg err" style="margin-top:12px">${a.delivered?'Pedido já entregue: o destino não pode ser alterado.':'Pedido cancelado na plataforma.'} Registre uma ocorrência, se necessário.</div>
+      <div class="form" style="margin-top:10px"><label>Ocorrência<textarea id="afOccurrence" rows="3" maxlength="500"></textarea></label><button type="button" class="btn primary" onclick="saveAddressOccurrence()">Registrar ocorrência</button></div>`;
+  $('addressFixBody').innerHTML=`<div class="address-compare">${addressFixBox('Original (plataforma)',a.original)}${addressFixBox(a.version?`Vigente (versão ${Number(a.version)})`:'Vigente',a.current)}</div>${body}${history}`;
+  $('addressFixModal').style.display='grid';
+}
+function addressFixFields(){
+  return {street:$('afStreet').value,number:$('afNumber').value,complement:$('afComplement').value,neighborhood:$('afNeighborhood').value,
+    city:$('afCity').value,state:$('afState').value,postal_code:$('afPostal').value,reference:$('afReference').value};
+}
+async function showAddressFixPoint(point,source){
+  addressFixState.point=point;addressFixState.location_source=source;
+  const el=$('addressFixMap');el.classList.remove('hidden');
+  const L=await loadLeaflet();
+  if(!addressFixMap){
+    const map=L.map(el,{scrollWheelZoom:false,center:[point.latitude,point.longitude],zoom:17});
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+    // Pino em CSS: o Leaflet servido pelo app não traz as imagens do marcador padrão.
+    const marker=L.marker([point.latitude,point.longitude],{draggable:true,icon:L.divIcon({className:'address-pin',html:'<span></span>',iconSize:[24,24],iconAnchor:[12,28]})}).addTo(map);
+    marker.on('dragend',()=>{const ll=marker.getLatLng();addressFixState.point={latitude:ll.lat,longitude:ll.lng};addressFixState.location_source='ADMIN_PIN';message('addressFixMsg','Ponto ajustado manualmente no mapa.','ok')});
+    addressFixMap={map,marker};
+  }
+  addressFixMap.marker.setLatLng([point.latitude,point.longitude]);
+  addressFixMap.map.setView([point.latitude,point.longitude],17);
+  setTimeout(()=>addressFixMap?.map.invalidateSize(),80);
+  $('addressFixSave').disabled=false;
+}
+async function geocodeAddressFix(){
+  try{
+    const d=await api('/api/admin/orders/address/geocode',{method:'POST',body:JSON.stringify({fields:addressFixFields()})});
+    message('addressFixMsg',d.location.warning||`Localizado a ${(d.location.distance_from_store_meters/1000).toFixed(1).replace('.',',')} km da loja (em linha reta). Confira o ponto no mapa.`,d.location.warning?'err':'ok');
+    await showAddressFixPoint({latitude:d.location.latitude,longitude:d.location.longitude},'GOOGLE');
+  }catch(err){
+    const cur=addressFixState?.current;
+    const start=cur?.latitude!=null&&cur?.longitude!=null?{latitude:cur.latitude,longitude:cur.longitude}:{latitude:-23.62446,longitude:-46.55491};
+    message('addressFixMsg',`${err.message} Arraste o marcador até o local correto.`,'err');
+    await showAddressFixPoint(start,'ADMIN_PIN');
+  }
+}
+async function saveAddressFix(){
+  const a=addressFixState;if(!a?.point)return;
+  const reason=$('afReason').value.trim();
+  if(reason.length<5)return message('addressFixMsg','Informe o motivo da alteração (mínimo de 5 caracteres).','err');
+  $('addressFixSave').disabled=true;
+  try{
+    const d=await api(`/api/admin/orders/${encodeURIComponent(a.platform)}/${encodeURIComponent(a.external_order_id)}/address`,{method:'PUT',body:JSON.stringify({
+      fields:addressFixFields(),latitude:a.point.latitude,longitude:a.point.longitude,location_source:a.location_source||'GOOGLE',reason,expected_version:a.version,recalculate:true})});
+    message('addressFixMsg',d.message,'ok');
+    await loadPreDepartureAdmin();
+    setTimeout(closeAddressFix,1400);
+  }catch(err){
+    message('addressFixMsg',err.message,'err');
+    $('addressFixSave').disabled=false;
+  }
+}
+async function saveAddressOccurrence(){
+  const a=addressFixState;if(!a)return;
+  try{
+    await api(`/api/admin/orders/${encodeURIComponent(a.platform)}/${encodeURIComponent(a.external_order_id)}/occurrence`,{method:'POST',body:JSON.stringify({note:$('afOccurrence').value})});
+    message('addressFixMsg','Ocorrência registrada na Auditoria.','ok');
+  }catch(err){message('addressFixMsg',err.message,'err')}
 }
 async function searchOrderNow(){
   const q=$('quickOrderSearch').value.trim();

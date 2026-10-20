@@ -19,6 +19,7 @@ import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-sh
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
+import { createPreDepartureService } from "./lib/pre-departure-service.js";
 import { longeUnitAmount } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
@@ -1129,6 +1130,142 @@ CREATE INDEX IF NOT EXISTS longe_jobs_kind_idx ON longe_jobs(kind,id DESC);
 
 ALTER TABLE courier_payments ADD COLUMN IF NOT EXISTS longe_count_snapshot INTEGER;
 ALTER TABLE courier_payments ADD COLUMN IF NOT EXISTS longe_unit_snapshot NUMERIC(12,2);
+
+-- Pré-saída: conferência das sacolas e sequência de entrega antes da saída definitiva.
+-- Nada aqui cria saída, trava de pedido ativo, despacho no iFood ou vínculo no Anota AI.
+CREATE TABLE IF NOT EXISTS pre_departures (
+  id BIGSERIAL PRIMARY KEY,
+  courier_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('DRAFT','AWAITING_CHECK','PARTIALLY_CHECKED','CHECKED','ROUTE_READY','DISPATCHED','BLOCKED','CANCELLED','EXPIRED')),
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  composition_version INTEGER NOT NULL DEFAULT 1 CHECK (composition_version >= 1),
+  route_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (route_status IN ('PENDING','CALCULATING','READY','NEEDS_ADMIN','DISABLED','ADMIN')),
+  route_version INTEGER NOT NULL DEFAULT 0,
+  route_basis TEXT,
+  route JSONB,
+  route_error JSONB,
+  route_calculated_at TIMESTAMPTZ,
+  blocked_reason JSONB,
+  ack_required BOOLEAN NOT NULL DEFAULT FALSE,
+  admin_override JSONB,
+  client_token TEXT NOT NULL UNIQUE,
+  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  dispatched_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+  close_reason TEXT
+);
+-- Um motoboy tem no máximo uma pré-saída aberta.
+CREATE UNIQUE INDEX IF NOT EXISTS pre_departures_open_courier_idx ON pre_departures(courier_id)
+  WHERE status IN ('DRAFT','AWAITING_CHECK','PARTIALLY_CHECKED','CHECKED','ROUTE_READY','BLOCKED');
+CREATE UNIQUE INDEX IF NOT EXISTS pre_departures_dispatch_idx ON pre_departures(dispatch_id) WHERE dispatch_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS pre_departure_orders (
+  id BIGSERIAL PRIMARY KEY,
+  pre_departure_id BIGINT NOT NULL REFERENCES pre_departures(id) ON DELETE CASCADE,
+  position SMALLINT NOT NULL CHECK (position BETWEEN 1 AND 5),
+  order_number TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('ifood','anotaai')),
+  external_order_id TEXT NOT NULL,
+  order_date DATE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  checked_at TIMESTAMPTZ,
+  checked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  checked_composition_version INTEGER,
+  released_at TIMESTAMPTZ,
+  release_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- No máximo 5 sacolas ativas (posições 1..5) e um pedido reservado em uma única pré-saída.
+CREATE UNIQUE INDEX IF NOT EXISTS pre_departure_orders_slot_idx ON pre_departure_orders(pre_departure_id,position) WHERE active;
+CREATE UNIQUE INDEX IF NOT EXISTS pre_departure_orders_reserved_idx ON pre_departure_orders(platform,external_order_id) WHERE active;
+CREATE INDEX IF NOT EXISTS pre_departure_orders_pd_idx ON pre_departure_orders(pre_departure_id);
+
+CREATE TABLE IF NOT EXISTS pre_departure_events (
+  id BIGSERIAL PRIMARY KEY,
+  pre_departure_id BIGINT REFERENCES pre_departures(id) ON DELETE CASCADE,
+  dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE CASCADE,
+  event TEXT NOT NULL,
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  dedupe_key TEXT UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pre_departure_events_pd_idx ON pre_departure_events(pre_departure_id,id);
+CREATE INDEX IF NOT EXISTS pre_departure_events_dispatch_idx ON pre_departure_events(dispatch_id,id);
+
+-- Sequência da saída definitiva (cópia da rota da pré-saída) e versões das alterações.
+CREATE TABLE IF NOT EXISTS dispatch_routes (
+  dispatch_id BIGINT PRIMARY KEY REFERENCES dispatches(id) ON DELETE CASCADE,
+  pre_departure_id BIGINT UNIQUE REFERENCES pre_departures(id) ON DELETE SET NULL,
+  route_version INTEGER NOT NULL DEFAULT 1,
+  route_status TEXT NOT NULL CHECK (route_status IN ('READY','NEEDS_ADMIN','DISABLED','ADMIN')),
+  route JSONB,
+  ack_required BOOLEAN NOT NULL DEFAULT FALSE,
+  acked_version INTEGER NOT NULL DEFAULT 1,
+  acked_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS dispatch_route_stops (
+  id BIGSERIAL PRIMARY KEY,
+  dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+  sequence SMALLINT NOT NULL CHECK (sequence BETWEEN 1 AND 5),
+  order_number TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('ifood','anotaai')),
+  external_order_id TEXT NOT NULL,
+  checked_at TIMESTAMPTZ,
+  checked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  eta_minutes NUMERIC(8,2),
+  address_version INTEGER NOT NULL DEFAULT 0,
+  changed_in_version INTEGER,
+  UNIQUE(dispatch_id,platform,external_order_id),
+  CONSTRAINT dispatch_route_stops_sequence_key UNIQUE(dispatch_id,sequence) DEFERRABLE INITIALLY DEFERRED
+);
+
+-- Endereço operacional: o original da plataforma nunca é sobrescrito; cada correção é
+-- uma nova versão. Duas correções simultâneas da mesma versão: o banco aceita só uma.
+CREATE TABLE IF NOT EXISTS order_address_overrides (
+  id BIGSERIAL PRIMARY KEY,
+  platform TEXT NOT NULL CHECK (platform IN ('ifood','anotaai')),
+  external_order_id TEXT NOT NULL,
+  order_number TEXT,
+  version INTEGER NOT NULL CHECK (version >= 1),
+  street TEXT NOT NULL,
+  number TEXT NOT NULL,
+  complement TEXT,
+  neighborhood TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT,
+  postal_code TEXT,
+  reference TEXT,
+  formatted_address TEXT NOT NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  location_source TEXT NOT NULL CHECK (location_source IN ('GOOGLE','ADMIN_PIN')),
+  reason TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  original_address JSONB NOT NULL,
+  changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(platform,external_order_id,version)
+);
+
+CREATE TABLE IF NOT EXISTS route_matrix_cache (
+  from_key TEXT NOT NULL,
+  to_key TEXT NOT NULL,
+  duration_seconds DOUBLE PRECISION NOT NULL,
+  distance_meters INTEGER,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY(from_key,to_key)
+);
+CREATE TABLE IF NOT EXISTS route_geocode_cache (
+  address_key TEXT PRIMARY KEY,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `);
 
 await pool.query(`
@@ -4907,7 +5044,9 @@ async function createDispatchTransaction({
   ifoodLinks = [],
   anotaAiLinks = [],
   append = false,
-  recovery = false
+  recovery = false,
+  preDepartureId = null,
+  preDepartureCompositionVersion = undefined
 }) {
   const operationalSla = await getOperationalSlaSettings();
   const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
@@ -5016,6 +5155,20 @@ async function createDispatchTransaction({
         plainLocalOrderNumber(link.order_number),
         link.order_date || orderDateSP(current.remote_created_at || current.remote_updated_at || new Date())
       );
+    }
+
+    // Pré-saída: pedido reservado na conferência de outro motoboy não sai em outra saída.
+    for (const link of [...ifoodLinks.map(x => ({ ...x, platform: "ifood" })), ...anotaAiLinks.map(x => ({ ...x, platform: "anotaai" }))]) {
+      const reserved = (await client.query(`
+        SELECT o.pre_departure_id,u.name AS courier_name
+        FROM pre_departure_orders o
+        JOIN pre_departures p ON p.id=o.pre_departure_id
+        LEFT JOIN users u ON u.id=p.courier_id
+        WHERE o.platform=$1 AND o.external_order_id=$2 AND o.active AND o.pre_departure_id <> COALESCE($3::bigint,0)
+      `, [link.platform, link.order_id, preDepartureId])).rows[0];
+      if (reserved) {
+        throw Object.assign(new Error(`Pedido ${link.order_number} está reservado na conferência de sacolas de ${reserved.courier_name || "outro motoboy"}.`), { status: 409, code: "ORDER_RESERVED" });
+      }
     }
 
     const effectiveDeparture = existingRoute?.departed_at || departedAt || new Date().toISOString();
@@ -5128,6 +5281,15 @@ async function createDispatchTransaction({
           reason: adminReason, recovered_departure: recovery && !existingRoute,
           departure_time_source: recovery && !existingRoute ? 'ADMIN_REPORTED' : 'EXISTING_ROUTE', departed_at: effectiveDeparture,
           external_dispatch: recovery })]);
+    if (preDepartureId) {
+      await preDepartureService.bindDispatch(client, {
+        preDepartureId,
+        courierId,
+        compositionVersion: preDepartureCompositionVersion,
+        dispatchId: dispatch.id,
+        links: [...ifoodLinks.map(x => ({ platform: "ifood", external_order_id: x.order_id })), ...anotaAiLinks.map(x => ({ platform: "anotaai", external_order_id: x.order_id }))]
+      });
+    }
     dispatch.order_numbers = (await client.query('SELECT order_number FROM dispatch_orders WHERE dispatch_id=$1 ORDER BY id', [dispatch.id])).rows.map(x=>x.order_number);
     await client.query("COMMIT");
 
@@ -6877,7 +7039,7 @@ app.put("/api/courier/pix", auth, courierOnly, asyncRoute(async (req, res) => {
 
 app.get("/api/courier/anotaai/deliveries", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
-  const deliveries = await getCourierAnotaAiDeliveries(req.session.user.id);
+  const deliveries = await applyOperationalAddresses(await getCourierAnotaAiDeliveries(req.session.user.id), "anotaai");
   res.json({
     ...deliveries,
     server_now: new Date().toISOString()
@@ -6979,7 +7141,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
 
 app.get("/api/courier/ifood/deliveries", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
-  const deliveries = await getCourierIfoodDeliveries(req.session.user.id);
+  const deliveries = await applyOperationalAddresses(await getCourierIfoodDeliveries(req.session.user.id), "ifood");
 
   res.json({
     ...deliveries,
@@ -7902,10 +8064,50 @@ async function addRouteOrder(req, res, recovery) {
     ));
   }
 }
-app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
+app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute(async (req,res)=>{
+  // Com a conferência de sacolas ligada, todo pedido do motoboy passa pela pré-saída.
+  if ((await preDepartureService.readSettings()).pre_departure) {
+    return res.status(409).json({ error: "Com a conferência de sacolas ligada, peça ao admin para incluir o pedido nesta saída.", code: "PRE_DEPARTURE_REQUIRED" });
+  }
+  return addRouteOrder(req,res,false);
+}));
 app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
 
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {
+  // Conferência de sacolas: a saída definitiva sai da pré-saída. Pedidos, plataformas e
+  // token idempotente vêm do banco, nunca da tela.
+  const preDepartureId = req.body?.pre_departure_id ? Number(req.body.pre_departure_id) : null;
+  let preDeparture = null;
+  if (preDepartureId) {
+    try {
+      preDeparture = await preDepartureService.prepareDispatch({
+        courierId: req.session.user.id,
+        id: preDepartureId,
+        compositionVersion: req.body.composition_version
+      });
+    } catch (e) {
+      return sendServiceError(res, e);
+    }
+    if (preDeparture.already_dispatched) {
+      const replay = (await pool.query(`
+        SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.registration_source,${orderArraySql("d")}
+        FROM dispatches d WHERE d.client_token=$1 LIMIT 1
+      `, [preDeparture.client_token])).rows[0];
+      if (replay) return res.json({ dispatch: replay, duplicate: true, pre_departure_id: preDepartureId, server_now: new Date().toISOString() });
+    }
+    req.body.order_numbers = preDeparture.order_numbers;
+    req.body.order_count = preDeparture.order_numbers.length;
+    req.body.platform_selections = preDeparture.platform_selections;
+    req.body.client_token = preDeparture.client_token;
+    req.body.offline_queued = false;
+    req.body.estimated_departed_at = null;
+  } else if ((await preDepartureService.readSettings()).pre_departure) {
+    return res.status(409).json({
+      error: "Antes de sair, confira as sacolas: digite os pedidos e toque em Conferir sacolas.",
+      code: "PRE_DEPARTURE_REQUIRED",
+      server_now: new Date().toISOString()
+    });
+  }
   validateDepartureCount(req.body);
   await touchPresence(req.session.user.id, "COURIER_WEB");
 
@@ -7987,6 +8189,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
 
   if (platformResolution.errors.length) {
     const first = platformResolution.errors[0];
+    if (preDepartureId) await preDepartureService.block({ id: preDepartureId, code: first.code || "ORDER_PLATFORM_INVALID", message: first.message, orderNumber: first.order_number });
     await logOperationalConflict({
       type: "COURIER_PLATFORM_ORDER_BLOCKED",
       severity: "warning",
@@ -8133,9 +8336,14 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       clientToken,
       departedAt: queuedDeparture,
       ifoodLinks,
-      anotaAiLinks
+      anotaAiLinks,
+      preDepartureId,
+      preDepartureCompositionVersion: preDeparture?.composition_version
     });
   } catch (e) {
+    if (preDepartureId && String(e.code || "").match(/^(PRE_DEPARTURE_|ROUTE_STALE|ACK_REQUIRED|ORDER_RESERVED)/)) {
+      return sendServiceError(res, e);
+    }
     if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
       return res.status(409).json({
         error: e.message,
@@ -8177,7 +8385,8 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       departed_at: result.dispatch.departed_at,
       source: "COURIER",
       platform_selections: platformResolution.selections,
-      pending_delivery_gate_enforced: true
+      pending_delivery_gate_enforced: true,
+      pre_departure_id: preDepartureId
     });
   }
 
@@ -8190,6 +8399,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     dispatch: result.dispatch,
     closed_previous: result.closedPrevious,
     duplicate: result.duplicate,
+    pre_departure_id: preDepartureId,
     platforms: platformResolution.selections,
     ifood_dispatch: {
       linked_orders: ifoodDispatchQueued,
@@ -11166,6 +11376,290 @@ app.put("/api/admin/longe/orders/:orderItemId", auth, adminOnly, asyncRoute(asyn
   res.json({...result,message:`Pedido ${result.order_number} corrigido para ${result.longe?"LONGE":"normal"}. Motivo registrado no histórico.`});
 }));
 
+// Pré-saída (conferência de sacolas), sequência de entrega e correção de endereço.
+// Tudo atrás de feature flags em app_settings, desligadas por padrão.
+function preDepartureOrderDetails(platform, payload) {
+  const order = parseJsonPayload(payload);
+  if (!order) return { navigation: null, fields: {}, customer_name: "" };
+  const address = ifoodDeliveryAddress(order);
+  return {
+    navigation: buildDeliveryDestination(order),
+    fields: { ...deliveryAddressFields(address), reference: typeof address.reference === "string" ? address.reference.trim() : "" },
+    customer_name: buildOrderCustomerName(order)
+  };
+}
+const preDepartureService = createPreDepartureService({
+  pool,
+  describeOrder: preDepartureOrderDetails,
+  emitRealtime,
+  audit: auditBestEffort,
+  onAddressCorrected: ({ platform, externalOrderId, latitude, longitude }) => longeRule.applyOperationalLocation({ platform, externalOrderId, latitude, longitude })
+});
+await preDepartureService.recoverInterrupted();
+
+const SERVICE_ERROR_FIELDS = ["blockers","current_status","composition_version","version","route_version","order_number","platform","pre_departure_id","missing","problems","holder_courier_id"];
+function sendServiceError(res, e) {
+  if (!e?.status) throw e;
+  const extra = Object.fromEntries(SERVICE_ERROR_FIELDS.filter(k => e[k] !== undefined).map(k => [k, e[k]]));
+  return res.status(e.status).json({ error: e.message, code: e.code || null, ...extra, server_now: new Date().toISOString() });
+}
+function routeId(value) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id < 1) throw Object.assign(new Error("Identificador inválido."), { status: 400, code: "INVALID_ID" });
+  return id;
+}
+const serviceRoute = fn => asyncRoute(async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (e) {
+    if (!e?.status || res.headersSent) throw e;
+    sendServiceError(res, e);
+  }
+});
+async function requirePreDepartureFlag(flag) {
+  const settings = await preDepartureService.readSettings();
+  if (!settings[flag]) throw Object.assign(new Error("Recurso desativado pelo administrador."), { status: 409, code: "FEATURE_DISABLED" });
+  return settings;
+}
+
+// As mesmas barreiras da saída: senha temporária, turno, presença e expediente.
+async function courierDepartureGate(courierId) {
+  const user = await currentUser(courierId);
+  if (user?.must_change_password) return { status: 403, body: { error: "Altere sua senha temporária antes de registrar uma saída.", code: "PASSWORD_CHANGE_REQUIRED" } };
+  // Mesma janela da saída: o prestart troca esta linha junto com a da saída (late-shift).
+  const preDepartureShift = getCurrentOperationalShift();
+  const shift = preDepartureShift;
+  if (!shift) return { status: 409, body: { error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.", code: "OUTSIDE_OPERATIONAL_SHIFT" } };
+  const attendance = await getCourierAttendance(courierId, shift.operational_date, shift.shift_code);
+  if (!attendance) return { status: 403, body: { error: `Confirme sua presença no turno de ${shift.shift_label} antes de registrar uma saída.`, code: "ATTENDANCE_REQUIRED" } };
+  if (attendance.checked_out_at) return { status: 403, body: { error: `Seu expediente de ${shift.shift_label} foi encerrado pelo Admin.`, code: "SHIFT_ENDED" } };
+  return null;
+}
+
+// Pedidos digitados → vínculos iFood/Anota AI na ordem digitada (mesma validação da saída).
+async function resolvePreDepartureLinks(orderNumbers, body) {
+  const resolution = await resolveCourierOrderPlatforms(orderNumbers, body);
+  if (resolution.ambiguities.length) {
+    return { error: { status: 409, body: { error: "Um número de pedido existe em mais de uma plataforma. Escolha iFood ou Anota AI.", code: "ORDER_PLATFORM_REQUIRED", ambiguities: resolution.ambiguities } } };
+  }
+  if (resolution.errors.length) {
+    const first = resolution.errors[0];
+    return { error: { status: 409, body: { error: first.message, code: first.code || "ORDER_PLATFORM_INVALID", platform_error: first } } };
+  }
+  const links = orderNumbers.map(order => {
+    const key = plainLocalOrderNumber(order);
+    const ifood = resolution.ifoodLinks.find(x => plainLocalOrderNumber(x.order_number) === key);
+    if (ifood) return { platform: "ifood", order_id: ifood.order_id, order_number: order, order_date: ifood.order_date };
+    const anota = resolution.anotaAiLinks.find(x => plainLocalOrderNumber(x.order_number) === key);
+    return anota ? { platform: "anotaai", order_id: anota.order_id, order_number: order, order_date: anota.order_date } : null;
+  });
+  if (links.some(x => !x)) return { error: { status: 409, body: { error: "Todos os pedidos precisam estar identificados no iFood ou no Anota AI.", code: "ORDER_PLATFORM_REQUIRED" } } };
+  return { links };
+}
+
+app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req, res) => {
+  const settings = await preDepartureService.readSettings();
+  const [preDeparture, route] = await Promise.all([
+    settings.pre_departure ? preDepartureService.current(req.session.user.id) : null,
+    preDepartureService.activeRouteForCourier(req.session.user.id)
+  ]);
+  res.json({
+    enabled: { pre_departure: settings.pre_departure, route_planner: settings.route_planner },
+    pre_departure: preDeparture,
+    route,
+    server_now: new Date().toISOString()
+  });
+}));
+
+app.post("/api/courier/pre-departures", auth, courierOnly, serviceRoute(async (req, res) => {
+  await requirePreDepartureFlag("pre_departure");
+  validateDepartureCount(req.body);
+  await touchPresence(req.session.user.id, "COURIER_WEB");
+  const gate = await courierDepartureGate(req.session.user.id);
+  if (gate) return res.status(gate.status).json({ ...gate.body, server_now: new Date().toISOString() });
+  const orders = normalizeOrders(req.body);
+  const resolved = await resolvePreDepartureLinks(orders, req.body);
+  if (resolved.error) return res.status(resolved.error.status).json({ ...resolved.error.body, server_now: new Date().toISOString() });
+  const preDeparture = await preDepartureService.create({ courierId: req.session.user.id, links: resolved.links });
+  res.status(preDeparture.duplicate ? 200 : 201).json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/pre-departures/:id/orders/:orderId/check", auth, courierOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.setCheck({
+    courierId: req.session.user.id,
+    id: routeId(req.params.id),
+    orderId: routeId(req.params.orderId),
+    compositionVersion: req.body?.composition_version,
+    checked: req.body?.checked !== false
+  });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+async function preDepartureLinkFromBody(req) {
+  let order = String(req.body?.order_number || "").trim();
+  if (!order) throw Object.assign(new Error("Informe o pedido."), { status: 400, code: "ORDER_REQUIRED" });
+  if (!order.startsWith("#")) order = "#" + order;
+  const resolved = await resolvePreDepartureLinks([order], { platform_selections: req.body?.platform ? [{ order_number: order, platform: req.body.platform }] : [] });
+  if (resolved.error) throw Object.assign(new Error(resolved.error.body.error), { status: resolved.error.status, code: resolved.error.body.code });
+  return resolved.links[0];
+}
+
+app.post("/api/courier/pre-departures/:id/orders/:orderId/replace", auth, courierOnly, serviceRoute(async (req, res) => {
+  const link = await preDepartureLinkFromBody(req);
+  const preDeparture = await preDepartureService.replaceOrder({ courierId: req.session.user.id, id: routeId(req.params.id), orderId: routeId(req.params.orderId), link, compositionVersion: req.body?.composition_version });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/pre-departures/:id/orders", auth, courierOnly, serviceRoute(async (req, res) => {
+  const link = await preDepartureLinkFromBody(req);
+  const preDeparture = await preDepartureService.addOrder({ courierId: req.session.user.id, id: routeId(req.params.id), link, compositionVersion: req.body?.composition_version });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.delete("/api/courier/pre-departures/:id/orders/:orderId", auth, courierOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.removeOrder({ courierId: req.session.user.id, id: routeId(req.params.id), orderId: routeId(req.params.orderId), compositionVersion: req.body?.composition_version });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/pre-departures/:id/route", auth, courierOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.computeRoute(routeId(req.params.id), { courierId: req.session.user.id, force: req.body?.retry === true });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/pre-departures/:id/ack", auth, courierOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.acknowledge({ courierId: req.session.user.id, id: routeId(req.params.id), version: req.body?.version });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/pre-departures/:id/cancel", auth, courierOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.cancel({ actorUserId: req.session.user.id, courierId: req.session.user.id, id: routeId(req.params.id), reason: req.body?.reason || "" });
+  res.json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/courier/routes/:dispatchId/ack", auth, courierOnly, serviceRoute(async (req, res) => {
+  const route = await preDepartureService.acknowledgeRoute({ courierId: req.session.user.id, dispatchId: routeId(req.params.dispatchId), routeVersion: req.body?.route_version });
+  res.json({ route, server_now: new Date().toISOString() });
+}));
+
+app.get("/api/admin/pre-departure/overview", auth, adminOnly, serviceRoute(async (req, res) => {
+  res.json({ ...(await preDepartureService.adminOverview()), server_now: new Date().toISOString() });
+}));
+
+app.put("/api/admin/pre-departure/settings", auth, adminOnly, serviceRoute(async (req, res) => {
+  const settings = await preDepartureService.saveSettings({
+    actorUserId: req.session.user.id,
+    flags: req.body?.flags || {},
+    params: req.body?.params,
+    ttlMinutes: req.body?.ttl_minutes,
+    reason: req.body?.reason
+  });
+  res.json({ settings, server_now: new Date().toISOString() });
+}));
+
+app.post("/api/admin/pre-departures/:id/cancel", auth, adminOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.cancel({ actorUserId: req.session.user.id, id: routeId(req.params.id), reason: req.body?.reason, byAdmin: true });
+  res.json({ pre_departure: preDeparture });
+}));
+
+app.post("/api/admin/pre-departures/:id/route", auth, adminOnly, serviceRoute(async (req, res) => {
+  res.json({ pre_departure: await preDepartureService.computeRoute(routeId(req.params.id), { force: true }) });
+}));
+
+app.post("/api/admin/pre-departures/:id/sequence", auth, adminOnly, serviceRoute(async (req, res) => {
+  const preDeparture = await preDepartureService.adminSequence({ adminId: req.session.user.id, id: routeId(req.params.id), sequence: req.body?.sequence, reason: req.body?.reason });
+  res.json({ pre_departure: preDeparture });
+}));
+
+app.get("/api/admin/pre-departures/:id/events", auth, adminOnly, serviceRoute(async (req, res) => {
+  res.json({ events: await preDepartureService.events({ preDepartureId: routeId(req.params.id) }) });
+}));
+
+app.get("/api/admin/dispatches/:id/route", auth, adminOnly, serviceRoute(async (req, res) => {
+  const route = await preDepartureService.dispatchRouteView(routeId(req.params.id));
+  if (!route) return res.status(404).json({ error: "Esta saída não tem sequência registrada.", code: "ROUTE_NOT_FOUND" });
+  res.json({ route, events: await preDepartureService.events({ dispatchId: routeId(req.params.id) }) });
+}));
+
+app.put("/api/admin/dispatches/:id/route/sequence", auth, adminOnly, serviceRoute(async (req, res) => {
+  res.json({ route: await preDepartureService.adminResequenceRoute({ adminId: req.session.user.id, dispatchId: routeId(req.params.id), sequence: req.body?.sequence, reason: req.body?.reason }) });
+}));
+
+app.post("/api/admin/dispatches/:id/route/recalculate", auth, adminOnly, serviceRoute(async (req, res) => {
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 5) return res.status(400).json({ error: "Informe o motivo (mínimo de 5 caracteres).", code: "REASON_REQUIRED" });
+  res.json({ route: await preDepartureService.recalculatePending(routeId(req.params.id), { actorUserId: req.session.user.id, cause: "ADMIN_RECALCULATE", reason }) });
+}));
+
+const ADDRESS_PLATFORMS = new Set(["ifood", "anotaai"]);
+app.get("/api/admin/orders/address-lookup", auth, adminOnly, serviceRoute(async (req, res) => {
+  const number = plainLocalOrderNumber(req.query?.number);
+  if (!number) return res.status(400).json({ error: "Informe o número do pedido.", code: "ORDER_REQUIRED" });
+  const rows = (await pool.query(`
+    SELECT 'ifood' AS platform,order_id AS external_order_id,display_id,status,order_created_at AS created_at FROM ifood_orders
+      WHERE LOWER(COALESCE(display_id,''))=$1 AND order_created_at >= NOW()-INTERVAL '36 hours'
+    UNION ALL
+    SELECT 'anotaai',order_id,display_id,status,remote_created_at FROM anotaai_orders
+      WHERE LOWER(REGEXP_REPLACE(COALESCE(display_id,''),'^#',''))=$1 AND COALESCE(remote_created_at,created_at) >= NOW()-INTERVAL '36 hours'
+    ORDER BY created_at DESC LIMIT 10
+  `, [number])).rows;
+  res.json({ orders: rows });
+}));
+app.get("/api/admin/orders/:platform/:externalId/address", auth, adminOnly, serviceRoute(async (req, res) => {
+  if (!ADDRESS_PLATFORMS.has(req.params.platform)) return res.status(400).json({ error: "Plataforma inválida." });
+  res.json({ address: await preDepartureService.addressInfo(req.params.platform, req.params.externalId) });
+}));
+
+app.post("/api/admin/orders/address/geocode", auth, adminOnly, serviceRoute(async (req, res) => {
+  await requirePreDepartureFlag("address_correction");
+  res.json({ location: await preDepartureService.geocodePreview(req.body?.fields || {}) });
+}));
+
+app.put("/api/admin/orders/:platform/:externalId/address", auth, adminOnly, serviceRoute(async (req, res) => {
+  await requirePreDepartureFlag("address_correction");
+  if (!ADDRESS_PLATFORMS.has(req.params.platform)) return res.status(400).json({ error: "Plataforma inválida." });
+  const result = await preDepartureService.correctAddress({
+    adminId: req.session.user.id,
+    platform: req.params.platform,
+    externalOrderId: req.params.externalId,
+    fields: req.body?.fields || {},
+    latitude: req.body?.latitude,
+    longitude: req.body?.longitude,
+    locationSource: req.body?.location_source || "GOOGLE",
+    reason: req.body?.reason,
+    expectedVersion: req.body?.expected_version,
+    recalculate: req.body?.recalculate !== false
+  });
+  res.json({ address: result, message: `Endereço atualizado (versão ${result.version}). O endereço original da plataforma continua no histórico; a plataforma não é alterada.` });
+}));
+
+app.post("/api/admin/orders/:platform/:externalId/occurrence", auth, adminOnly, serviceRoute(async (req, res) => {
+  if (!ADDRESS_PLATFORMS.has(req.params.platform)) return res.status(400).json({ error: "Plataforma inválida." });
+  res.json(await preDepartureService.registerOccurrence({ adminId: req.session.user.id, platform: req.params.platform, externalOrderId: req.params.externalId, note: req.body?.note }));
+}));
+
+// Endereço corrigido pelo admin vale para a navegação do motoboy; o original fica no histórico.
+async function applyOperationalAddresses(deliveries, platform) {
+  const items = [...(deliveries.current || []), ...(deliveries.pending || []), ...(deliveries.completed || [])];
+  const ids = [...new Set(items.map(x => x.order_id).filter(Boolean))];
+  if (!ids.length) return deliveries;
+  const rows = (await pool.query(`
+    SELECT DISTINCT ON (external_order_id) *
+    FROM order_address_overrides
+    WHERE platform=$1 AND external_order_id = ANY($2::text[])
+    ORDER BY external_order_id,version DESC
+  `, [platform, ids])).rows;
+  const overrides = new Map(rows.map(r => [r.external_order_id, r]));
+  for (const item of items) {
+    const ov = overrides.get(item.order_id);
+    if (!ov) continue;
+    item.address_parts = { ...(item.address_parts || {}), street: ov.street, number: ov.number, complement: ov.complement || "", neighborhood: ov.neighborhood, city: ov.city, state: ov.state || "" };
+    item.navigation = { latitude: ov.latitude, longitude: ov.longitude, address: ov.formatted_address, address_complete: true, source: "address" };
+    item.delivery_details = { ...(item.delivery_details || {}), complement: ov.complement || null, reference: ov.reference || null };
+    item.address_override = { version: ov.version, changed_at: ov.created_at, reason: ov.reason };
+  }
+  return deliveries;
+}
+
 app.get("/api/admin/dashboard", auth, adminOnly, asyncRoute(async (req, res) => {
   const dashboardDate = await getSPDate();
   const dashboardShift = resolveAttendanceViewShift(dashboardDate, null).shift_code;
@@ -12346,6 +12840,8 @@ async function runPaymentSheetRetryWorkerOnce(){
 setInterval(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry:',String(err?.message||err))),60*1000);
 // Regra LONGE: classifica as saídas novas fora da transação de despacho (falha aqui nunca bloqueia uma saída).
 setInterval(()=>longeRule.classifyPending().catch(err=>console.error('LONGE classify:',String(err?.message||err))),15*1000);
+// Pré-saída parada além do prazo expira e libera os pedidos reservados.
+setInterval(()=>preDepartureService.expireStale().catch(err=>console.error('Pré-saída expire:',String(err?.message||err))),60*1000);
 setTimeout(()=>runPaymentSheetRetryWorkerOnce().catch(err=>console.error('Google Sheets payment retry startup:',String(err?.message||err))),20_000);
 
 // Tagme queue: independent from dispatch/payment systems. No personal data is persisted.
