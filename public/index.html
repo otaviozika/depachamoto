@@ -962,6 +962,22 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 </style>
 <link rel="stylesheet" href="/courier-dark.css?v=3">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
+<style>/* longe-rule-v1 */
+.longe-map{height:380px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
+.longe-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.longe-step{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.longe-step p{margin:0}.longe-step .payment-note{width:100%;min-width:0}
+.longe-cell{display:flex;align-items:center;gap:8px}.longe-fix-btn{padding:5px 9px;font-size:11px}
+.longe-chips{margin-top:4px;display:flex;gap:4px;flex-wrap:wrap}
+.longe-preview{margin-top:16px}
+.longe-orders{display:flex;flex-direction:column;gap:10px;margin-top:14px;max-height:60vh;overflow:auto}
+.longe-order{border:1px solid var(--line);border-radius:12px;padding:12px}
+.longe-order-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.longe-order-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.longe-order-actions .payment-note{flex:1;min-width:180px}
+#adminApp .longe-step,#adminApp .longe-order{border-color:#252b33}
+#adminApp .longe-map{border-color:#252b33}
+@media(max-width:850px){.longe-steps{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 <div id="stagingBanner" class="staging-banner" role="status">
@@ -1524,7 +1540,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 
         <div class="cards" style="grid-template-columns:repeat(5,1fr)">
           <div class="card"><div class="label">Motoboys</div><div id="payCouriers" class="metric">0</div></div>
-          <div class="card"><div class="label">Entregas</div><div id="payDeliveries" class="metric">0</div></div>
+          <div class="card"><div class="label">Entregas</div><div id="payDeliveries" class="metric">0</div><div id="payLongeSummary" class="small muted"></div></div>
           <div class="card"><div class="label">Total selecionado</div><div id="payTotal" class="metric" style="font-size:24px">R$ 0,00</div></div>
           <div class="card"><div class="label">Pago</div><div id="payPaid" class="metric" style="font-size:24px">R$ 0,00</div></div>
           <div class="card"><div class="label">Pendente</div><div id="payPending" class="metric" style="font-size:24px">R$ 0,00</div></div>
@@ -1550,6 +1566,27 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             </div>
             <div id="paymentRuleMsg"></div>
             <p class="small muted" style="margin-bottom:0">Pagamentos marcados como <b>Conferido</b> ou <b>Pago</b> ficam congelados com a regra e quantidade de entregas daquele fechamento.</p>
+          </div>
+        </div>
+
+        <div id="longeRuleSection" class="section" style="margin-top:18px">
+          <div class="section-head">
+            <div><b>Regra LONGE · 6,7 km pela rota do Google</b><div id="longeRuleSummary" class="small muted" style="margin-top:4px">Carregando...</div></div>
+            <span id="longeModeBadge" class="badge gray">DESLIGADA</span>
+          </div>
+          <div style="padding:18px">
+            <div class="payment-formula"><b>LONGE:</b> pedido entregue fora da zona de 6,7 km (rota do Google a partir da R. Tapajós, 846, sem trânsito ao vivo) vale 2× o valor por entrega: <b id="longeUnitLabel">R$ 12</b>. Endereço exatamente sobre a linha conta como normal. Vale só para saídas depois da ativação; turnos conferidos ou pagos não mudam.</div>
+            <div class="longe-steps">
+              <div class="longe-step"><b>1. Prévia pela rota do Google</b><p id="longePreviewInfo" class="small muted">Distância de todas as entregas já registradas, agrupando endereços próximos.</p><button id="longePreviewBtn" type="button" class="btn outline" onclick="startLongePreview()">Calcular prévia</button></div>
+              <div class="longe-step"><b>2. Zona de 6,7 km</b><p id="longeZoneInfo" class="small muted">Ainda não gerada.</p><button id="longeZoneBtn" type="button" class="btn outline" onclick="generateLongeZone()">Gerar zona (uma única vez)</button></div>
+              <div class="longe-step"><b>3. Modo da regra</b><p id="longeModeInfo" class="small muted"></p>
+                <select id="longeModeSelect" class="payment-select"><option value="OFF">Desligada</option><option value="TEST">Teste (não altera o pagamento)</option><option value="ACTIVE">Ativa no pagamento</option></select>
+                <input id="longeModeReason" class="payment-note" maxlength="300" placeholder="Motivo da mudança">
+                <button type="button" class="btn primary" onclick="saveLongeMode()">Aplicar modo</button></div>
+            </div>
+            <div id="longeMsg"></div>
+            <div id="longePreviewResult"></div>
+            <div id="longeAdminMapWrap" class="hidden"><p class="small muted" style="margin:14px 0 0">Linha verde = limite de 6,7 km. Dentro: normal. Fora: LONGE.</p><div id="longeAdminMap" class="longe-map"></div></div>
           </div>
         </div>
 
@@ -1582,7 +1619,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
             <table class="table">
               <thead>
                 <tr>
-                  <th>Motoboy</th><th>Turno</th><th>Entregas</th><th>R$/entrega</th><th>Base</th><th>Chuva</th>
+                  <th>Motoboy</th><th>Turno</th><th title="Entregas dentro da zona de 6,7 km">Normais</th><th title="Entregas fora da zona de 6,7 km (LONGE)">Longas</th><th title="LONGE = 2x o valor por entrega">Valor longa</th><th>R$/entrega</th><th>Base</th><th>Chuva</th>
                   <th>Gorjeta</th><th>Desconto</th><th>Ajuste</th><th>Total</th>
                   <th>PIX</th><th>Forma</th><th>Status</th><th>Observações</th><th>Ação</th>
                 </tr>
@@ -1870,6 +1907,21 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <button type="button" data-courier-nav="route" onclick="activateCourierTab('route',this)"><span class="courier-nav-icon">🛵<i id="courierRouteBadge" class="hidden">0</i></span>Rota</button>
     <button type="button" data-courier-nav="earnings" onclick="activateCourierTab('earnings',this)"><span>R$</span>Ganhos</button>
   </nav>
+</div>
+
+<div id="longeOrdersModal" class="modal">
+  <div class="modal-box" style="width:min(760px,100%)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h2 style="margin:0">Longas do turno</h2>
+        <div id="longeOrdersTitle" class="small muted" style="margin-top:4px"></div>
+      </div>
+      <button type="button" class="btn outline" onclick="closeLongeOrders()">×</button>
+    </div>
+    <div class="warning" style="margin-top:14px">Corrija só quando o endereço automático estiver errado. O motivo fica registrado no histórico (Auditoria). Turnos conferidos ou pagos precisam ser reabertos antes.</div>
+    <div id="longeOrdersList" class="longe-orders"></div>
+    <div id="longeOrdersMsg"></div>
+  </div>
 </div>
 
 <div id="transferOrderModal" class="modal">
@@ -3304,6 +3356,139 @@ async function submitDeleteCourier(e){
   }
 }
 
+// ---- Regra LONGE (zona de 6,7 km) ----
+const longeState={data:null,poll:null,orders:null};
+function brlShort(v){const n=Number(v||0);return Number.isInteger(n)?`R$ ${n}`:brl(n)}
+function longeWhen(x){return x?new Date(x).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}
+function paymentLongeCell(row,key){
+  const count=Number(row.longe_count||0),test=Number(row.longe_test_count||0),unknown=Number(row.longe_unknown_count||0);
+  const chips=[test?`<span class="badge yellow" title="Fim de semana de teste: não altera o pagamento">${test} teste</span>`:'',unknown?`<span class="badge gray" title="Pedido sem localização: confira e corrija se for LONGE">${unknown} sem local</span>`:''].filter(Boolean).join(' ');
+  const button=(row.longe_rule_active||row.longe_rule_test)&&row.shift_code?`<button type="button" class="btn outline longe-fix-btn" onclick="openLongeOrders('${key}')" title="Ver e corrigir os pedidos deste turno">Corrigir</button>`:'';
+  return `<div class="longe-cell"><b>${count}</b>${button}</div>${chips?`<div class="longe-chips">${chips}</div>`:''}`;
+}
+
+let leafletLoading=null;
+const longeMaps=new Map();
+function loadLeaflet(){
+  if(window.L)return Promise.resolve(window.L);
+  if(leafletLoading)return leafletLoading;
+  leafletLoading=new Promise((resolve,reject)=>{
+    const css=document.createElement('link');css.rel='stylesheet';css.href='/vendor/leaflet/leaflet.css';document.head.appendChild(css);
+    const script=document.createElement('script');script.src='/vendor/leaflet/leaflet.js';
+    script.onload=()=>resolve(window.L);script.onerror=()=>{leafletLoading=null;reject(new Error('Não foi possível carregar o mapa.'))};
+    document.head.appendChild(script);
+  });
+  return leafletLoading;
+}
+async function renderLongeMap(elementId,zone){
+  const el=$(elementId);if(!el||!zone?.polygon?.length)return;
+  el.classList.remove('hidden');
+  const L=await loadLeaflet();
+  let entry=longeMaps.get(elementId);
+  if(!entry){
+    const map=L.map(el,{scrollWheelZoom:false});
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+    entry={map,layer:L.layerGroup().addTo(map)};longeMaps.set(elementId,entry);
+  }
+  // A zona é única: redesenhar a cada atualização só atrapalharia o zoom de quem está olhando.
+  const key=JSON.stringify(zone.polygon[0])+zone.polygon.length;
+  if(entry.key===key){setTimeout(()=>entry.map.invalidateSize(),80);return}
+  entry.key=key;entry.layer.clearLayers();
+  const polygon=L.polygon(zone.polygon,{color:'#16a34a',weight:3,fillColor:'#22c55e',fillOpacity:.12}).bindTooltip('Dentro da linha: entrega normal. Fora: LONGE.',{sticky:true}).addTo(entry.layer);
+  if(zone.store)L.circleMarker([zone.store.latitude,zone.store.longitude],{radius:8,color:'#b45309',weight:2,fillColor:'#f59e0b',fillOpacity:1}).bindTooltip('Loja · R. Tapajós, 846').addTo(entry.layer);
+  entry.map.fitBounds(polygon.getBounds(),{padding:[14,14]});
+  setTimeout(()=>entry.map.invalidateSize(),80);
+}
+
+function longeJobText(job,label){
+  if(!job)return '';
+  if(job.status==='RUNNING'){const p=job.progress||{};const done=p.done!=null&&p.requested?` (${p.done}/${p.requested})`:p.total?` (${p.phase==='REFINE'?'refinando':'amostras'}: ${p.total})`:'';return `${label} em andamento${done}...`}
+  if(job.status==='FAILED')return `${label} falhou em ${longeWhen(job.finished_at)}: ${job.error||'erro'}`;
+  return `${label} concluída em ${longeWhen(job.finished_at)}.`;
+}
+function renderLongePreview(result){
+  if(!result)return '';
+  const t=result.totals||{};
+  const months=(result.months||[]).map(m=>`<tr><td>${escapeHtml(m.month.split('-').reverse().join('/'))}</td><td>${m.deliveries}</td><td>${m.normal+m.longe}</td><td><b>${m.longe}</b></td><td>${m.normal}</td><td>${String(m.longe_pct).replace('.',',')}%</td></tr>`).join('');
+  const hoods=(result.border_neighborhoods||[]).slice(0,20).map(h=>`<tr><td><b>${escapeHtml(h.neighborhood)}</b>${h.city?` <span class="small muted">${escapeHtml(h.city)}</span>`:''}</td><td>${h.deliveries}</td><td>${h.normal}</td><td>${h.longe}</td><td>${h.in_band}</td><td>${(h.min_meters/1000).toFixed(1).replace('.',',')}–${(h.max_meters/1000).toFixed(1).replace('.',',')} km</td></tr>`).join('');
+  const check=result.polygon_check?` Polígono salvo concorda com a distância direta em ${String(result.polygon_check.agreement_pct).replace('.',',')}% das entregas.`:'';
+  return `<div class="longe-preview"><p class="small muted">${t.deliveries||0} entregas registradas • ${t.normal+t.longe||0} com rota calculada • ${result.clusters||0} grupos de endereços próximos (~${result.cell_meters||100} m) • ${result.google_elements||0} consultas novas ao Google.${check}</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Mês</th><th>Entregas</th><th>Com rota</th><th>Teriam sido LONGE</th><th>Normais</th><th>% LONGE</th></tr></thead><tbody>${months||empty(6)}</tbody></table></div>
+    <p class="small muted" style="margin-top:14px"><b>Bairros na borda dos 6,7 km</b> (entregas a até ${(result.border_band_meters||500)} m do limite ou com endereços dos dois lados):</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Bairro</th><th>Entregas</th><th>Normais</th><th>LONGE</th><th>Perto da linha</th><th>Distância pela rota</th></tr></thead><tbody>${hoods||empty(6)}</tbody></table></div></div>`;
+}
+function renderLongeRule(){
+  const d=longeState.data;if(!d||!$('longeRuleSection'))return;
+  const modeBadge={OFF:['gray','DESLIGADA'],TEST:['yellow','EM TESTE'],ACTIVE:['green','ATIVA NO PAGAMENTO']}[d.mode]||['gray',d.mode];
+  $('longeModeBadge').className=`badge ${modeBadge[0]}`;$('longeModeBadge').textContent=modeBadge[1];
+  $('longeUnitLabel').textContent=`${brlShort(d.longe_unit_amount)} (2 × ${brl(d.per_delivery)})`;
+  const zone=d.zone,preview=d.jobs?.PREVIEW,zoneJob=d.jobs?.ZONE,running=[preview,zoneJob].some(j=>j?.status==='RUNNING');
+  $('longeRuleSummary').textContent=`Modo: ${longeModeNames[d.mode]||d.mode} • Zona: ${zone?'gerada em '+longeWhen(zone.generated_at):'não gerada'} • Chave Google (GOOGLE_ROUTES_API_KEY): ${d.routes_configured?'configurada':'não configurada no Render'} • ${d.route_settings?.travelMode==='DRIVE'?'rota de carro':'rota'} sem trânsito ao vivo`;
+  $('longePreviewInfo').textContent=longeJobText(preview,'Prévia')||'Distância de todas as entregas já registradas, agrupando endereços próximos.';
+  $('longePreviewBtn').disabled=running||!d.routes_configured;
+  $('longeZoneInfo').textContent=zone?`Gerada em ${longeWhen(zone.generated_at)} com ${zone.polygon.length} pontos (${zone.method?.google_elements||0} consultas). Não é gerada novamente.`:(longeJobText(zoneJob,'Geração')||'Ainda não gerada. É feita uma única vez e salva no app.');
+  $('longeZoneBtn').disabled=!!zone||running||!d.routes_configured;
+  const w=d.test_window;
+  const counts=['TEST','ACTIVE'].map(m=>d.classified?.[m]?`${longeModeNames[m]}: ${d.classified[m].longe} LONGE de ${d.classified[m].total} pedidos${d.classified[m].no_location?` (${d.classified[m].no_location} sem local)`:''}${d.classified[m].corrected?`, ${d.classified[m].corrected} corrigidos`:''}`:'').filter(Boolean).join(' • ');
+  $('longeModeInfo').textContent=[w?`Fim de semana de teste: ${longeWhen(w.starts_at)} → ${longeWhen(w.ends_at)}. Pagamento liberado a partir de ${longeWhen(w.ends_at)}.`:'Comece pelo modo Teste: o primeiro fim de semana não mexe no pagamento.',counts].filter(Boolean).join(' ');
+  if(document.activeElement!==$('longeModeSelect'))$('longeModeSelect').value=d.mode;
+  $('longePreviewResult').innerHTML=preview?.status==='DONE'?renderLongePreview(preview.result):'';
+  $('longeAdminMapWrap').classList.toggle('hidden',!zone);
+  if(zone)renderLongeMap('longeAdminMap',{polygon:zone.polygon,store:{latitude:Number(zone.store_latitude),longitude:Number(zone.store_longitude)}}).catch(()=>{});
+  clearTimeout(longeState.poll);
+  if(running)longeState.poll=setTimeout(()=>loadLongeRule().catch(()=>{}),3000);
+}
+async function loadLongeRule(){
+  if(!me||me.role!=='admin'||!$('longeRuleSection'))return;
+  try{longeState.data=await api('/api/admin/longe');renderLongeRule()}
+  catch(err){$('longeRuleSummary').textContent=err.message}
+}
+async function startLongePreview(){
+  if(!confirm('Calcular agora a prévia pela rota do Google para todas as entregas já registradas? Endereços próximos são agrupados para reduzir as consultas.'))return;
+  try{const d=await api('/api/admin/longe/preview',{method:'POST',body:'{}'});message('longeMsg',d.message,'ok');await loadLongeRule()}catch(err){message('longeMsg',err.message,'err')}
+}
+async function generateLongeZone(){
+  if(!confirm('Gerar a zona de 6,7 km pela rota do Google (sem trânsito ao vivo)? Ela é gerada uma única vez e fica salva no app.'))return;
+  try{const d=await api('/api/admin/longe/zone',{method:'POST',body:JSON.stringify({confirm:true})});message('longeMsg',d.message,'ok');await loadLongeRule()}catch(err){message('longeMsg',err.message,'err')}
+}
+async function saveLongeMode(){
+  const mode=$('longeModeSelect').value,reason=$('longeModeReason').value.trim();
+  const text={OFF:'Desligar a regra LONGE para as próximas saídas?',TEST:'Colocar a regra LONGE em teste? Os cards mostram LONGE, mas o pagamento não muda.',ACTIVE:'Ativar a regra LONGE no pagamento? Vale para saídas a partir de agora; turnos conferidos ou pagos não mudam.'}[mode];
+  if(!confirm(text))return;
+  try{const d=await api('/api/admin/longe/mode',{method:'PUT',body:JSON.stringify({mode,reason})});$('longeModeReason').value='';message('longeMsg',d.message,'ok');await loadLongeRule();await loadPayments()}catch(err){message('longeMsg',err.message,'err')}
+}
+function closeLongeOrders(){$('longeOrdersModal').style.display='none';longeState.orders=null}
+async function openLongeOrders(key){
+  const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row)return;
+  longeState.orders={row,key};
+  $('longeOrdersTitle').textContent=`${row.courier_name} • ${row.shift_label} • ${paymentState.date.split('-').reverse().join('/')}${row.locked?' • turno '+paymentStatusText(row.status).toLowerCase()+': reabra para corrigir':''}`;
+  $('longeOrdersModal').style.display='grid';message('longeOrdersMsg','','');
+  await renderLongeOrders();
+}
+async function renderLongeOrders(){
+  const target=longeState.orders;if(!target)return;
+  const {row}=target;$('longeOrdersList').innerHTML='<div class="empty">Carregando pedidos...</div>';
+  try{
+    const d=await api(`/api/admin/longe/orders?date=${encodeURIComponent(paymentState.date)}&shift_code=${encodeURIComponent(row.shift_code)}&courier_id=${encodeURIComponent(row.courier_id)}`);
+    const label=s=>s==='LONGE'?'LONGE':s==='NO_LOCATION'?'Sem localização':'Normal';
+    $('longeOrdersList').innerHTML=d.orders.map(o=>{
+      const inRule=['TEST','ACTIVE'].includes(o.rule_mode),id=Number(o.order_item_id);
+      const current=inRule?(o.longe?`<span class="badge orange">LONGE · ${escapeHtml(brlShort(d.longe_unit_amount))}</span>`:'<span class="badge gray">Normal</span>'):'<span class="badge gray">Fora da regra</span>';
+      const manual=o.manual_longe!==null&&o.manual_longe!==undefined?`<div class="small muted">Corrigido${o.manual_by_name?' por '+escapeHtml(o.manual_by_name):''} em ${escapeHtml(longeWhen(o.manual_at))}: ${escapeHtml(o.manual_reason||'')}</div>`:'';
+      const actions=inRule?`<div class="longe-order-actions"><select id="longeFix-${id}" class="payment-select"><option value="AUTO">Automático (${label(o.auto_status)})</option><option value="LONGE" ${o.manual_longe===true?'selected':''}>LONGE</option><option value="NORMAL" ${o.manual_longe===false?'selected':''}>Normal</option></select><input id="longeFixReason-${id}" class="payment-note" maxlength="300" placeholder="Motivo da correção (obrigatório)" ${row.locked?'disabled':''}><button type="button" class="btn primary" onclick="saveLongeOrder(${Number(id)})" ${row.locked?'disabled':''}>Salvar</button></div>`:'<div class="small muted">Saída anterior à publicação da regra: não entra na LONGE.</div>';
+      return `<div class="longe-order"><div class="longe-order-head"><b>${escapeHtml(o.order_number)}</b><span class="small muted">${escapeHtml(o.platform==='anotaai'?'Anota AI':o.platform==='ifood'?'iFood':'Manual')} • saída ${escapeHtml(localTime(o.departed_at))}${o.rule_mode==='TEST'?' • teste':''}</span>${current}<span class="small muted">automático: ${escapeHtml(label(o.auto_status))}</span></div>${manual}${actions}</div>`;
+    }).join('')||'<div class="empty">Nenhum pedido neste turno.</div>';
+  }catch(err){$('longeOrdersList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`}
+}
+async function saveLongeOrder(id){
+  const value=$(`longeFix-${id}`).value,reason=$(`longeFixReason-${id}`).value.trim();
+  if(reason.length<5)return message('longeOrdersMsg','Informe o motivo da correção (mínimo de 5 caracteres).','err');
+  try{
+    const d=await api(`/api/admin/longe/orders/${id}`,{method:'PUT',body:JSON.stringify({longe:value==='AUTO'?null:value==='LONGE',reason})});
+    message('longeOrdersMsg',d.message,'ok');await renderLongeOrders();await loadPayments();
+  }catch(err){message('longeOrdersMsg',err.message,'err')}
+}
+
 function paymentBadgeClass(status){return status==='PAID'?'green':status==='REVIEWED'?'blue':'gray'}
 function paymentStatusText(status){return status==='PAID'?'PAGO':status==='REVIEWED'?'CONFERIDO':'EM ABERTO'}
 function paymentStatusOptions(current){
@@ -3324,17 +3509,17 @@ async function copyPix(value){
 }
 function paymentRowKey(row){return `${row.courier_id}-${row.shift_code||'LEGACY'}`}
 function previewPaymentRow(key){const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row||row.locked)return;const tip=moneyNumber($(`payTip-${key}`)?.value),discount=Math.max(0,moneyNumber($(`payDiscount-${key}`)?.value)),adjustment=moneyNumber($(`payAdjustment-${key}`)?.value),rain=$(`payRain-${key}`)?.checked===true;
-  const total=Math.round((row.delivery_count*row.per_delivery+row.base_amount+(rain?Number(paymentState.rule?.rain_bonus||0):0)+tip-discount+adjustment)*100)/100;if($(`payTotalRow-${key}`))$(`payTotalRow-${key}`).textContent=brl(total)}
-function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.summary.couriers||0;$('payDeliveries').textContent=d.summary.deliveries||0;$('payTotal').textContent=brl(d.summary.total);$('payPaid').textContent=brl(d.summary.paid);$('payPending').textContent=brl(d.summary.pending);
+  const total=Math.round((row.delivery_count*row.per_delivery+Number(row.longe_extra_amount||0)+row.base_amount+(rain?Number(paymentState.rule?.rain_bonus||0):0)+tip-discount+adjustment)*100)/100;if($(`payTotalRow-${key}`))$(`payTotalRow-${key}`).textContent=brl(total)}
+function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.summary.couriers||0;$('payDeliveries').textContent=d.summary.deliveries||0;if($('payLongeSummary'))$('payLongeSummary').textContent=[d.summary.longe?`${d.summary.longe} LONGE no pagamento`:'',d.summary.longe_test?`${d.summary.longe_test} LONGE em teste`:''].filter(Boolean).join(' • ');$('payTotal').textContent=brl(d.summary.total);$('payPaid').textContent=brl(d.summary.paid);$('payPending').textContent=brl(d.summary.pending);
   $('paymentRuleSummary').textContent=`${brl(d.rule?.per_delivery)} por entrega • Almoço ${brl(d.rule?.lunch_mon_thu)} Seg–Qui / ${brl(d.rule?.lunch_fri_sun)} Sex–Sáb • Janta ${brl(d.rule?.dinner_mon_thu)} Seg–Qui / ${brl(d.rule?.dinner_fri_sun)} Sex–Dom • Chuva +${brl(d.rule?.rain_bonus)}`;
   $('paymentDayInfo').textContent=`${d.date.split('-').reverse().join('/')} • ${d.shift_label||'Todos os turnos'} • ${d.rows.length} fechamento(s)`;$('paymentPerDelivery').value=Number(d.rule?.per_delivery||0).toFixed(2);$('paymentLunchWeekday').value=Number(d.rule?.lunch_mon_thu||0).toFixed(2);$('paymentLunchWeekend').value=Number(d.rule?.lunch_fri_sun||0).toFixed(2);$('paymentDinnerWeekday').value=Number(d.rule?.dinner_mon_thu||0).toFixed(2);$('paymentDinnerWeekend').value=Number(d.rule?.dinner_fri_sun||0).toFixed(2);$('paymentRainBonus').value=Number(d.rule?.rain_bonus||0).toFixed(2);
   $('paymentTable').innerHTML=d.rows.map(row=>{const key=paymentRowKey(row),disabled=row.locked?'disabled':'',lockedClass=row.locked?'payment-locked':'',pixStatus=row.pix_status||(row.pix_key?'VERIFIED':'NONE');let pix='';
     if(!row.pix_key)pix='<span class="badge gray">SEM PIX</span>';else if(pixStatus==='VERIFIED')pix=`<div class="payment-pix"><div class="pix-holder">${escapeHtml(row.pix_holder_name||'')}</div>${escapeHtml(row.pix_key)}<div><span class="badge green">VERIFICADO</span></div></div>`;else pix='<span class="badge yellow">AGUARDANDO</span>';
-    return `<tr class="${lockedClass}"><td><b>${escapeHtml(row.courier_name)}</b></td><td><span class="badge ${row.shift_code==='LUNCH'?'yellow':'blue'}">${escapeHtml(row.shift_label)}</span></td><td><b>${row.delivery_count}</b></td><td>${brl(row.per_delivery)}</td><td>${brl(row.base_amount)}</td>
+    return `<tr class="${lockedClass}"><td><b>${escapeHtml(row.courier_name)}</b></td><td><span class="badge ${row.shift_code==='LUNCH'?'yellow':'blue'}">${escapeHtml(row.shift_label)}</span></td><td><b>${Number(row.normal_count??row.delivery_count)}</b></td><td>${paymentLongeCell(row,key)}</td><td>${brl(row.longe_unit_amount??Number(row.per_delivery||0)*2)}</td><td>${brl(row.per_delivery)}</td><td>${brl(row.base_amount)}</td>
       <td><label><input id="payRain-${key}" type="checkbox" ${row.rain?'checked':''} ${disabled} onchange="previewPaymentRow('${key}')"> +${brl(d.rule?.rain_bonus)}</label></td>
       <td><input id="payTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payAdjustment-${key}" class="payment-input" type="number" step="0.01" value="${Number(row.adjustment_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td>
-      <td><span id="payTotalRow-${key}" class="payment-total">${brl(row.total_amount)}</span></td><td>${pix}</td><td><select id="payMethod-${key}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td><td><select id="payStatus-${key}" class="payment-select">${paymentStatusOptions(row.status)}</select></td><td><input id="payNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td><td><button class="btn primary" onclick="savePaymentRow('${key}')">Salvar</button></td></tr>`}).join('')||empty(15)}
-async function loadPayments(){if(!me||me.role!=='admin'||paymentActiveView!=='daily')return;const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';if($('paymentDate'))$('paymentDate').value=date;try{paymentState=await api('/api/admin/payments?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:''));renderPayments();if(paymentSheetState.month!==date.slice(0,7))loadPaymentSheetConfig(date.slice(0,7))}catch(err){$('paymentTable').innerHTML=`<tr><td colspan="15"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}}
+      <td><span id="payTotalRow-${key}" class="payment-total">${brl(row.total_amount)}</span></td><td>${pix}</td><td><select id="payMethod-${key}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td><td><select id="payStatus-${key}" class="payment-select">${paymentStatusOptions(row.status)}</select></td><td><input id="payNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td><td><button class="btn primary" onclick="savePaymentRow('${key}')">Salvar</button></td></tr>`}).join('')||empty(17)}
+async function loadPayments(){if(!me||me.role!=='admin'||paymentActiveView!=='daily')return;const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';if($('paymentDate'))$('paymentDate').value=date;try{paymentState=await api('/api/admin/payments?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:''));renderPayments();if(paymentSheetState.month!==date.slice(0,7))loadPaymentSheetConfig(date.slice(0,7))}catch(err){$('paymentTable').innerHTML=`<tr><td colspan="17"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}loadLongeRule().catch(()=>{})}
 async function savePaymentRule(){const payload={effective_from:$('paymentRuleEffective').value||spToday(),per_delivery:moneyNumber($('paymentPerDelivery').value),lunch_mon_thu:moneyNumber($('paymentLunchWeekday').value),lunch_fri_sun:moneyNumber($('paymentLunchWeekend').value),dinner_mon_thu:moneyNumber($('paymentDinnerWeekday').value),dinner_fri_sun:moneyNumber($('paymentDinnerWeekend').value),rain_bonus:moneyNumber($('paymentRainBonus').value)};if(!confirm(`Salvar esta regra a partir de ${payload.effective_from.split('-').reverse().join('/')}?`))return;try{const d=await api('/api/admin/payments/rules',{method:'PUT',body:JSON.stringify(payload)});message('paymentRuleMsg',d.message||'Regra salva.','ok');await loadPayments()}catch(err){message('paymentRuleMsg',err.message,'err')}}
 async function savePaymentRow(key,confirmReopen=false,confirmReviewed=false){const current=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!current)return;const status=$(`payStatus-${key}`).value;if(current.status==='OPEN'&&status==='REVIEWED'&&!confirm(`Conferir o pagamento de ${current.shift_label}? Os valores serão congelados.`))return;if(current.status!=='PAID'&&status==='PAID'&&!confirm(`Marcar ${current.shift_label} como PAGO?`))return;if(current.status==='PAID'&&status!=='PAID'&&!confirmReopen){if(!confirm('Este turno já está PAGO. Deseja reabrir?'))return;confirmReopen=true}if(current.status==='REVIEWED'&&status==='OPEN'&&!confirmReviewed){if(!confirm('Este turno já foi CONFERIDO. Deseja reabrir para edição?'))return;confirmReviewed=true}
   const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
@@ -3467,7 +3652,7 @@ function readPaymentMonthRow(key){
   row.notes=$(`monthNotes-${key}`)?.value||'';
   row.encosta_amount=encosta;
   row.adjustment_amount=Math.round((encosta-Number(row.base_amount||0)-(row.rain?Number(row.rain_bonus||0):0))*100)/100;
-  row.total_amount=Math.round((Number(row.delivery_count||0)*Number(row.per_delivery||0)+encosta+Number(row.tip_amount||0)-Number(row.discount_amount||0))*100)/100;
+  row.total_amount=Math.round((Number(row.delivery_count||0)*Number(row.per_delivery||0)+Number(row.longe_extra_amount||0)+encosta+Number(row.tip_amount||0)-Number(row.discount_amount||0))*100)/100;
   return row;
 }
 function markPaymentMonthDirty(key){
@@ -3504,8 +3689,9 @@ function renderPaymentMonth(){
       <td><select id="monthPaid-${key}" class="payment-select" onchange="markPaymentMonthDirty('${key}')"><option value="Não" ${paid?'':'selected'}>Não</option><option value="Sim" ${paid?'selected':''}>Sim</option></select></td>
       <td id="monthStatus-${key}" class="sheet-status">${paid?'PAGO':'PENDENTE'}</td><td id="monthTotal-${key}" class="sheet-total">${brl(row.total_amount)}</td>
       <td><input id="monthNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled} oninput="markPaymentMonthDirty('${key}')"></td>
+      <td>${Number(row.normal_count??row.delivery_count??0)}</td><td><b>${Number(row.longe_count||0)}</b>${Number(row.longe_test_count||0)?` <span class="badge yellow" title="Teste: não altera o pagamento">${Number(row.longe_test_count)} teste</span>`:''}</td><td>${brl(row.longe_unit_amount??Number(row.per_delivery||0)*2)}</td>
     </tr>`;
-  }).join('')||`<tr><td colspan="13" class="payment-month-empty">${paymentMonthState.loading?'Carregando a planilha...':'Nenhum motoboy registrado neste turno.'}</td></tr>`;
+  }).join('')||`<tr><td colspan="16" class="payment-month-empty">${paymentMonthState.loading?'Carregando a planilha...':'Nenhum motoboy registrado neste turno.'}</td></tr>`;
 }
 async function loadPaymentMonth(month=$('paymentMonth')?.value||paymentMonthState.month||courierMonthToday()){
   if(paymentMonthState.loading)return;
@@ -5666,8 +5852,14 @@ const auditNames={
   PAYMENT_REPORT_EXPORTED:'Relatório de pagamentos exportado',
   ANOTAAI_CONNECTION_TESTED:'Conexão Anota AI testada',
   ANOTAAI_PAGE_LINKED:'Loja Anota AI vinculada',
-  ANOTAAI_MANUAL_SYNC:'Sincronização Anota AI executada'
+  ANOTAAI_MANUAL_SYNC:'Sincronização Anota AI executada',
+  LONGE_MODE_CHANGED:'Regra LONGE: modo alterado',
+  LONGE_ORDER_CORRECTED:'Regra LONGE: pedido corrigido',
+  LONGE_ZONE_REQUESTED:'Regra LONGE: geração da zona solicitada',
+  LONGE_ZONE_GENERATED:'Regra LONGE: zona de 6,7 km gerada',
+  LONGE_PREVIEW_REQUESTED:'Regra LONGE: prévia solicitada'
 };
+const longeModeNames={OFF:'Desligada',TEST:'Teste',ACTIVE:'Ativa'};
 function friendlyAuditDetails(x){
   const d=x.details||{};
   if(x.action==='COMPLETED_ORDER_ASSIGNED')return `${d.order_number||''} • Motoboy ${d.courier_id} • ${d.reason||''} • Saída informada: ${localDate(d.departed_at)}`;
@@ -5689,6 +5881,9 @@ function friendlyAuditDetails(x){
   if(x.action==='COURIER_PIX_REMOVED')return 'Chave PIX removida';
   if(x.action==='COURIER_PIX_VERIFIED')return `Tipo ${d.pix_type||'PIX'} • verificado`;
   if(x.action==='PAYMENT_REPORT_EXPORTED')return `${d.rows||0} pagamento(s) exportado(s) em ${d.date||''}`;
+  if(x.action==='LONGE_ORDER_CORRECTED')return `${d.order_number||''} • ${d.from==='LONGE'?'LONGE':'Normal'} → ${d.to==='LONGE'?'LONGE':'Normal'}${d.manual==='AUTOMATIC'?' (automático)':''} • ${d.payment_date||''} ${d.shift_code==='DINNER'?'Janta':'Almoço'} • Motivo: ${d.reason||''}`;
+  if(x.action==='LONGE_MODE_CHANGED')return `${longeModeNames[d.from]||d.from} → ${longeModeNames[d.to]||d.to} • Motivo: ${d.reason||''}`;
+  if(x.action==='LONGE_ZONE_GENERATED')return `${d.vertices||0} pontos • ${d.google_elements||0} consultas à rota do Google`;
   return '';
 }
 async function loadAudit(){

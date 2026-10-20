@@ -30,6 +30,22 @@ Para ativar no Render:
 
 As credenciais da conta de serviço devem existir somente no ambiente do Render, nunca no repositório.
 
+## Regra LONGE (6,7 km pela rota do Google)
+
+Pedido entregue fora da zona de 6,7 km da loja (R. Tapajós, 846, Barcelona, São Caetano do Sul) é **LONGE** e vale 2× o valor por entrega da regra de pagamento (hoje R$ 12). A zona é calculada pela rota do Google (Routes API, rota de carro, `TRAFFIC_UNAWARE` — sem trânsito ao vivo) uma única vez e o polígono fica salvo no banco. Cada pedido é classificado localmente contra esse polígono, sem nova consulta ao Google. Endereço exatamente sobre a linha conta como normal (borda exata, sem margem).
+
+Ativação, em **Financeiro → Regra LONGE**:
+
+1. Configure `GOOGLE_ROUTES_API_KEY` somente no Render (chave com a Routes API habilitada e restrita a ela).
+2. **Calcular prévia**: distância pela rota do Google de todas as entregas próprias já registradas (iFood entregue pela loja, Anota AI e saídas manuais; frota do iFood e retirada ficam de fora), agrupando endereços a ~100 m (uma consulta por grupo, com cache). Mostra quantas teriam sido LONGE por mês e os bairros na borda (entregas a até 500 m do limite ou com endereços dos dois lados).
+3. **Gerar zona (uma única vez)**: 96 direções a partir da loja, amostras a cada 200 m e 4 refinamentos por direção (~3.650 elementos da Route Matrix). O banco recusa uma segunda zona. Depois da zona, a prévia também informa quanto o polígono concorda com a distância direta.
+4. **Teste**: o Financeiro mostra as longas de cada turno, mas o pagamento não muda. O pagamento só pode ser ativado depois do primeiro fim de semana completo em teste (sexta 11:00 até segunda 02:00).
+5. **Ativa**: vale só para saídas a partir desse momento. Pedidos anteriores à publicação nunca são classificados, e turnos conferidos ou pagos mantêm as longas congeladas no fechamento (`longe_count_snapshot`).
+
+O Financeiro, o CSV e a planilha separam **Normais**, **Longas** e **Valor longa**. O admin corrige pedido a pedido (LONGE, normal ou automático) com motivo obrigatório, registrado na Auditoria; turnos conferidos/pagos precisam ser reabertos antes. Pedidos sem localização aparecem como “sem local” para conferência. A antiga contagem “LONGE manual” (R$ 6 por longa no ajuste) continua para turnos fora da regra e fica bloqueada em turno com a regra ativa, para não pagar duas vezes. No fechamento diário do Google Planilhas, as colunas N:P recebem Normais/Longas/Valor longa; a fórmula de **TOTAL PAGO** só é substituída nos dias com longas.
+
+A tela do motoboy não muda: nenhum selo, valor ou mapa da regra aparece para ele, e a API de ganhos do motoboy não traz os campos LONGE (só o total, que inclui as longas pagas quando a regra está ativa). O mapa da zona fica no Financeiro do admin (Leaflet servido pelo próprio app, mapa-base do OpenStreetMap). A classificação roda a cada 15 s fora da transação de saída: uma falha nela nunca bloqueia um despacho.
+
 ## Rotas e recuperação de pedidos
 
 - O motoboy escolhe a quantidade (1–5), preenche exatamente os campos escolhidos e valida todos no iFood antes da saída.
@@ -95,6 +111,7 @@ Os testes ficam exclusivamente em `scripts/`. Os principais comandos estão decl
 - `npm run selftest:ifood-order-days` — 20 cenários com migração, virada do dia, eventos tardios, recuperação, alocação de concluídas, pagamentos, auditoria e rollback.
 - `node scripts/selftest-completed-assignment-ui.js` — comportamento do formulário, envio do UUID, permissões e saída do modo de tela cheia.
 - `npm run selftest:waze-navigation`
+- `npm run selftest:longe` — zona (borda exata, Routes API simulada), prévia, teste/ativação, pagamento, congelamento, correção, CSV, planilha e interface, com SQL de produção em PGlite.
 
 Testes de carga que alteram dados devem ser executados somente em ambiente de homologação.
 
