@@ -149,6 +149,19 @@ jobs:
       - name: Pre-departure smoke - 40 couriers on real PostgreSQL
         run: node scripts/smoke-staging-predeparture.js
 
+      - name: Diagnostic evidence when staging fails
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== SERVER LAST 300 LOG LINES ==="
+          tail -n 300 staging-server.log || true
+          echo "=== SERVER PROCESS STATE ==="
+          if [ -f staging-server.pid ]; then
+            ps -o pid,ppid,stat,rss,vsz,etime,args -p "$(cat staging-server.pid)" || true
+          fi
+          echo "=== ISOLATED STAGING HEALTH CHECK ==="
+          curl --max-time 4 -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:3000/api/health || true
+
       - name: Summary
         if: always()
         run: |
