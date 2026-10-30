@@ -89,7 +89,7 @@ jobs:
         run: |
           node --check server.js
           node --check scripts/loadtest-staging-50.js
-          node --check scripts/loadtest-48-orchestrator.js
+          node --check scripts/smoke-staging-gate.js
           node scripts/selftest-staging-safety.js
           failed=0
           for test in scripts/selftest-*.js; do
