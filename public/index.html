@@ -3983,13 +3983,17 @@ function courierDeliveryBadge(x){
 function courierNavigationTarget(destination){
   if(!destination)return null;
   const address=typeof destination.address==='string'?destination.address.trim():'';
-  if(address&&(destination.source==='address'||destination.address_complete===true))return {address};
   const rawLat=destination.latitude;
   const rawLng=destination.longitude;
   const numeric=value=>typeof value==='number'?value:
     typeof value==='string'&&/^[+-]?\d+(?:[.,]\d+)?$/.test(value.trim())?Number(value.trim().replace(',','.')):NaN;
   const lat=numeric(rawLat),lng=numeric(rawLng);
-  if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&(lat!==0||lng!==0))return {coordinates:lat+','+lng};
+  const validPin=Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&(lat!==0||lng!==0);
+  const coordinates=validPin?lat+','+lng:null;
+  // O mesmo pino usado na matriz DEVE abrir no Waze/Maps. O endereço fica visível no card.
+  if(destination.prefer_coordinates===true&&coordinates)return {coordinates};
+  if(address&&(destination.source==='address'||destination.address_complete===true))return {address};
+  if(coordinates)return {coordinates};
   return address?{address}:null;
 }
 
@@ -4142,6 +4146,11 @@ function courierDeliveryRow(x){
   const platform=String(x.platform||'ifood').toLowerCase();
   const canConfirm=x.can_confirm===true;
   const platformLabel=platform==='anotaai'?'Anota AI':'iFood';
+  // Alteração de endereço sem Ciente deve bloquear TODOS os atalhos de navegação,
+  // não apenas os exibidos na nova tela Minha Rota.
+  const activeRoute=courierPreDeparture?.route;
+  const awaitingAck=activeRoute?.dispatch_status==='ON_ROAD'&&activeRoute?.ack_required===true;
+  const navBlocked=awaitingAck&&(activeRoute.stops||[]).some(s=>s.platform===platform&&String(s.external_order_id)===String(x.order_id));
   const btn=canConfirm
     ? (platform==='anotaai'
       ? `<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
@@ -4163,7 +4172,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${courierDeliveryNavigationButtons(x)}${btn}</div>
+    <div class="delivery-actions">${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(x)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
@@ -4236,7 +4245,7 @@ function preDepartureRouteHtml(pd){
   const r=pd.route;
   const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
   const source=['ROAD_MATRIX','GOOGLE_ROUTES'].includes(r.source)
-    ? `Melhor sequência entre ${Number(r.evaluated)} possível(is), calculada pelas vias (sem trânsito ao vivo).`
+    ? `Endereço mais próximo primeiro; depois melhor sequência entre ${Number(r.evaluated)} ordens avaliadas (sem trânsito ao vivo).`
     : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
   const stops=r.stops.map((s,i)=>{
     const o=byKey.get(s.platform+':'+s.external_order_id)||{};
