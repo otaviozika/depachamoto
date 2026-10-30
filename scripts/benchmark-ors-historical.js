@@ -249,6 +249,36 @@ async function selftest(){
   assert.equal(score.nearest_first_index,0);
   assert.equal(score.planner_first_index,0);
   assert.equal(score.first_confirmed_nearest_proxy,true);
+  // Contrato real do payload ORS: Authorization server-side, longitude antes de latitude,
+  // metricas completas e nenhuma chamada externa no teste desconectado.
+  let mockApiCalls=0;
+  const mockedORS=createOpenRouteServiceClient({
+    apiKey:"selftest-key-only",
+    fetchFn:async (url,opts)=>{
+      mockApiCalls++;
+      assert.ok(url.endsWith("/v2/matrix/driving-car"));
+      assert.equal(opts.method,"POST");
+      assert.equal(opts.headers.Authorization,"selftest-key-only");
+      const body=JSON.parse(opts.body);
+      assert.deepEqual(body.metrics,["duration","distance"]);
+      assert.deepEqual(body.locations[0],[-46.55491,-23.62446]);
+      assert.equal(body.units,"m");
+      assert.equal(body.locations.length,3);
+      return {ok:true,text:async()=>JSON.stringify({
+        durations:[[0,120,180],[150,0,80],[210,95,0]],
+        distances:[[0,650,1000],[710,0,370],[1100,420,0]]
+      })};
+    }
+  });
+  const mockedMatrix=await mockedORS.travelMatrix([
+    LONGE_STORE.approx,
+    {latitude:-23.625,longitude:-46.556},
+    {latitude:-23.626,longitude:-46.557}
+  ]);
+  assert.equal(mockApiCalls,1);
+  assert.equal(mockedORS.elements,9);
+  assert.equal(mockedMatrix.seconds[0][1],120);
+  assert.equal(mockedMatrix.meters[0][2],1000);
   const mock={travelMatrix:async points=>{
     const n=points.length;
     return {seconds:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*100)),
@@ -263,7 +293,7 @@ async function selftest(){
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
   assert.equal(sample.pairs.planner_respects_nearest,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
-  console.log(JSON.stringify({result:"PASS",tests:11,real_external_api_requests:0}));
+  console.log(JSON.stringify({result:"PASS",tests:12,real_external_api_requests:0}));
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
