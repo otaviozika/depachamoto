@@ -7,5 +7,5 @@ const stdout=execFileSync(process.execPath, [new URL("./benchmark-ors-historical
 const result=JSON.parse(stdout.trim());
 assert.equal(result.result,"PASS");
 assert.equal(result.real_external_api_requests,0);
-assert.equal(result.tests,11);
+assert.equal(result.tests,12);
 console.log("PASS: benchmark historico ORS validado sem rede/segredos/dados pessoais.");
