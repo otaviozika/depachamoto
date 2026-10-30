@@ -161,11 +161,16 @@ function resultSummary(data,clientStats,originConfirmed=true) {
   };
 }
 
-async function runBenchmark({rows,origin,routeClient,minIntervalMs=1250,soloN=50,pairN=40}) {
+async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50,pairN=40}) {
   const {singles,pairs}=categorize(rows);
   if(singles.length<soloN||pairs.length<pairN)
     throw new Error("Historico insuficiente para 50 destinos e 40 duplas: "+singles.length+"/"+pairs.length);
   const solo=spread(singles,soloN),paired=spread(pairs,pairN);
+  // Standard ORS: 40 chamadas Matrix/min. 2000ms garante <=30/minute com margem.
+  // O plano tambem tem cota diaria compartilhada com o uso real da aplicacao.
+  if (!Number.isFinite(minIntervalMs) || minIntervalMs<1550) throw new Error("Intervalo Matrix abaixo do limite seguro de 40/min.");
+  const maxRequests=Math.ceil(soloN/25)+pairN;
+  if(maxRequests>50)throw new Error("Orcamento de requisicoes ORS excedido.");
   let calls=0,started=0;
   async function paced(points){
     const diff=Date.now()-started;
@@ -223,13 +228,15 @@ async function selftest(){
       meters:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*700))};
   }};
   const sample=await runBenchmark({rows:rows.slice(0,2),origin:LONGE_STORE.approx,
-    routeClient:mock,soloN:1,pairN:1,minIntervalMs:0});
+    routeClient:mock,soloN:1,pairN:1,minIntervalMs:1600});
   assert.equal(sample.samples_valid.singles,1);
   assert.equal(sample.samples_valid.pairs,1);
   assert.equal(sample.requests.matrix_requests,2);
+  await assert.rejects(() => runBenchmark({rows:rows.slice(0,2),origin:LONGE_STORE.approx,
+    routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
   assert.equal(sample.pairs.planner_respects_nearest,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
-  console.log(JSON.stringify({result:"PASS",tests:10,real_external_api_requests:0}));
+  console.log(JSON.stringify({result:"PASS",tests:11,real_external_api_requests:0}));
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
