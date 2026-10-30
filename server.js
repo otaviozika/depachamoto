@@ -5624,6 +5624,8 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
 
 async function completeDispatchReturn({ dispatchId, courierId = null, actorUserId, source = "COURIER_ARRIVAL", reason = "ARRIVED_AT_STORE" }) {
   const client = await pool.connect();
+  let transactionCommitted = false;
+  let connectionReleased = false;
   try {
     await client.query("BEGIN");
     const params = [dispatchId];
@@ -5673,14 +5675,19 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
       await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
     }
     await client.query("COMMIT");
+    transactionCommitted = true;
+    // Audit logs use pool.query: NEVER retain a pool client while requesting another.
+    // Under 30-40 concurrent releases this exhausted DB_POOL_MAX and timed out.
+    client.release();
+    connectionReleased = true;
     await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
     emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
     return q.rows[0] || null;
   } catch (e) {
-    await client.query("ROLLBACK");
+    if (!transactionCommitted) await client.query("ROLLBACK").catch(() => {});
     throw e;
   } finally {
-    client.release();
+    if (!connectionReleased) client.release();
   }
 }
 
