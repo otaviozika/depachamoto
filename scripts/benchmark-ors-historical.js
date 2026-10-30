@@ -48,7 +48,7 @@ function categorize(rows) {
   for(const row of rows){
     const departed=Date.parse(row.departed_at);
     if(!Number.isFinite(departed)||!Array.isArray(row.stops)||row.stops.length!==Number(row.total_legs))continue;
-    if(!row.stops.every(s=>s.platform==="ifood"))continue; // nunca confundir dupla mista com dupla iFood
+    if(!row.stops.every(s=>s.platform==="ifood" && s.order_type==="DELIVERY" && s.delivered_by==="MERCHANT" && s.is_test!==true))continue; // nem retirada nem frota parceira
     const list=row.stops.map(r=>toStop(r,departed));
     if(list.some(s=>!s))continue;
     if(list.length===1)singles.push(list[0]);
@@ -59,6 +59,7 @@ function categorize(rows) {
 const HISTORICAL_SQL=[
 "WITH legs AS (",
 " SELECT d.id AS dispatch_id, d.departed_at, q.platform, o.order_id, o.order_created_at,",
+" o.order_type, o.delivered_by, o.is_test,",
 " o.payload#>>'{delivery,deliveryAddress,coordinates,latitude}' AS latitude,",
 " o.payload#>>'{delivery,deliveryAddress,coordinates,longitude}' AS longitude,",
 " c.concluded_at AS confirmed_at",
@@ -70,7 +71,7 @@ const HISTORICAL_SQL=[
 " WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date=$1::date",
 "), runs AS (",
 " SELECT dispatch_id, max(departed_at) AS departed_at, count(*) AS total_legs,",
-" jsonb_agg(jsonb_build_object('platform',platform,'latitude',latitude,'longitude',longitude,",
+" jsonb_agg(jsonb_build_object('platform',platform,'order_type',order_type,'delivered_by',delivered_by,'is_test',is_test, 'latitude',latitude,'longitude',longitude,",
 " 'order_created_at',order_created_at,'confirmed_at',confirmed_at) ORDER BY order_created_at NULLS LAST,order_id) AS stops",
 " FROM legs GROUP BY dispatch_id",
 ") SELECT departed_at,total_legs,stops FROM runs WHERE total_legs IN (1,2) ORDER BY departed_at"
@@ -201,7 +202,7 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=1250,soloN=50
 
 async function selftest(){
   const t0=Date.parse("2026-10-23T22:00:00Z");
-  const row=n=>({platform:"ifood",latitude:"-23.6246",longitude:"-46.5549",
+  const row=n=>({platform:"ifood",order_type:"DELIVERY",delivered_by:"MERCHANT",is_test:false,latitude:"-23.6246",longitude:"-46.5549",
     order_created_at:new Date(t0-600000).toISOString(),confirmed_at:new Date(t0+n*60000).toISOString()});
   const rows=[{departed_at:new Date(t0).toISOString(),total_legs:1,stops:[row(8)]},
     {departed_at:new Date(t0).toISOString(),total_legs:2,stops:[row(8),{...row(14),longitude:"-46.56"}]},
