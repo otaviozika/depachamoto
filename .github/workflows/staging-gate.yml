@@ -51,7 +51,8 @@ jobs:
       TARGET_URL: http://127.0.0.1:3000
       LOADTEST_ADMIN_USERNAME: stagingadmin
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
-      COURIERS: "8"
+      COURIERS: "40"
+      PRE_DEPARTURE_COURIERS: "40"
       DEPARTURES_PER_COURIER: "3"
       OPERATIONAL_NOW_OVERRIDE: "2026-09-29T15:00:00Z"
 
@@ -90,6 +91,7 @@ jobs:
           node --check server.js
           node --check scripts/loadtest-staging-50.js
           node --check scripts/smoke-staging-gate.js
+          node --check scripts/smoke-staging-predeparture.js
           node scripts/selftest-staging-safety.js
           failed=0
           for test in scripts/selftest-*.js; do
@@ -144,6 +146,9 @@ jobs:
       - name: Critical-flow smoke under concurrency
         run: node scripts/smoke-staging-gate.js
 
+      - name: Pre-departure smoke - 40 couriers on real PostgreSQL
+        run: node scripts/smoke-staging-predeparture.js
+
       - name: Summary
         if: always()
         run: |
@@ -152,7 +157,8 @@ jobs:
           echo "- APP_ENV=staging" >> "$GITHUB_STEP_SUMMARY"
           echo "- STAGING_SAFE_MODE=true" >> "$GITHUB_STEP_SUMMARY"
           echo "- External integrations forced off" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 8 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 40 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 40 motoboys: conferencia individual, sequencia digitada, saida, idempotencia e bloqueio de segunda saida" >> "$GITHUB_STEP_SUMMARY"
           echo "- Idempotência do client_token validada" >> "$GITHUB_STEP_SUMMARY"
           echo "- Corrida concorrente do mesmo pedido validada" >> "$GITHUB_STEP_SUMMARY"
           echo "- Fault injection F01-F18 executada com evidência por cenário" >> "$GITHUB_STEP_SUMMARY"
@@ -171,6 +177,7 @@ jobs:
           path: |
             health.json
             staging-smoke-report.json
+            staging-predeparture-report.json
             fault-injection-f01-f08.json
             fault-injection-f09-f15.json
             fault-injection-f16-f18.json
