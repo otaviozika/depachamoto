@@ -26,6 +26,7 @@ const key = String(process.env.LOAD_TEST_KEY || "");
 const pool = new pg.Pool({ connectionString: dbUrl.toString(), ssl: false, max: 20 });
 const courierIds = [];
 const latencies = [];
+const byOperation = new Map();
 const failures = [];
 const statusCounts = {};
 const report = { result: "PENDING", profile: { couriers: N, ordersPerCourier: 2 },
@@ -33,9 +34,19 @@ const report = { result: "PENDING", profile: { couriers: N, ordersPerCourier: 2 
   verification: {}, failures: [] };
 
 function assert(condition, message) { if(!condition) throw new Error(message); }
-function elapsedMs(p) {
-  const sorted = latencies.slice().sort((a,b)=>a-b);
+function percentile(values,p) {
+  const sorted = values.slice().sort((a,b)=>a-b);
   return sorted.length?Number(sorted[Math.floor((sorted.length-1)*p)].toFixed(1)):0;
+}
+function elapsedMs(p) { return percentile(latencies,p); }
+function operationFor(path) {
+  if (path==="/api/login") return "login";
+  if (path==="/api/health") return "health";
+  if (path.endsWith("/check")) return "conferir_sacola";
+  if (path.endsWith("/route")) return "calcular_rota";
+  if (path==="/api/courier/depart") return "confirmar_saida";
+  if (path==="/api/courier/pre-departures") return "criar_pre_saida";
+  return "other";
 }
 async function call(path, cookie="", options={}) {
   const begin = performance.now();
@@ -44,7 +55,13 @@ async function call(path, cookie="", options={}) {
     headers: { "content-type":"application/json", "x-load-test-key":key,
       ...(cookie?{cookie}:{}), ...(options.headers||{}) }
   });
-  latencies.push(performance.now()-begin);
+  const elapsed = performance.now()-begin;
+  latencies.push(elapsed);
+  const operation = operationFor(path);
+  if (!byOperation.has(operation)) byOperation.set(operation,{latencies:[],statusCodes:{}});
+  const record = byOperation.get(operation);
+  record.latencies.push(elapsed);
+  record.statusCodes[res.status] = (record.statusCodes[res.status]||0)+1;
   statusCounts[res.status] = (statusCounts[res.status]||0)+1;
   const body = await res.json().catch(()=>({}));
   return { status: res.status, body, cookie: (res.headers.get("set-cookie")||"").split(";")[0] };
@@ -156,7 +173,14 @@ try {
     db.pre!==N||db.dispatches!==N||db.routes!==N||db.stops!==2*N||db.links!==2*N)
     failures.push("Expected exact counts in pre-departure/dispatch/route/links: "+JSON.stringify({counts,db}));
   report.result = failures.length?"FAIL":"PASS";
-  report.http = {requests:latencies.length,byStatus:statusCounts,p50ms:elapsedMs(0.5),p95ms:elapsedMs(0.95),p99ms:elapsedMs(0.99)};
+  report.http = {
+    requests:latencies.length,byStatus:statusCounts,
+    p50ms:elapsedMs(0.5),p95ms:elapsedMs(0.95),p99ms:elapsedMs(0.99),
+    byOperation:Object.fromEntries([...byOperation.entries()].map(([name,entry])=>[
+      name,{requests:entry.latencies.length,status:entry.statusCodes,
+        p50ms:percentile(entry.latencies,0.5),p95ms:percentile(entry.latencies,0.95),
+        p99ms:percentile(entry.latencies,0.99),maxMs:Math.round(Math.max(...entry.latencies))}] ))
+  };
   report.failures=failures.slice(0,20);
   fs.writeFileSync("staging-predeparture-report.json",JSON.stringify(report,null,2)+"\n");
   console.log(JSON.stringify(report,null,2));
