@@ -11659,7 +11659,7 @@ async function applyOperationalAddresses(deliveries, platform) {
     const ov = overrides.get(item.order_id);
     if (!ov) continue;
     item.address_parts = { ...(item.address_parts || {}), street: ov.street, number: ov.number, complement: ov.complement || "", neighborhood: ov.neighborhood, city: ov.city, state: ov.state || "" };
-    item.navigation = { latitude: ov.latitude, longitude: ov.longitude, address: ov.formatted_address, address_complete: true, source: "address" };
+    item.navigation = { latitude: ov.latitude, longitude: ov.longitude, address: ov.formatted_address, address_complete: true, source: "address", prefer_coordinates: true };
     item.delivery_details = { ...(item.delivery_details || {}), complement: ov.complement || null, reference: ov.reference || null };
     item.address_override = { version: ov.version, changed_at: ov.created_at, reason: ov.reason };
   }
