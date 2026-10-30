@@ -59,12 +59,43 @@ check("navegação legada mantém compatibilidade com endereço; pino inválido 
 check("nenhum botão antigo de mapa fica ativo antes do Ciente", () => {
   const section = html.slice(html.indexOf("function courierDeliveryRow(x){"), html.indexOf("async function loadCourierDeliveries()", html.indexOf("function courierDeliveryRow(x){")));
   assert.match(section, /activeRoute\?\.ack_required===true/);
-  assert.match(section, /navBlocked\?[^\n]*courierDeliveryNavigationButtons\(x\)/);
+  assert.match(section, /navBlocked\?[^\n]*courierDeliveryNavigationButtons\(routeNavigation\)/);
+  assert.match(section, /activeStop\?\.navigation\?\.prefer_coordinates===true/);
 });
 check("distância viária e pino são a base da rota operacional", () => {
   const service = fs.readFileSync(new URL("../lib/pre-departure-service.js", import.meta.url), "utf8");
   assert.match(service, /requiredFirstIndex = fromOrigin\.indexOf\(nearestMeters\)/);
   assert.match(service, /matrix\.meters\?\.\[0\]/);
   assert.match(service, /prefer_coordinates: validCoordinate\(address\)/);
+});
+check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => {
+  const start = html.indexOf("function courierDeliveryRow(x){");
+  const end = html.indexOf("async function loadCourierDeliveries()", start);
+  const cardSource = html.slice(start, end);
+  const ctx = vm.createContext({
+    courierPreDeparture: { route: {
+      dispatch_status: "ON_ROAD", ack_required: false,
+      stops: [{ platform: "ifood", external_order_id: "order-x",
+        navigation: { latitude: -23.62446, longitude: -46.55491, address: "Rua Original", prefer_coordinates: true } }]
+    } },
+    escapeHtml: x => String(x ?? ""),
+    localTime: () => "",
+    courierDeliveryBadge: () => "",
+    courierDeliveryCustomerHtml: () => "",
+    courierDeliveryAddressHtml: () => "",
+    courierDeliveryDetailsHtml: () => "",
+    courierDeliveryCopyButton: () => "",
+    courierDeliveryPaymentHtml: () => "",
+    courierDeliveryNavigationButtons: x => "DESTINO:" + (x.navigation?.latitude ?? "SEM_PINO")
+  });
+  vm.runInContext(cardSource, ctx);
+  const order = { order_id: "order-x", display_id: "100", platform: "ifood",
+    navigation: { address: "Rua Original", address_complete: true }, can_confirm: false };
+  const enabled = ctx.courierDeliveryRow(order);
+  assert.match(enabled, /DESTINO:-23\.62446/);
+  ctx.courierPreDeparture.route.ack_required = true;
+  const blocked = ctx.courierDeliveryRow(order);
+  assert.doesNotMatch(blocked, /DESTINO:/);
+  assert.match(blocked, /Ciente/);
 });
 console.log(JSON.stringify({ result: "PASS", checks }));
