@@ -144,7 +144,10 @@ await test("openrouteservice (gratuito): matriz, localização precisa × aproxi
 await test("serviço de rotas escolhido pela chave no Render: Google, openrouteservice ou nenhum", () => {
   assert.equal(configuredRouteProvider({}), null);
   assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o" }), "openrouteservice");
-  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o", GOOGLE_ROUTES_API_KEY: "g" }), "google");
+  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o", GOOGLE_ROUTES_API_KEY: "g" }), "openrouteservice");
+  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o", GOOGLE_ROUTES_API_KEY: "g", ROUTE_PROVIDER: "google" }), "google");
+  assert.equal(configuredRouteProvider({ OPENROUTESERVICE_API_KEY: "o", GOOGLE_ROUTES_API_KEY: "g", ROUTE_PROVIDER: "openrouteservice" }), "openrouteservice");
+  assert.equal(configuredRouteProvider({ GOOGLE_ROUTES_API_KEY: "g", ROUTE_PROVIDER: "openrouteservice" }), null);
   assert.equal(createTravelClient({ env: { OPENROUTESERVICE_API_KEY: "o" } }).provider, "openrouteservice");
   assert.equal(createTravelClient({ env: { GOOGLE_ROUTES_API_KEY: "g" } }).provider, "google");
   assert.throws(() => createTravelClient({ env: {} }), e => e.code === "ROUTES_NOT_CONFIGURED");
