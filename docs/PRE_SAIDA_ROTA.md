@@ -1,6 +1,6 @@
 # Pré-saída: conferência de sacolas, sequência de até 5 entregas e correção de endereço
 
-**Estado real (item 15):** desenvolvido e testado localmente. **Não homologado** com dados reais e **não publicado**. As três funções ficam atrás de feature flags que começam desligadas; com elas desligadas o app se comporta como antes (teste 40). O serviço de rotas não foi chamado com uma chave real nesta entrega: os testes usam um serviço simulado e a execução no navegador usou uma matriz de tempos sintética. **Serviço de rotas padrão: openrouteservice (gratuito, OpenStreetMap)**, porque o Google pediu um pré-pagamento de R$ 200. Se um dia houver `GOOGLE_ROUTES_API_KEY`, o Google passa a ser usado automaticamente, sem mudar código.
+**Estado real (item 15):** desenvolvido e testado localmente. **Não homologado** com dados reais e **não publicado**. As três funções ficam atrás de feature flags que começam desligadas; com elas desligadas o app se comporta como antes (teste 40). O serviço de rotas não foi chamado com uma chave real nesta entrega: os testes usam um serviço simulado e a execução no navegador usou uma matriz de tempos sintética. **Serviço de rotas padrão: openrouteservice (gratuito, OpenStreetMap)**, porque o Google pediu um pré-pagamento de R$ 200. Se houver as duas chaves, o serviço gratuito openrouteservice tem prioridade; o Google só é escolhido quando for o único configurado ou quando `ROUTE_PROVIDER=google` for definido explicitamente.
 
 Este documento cobre os 15 itens pedidos. As simulações completas e as 120 sequências estão em [`ROTEIRIZACAO_SIMULACOES.md`](ROTEIRIZACAO_SIMULACOES.md).
 
@@ -253,7 +253,7 @@ Capturados no Chromium com o app real (após prestart), PostgreSQL 16 local e **
 
 ## 12. Dependências externas e configuração
 
-**Serviço de rotas** (escolhido pela chave que existir no Render; o Google tem prioridade se as duas existirem):
+**Serviço de rotas** (escolhido pela chave que existir no Render; o openrouteservice tem prioridade se as duas existirem; `ROUTE_PROVIDER=google` seleciona o Google explicitamente):
 
 - **openrouteservice, o padrão (gratuito)**: chave `OPENROUTESERVICE_API_KEY`, sem cartão. Usa o mapa do OpenStreetMap, perfil carro, sem trânsito ao vivo.
   - Plano gratuito (Standard): **500 matrizes/dia e 40/min**.
