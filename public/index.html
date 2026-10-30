@@ -4148,7 +4148,7 @@ function courierDeliveryRow(x){
   const platformLabel=platform==='anotaai'?'Anota AI':'iFood';
   // Alteração de endereço sem Ciente deve bloquear TODOS os atalhos de navegação,
   // não apenas os exibidos na nova tela Minha Rota.
-  const activeRoute=courierPreDeparture?.route;
+  const activeRoute=typeof courierPreDeparture==='undefined'?null:courierPreDeparture?.route;
   const awaitingAck=activeRoute?.dispatch_status==='ON_ROAD'&&activeRoute?.ack_required===true;
   const activeStop=(activeRoute?.stops||[]).find(s=>s.platform===platform&&String(s.external_order_id)===String(x.order_id));
   const navBlocked=awaitingAck&&!!activeStop;
