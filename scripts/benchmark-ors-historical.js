@@ -8,6 +8,7 @@
  *  STORE_ORIGIN_VERIFIED=YES HISTORICAL_BENCHMARK_CONFIRM=READ_ONLY
  *  node scripts/benchmark-ors-historical.js
  * Teste desconectado: node scripts/benchmark-ors-historical.js --selftest
+ * Smoke API sintetico: HISTORICAL_BENCHMARK_CONFIRM=SMOKE_ONLY OPENROUTESERVICE_API_KEY=... node scripts/benchmark-ors-historical.js --provider-smoke
  *
  * O punto da loja codificado em LONGE_STORE.approx NAO serve como GPS confirmado.
  */
@@ -205,6 +206,32 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50
     {matrix_requests:calls,planned_max:Math.ceil(soloN/25)+pairN});
 }
 
+async function providerSmoke() {
+  if (process.env.HISTORICAL_BENCHMARK_CONFIRM !== "SMOKE_ONLY")
+    throw new Error("Para testar apenas o provedor, defina HISTORICAL_BENCHMARK_CONFIRM=SMOKE_ONLY.");
+  if (!process.env.OPENROUTESERVICE_API_KEY)throw new Error("Chave ORS nao configurada no ambiente de teste.");
+  // Pontos ficticios proximos da loja. Nao consulta pedidos, Supabase ou enderecos de clientes.
+  const origin=LONGE_STORE.approx;
+  const testPoints=[origin,
+    {latitude:origin.latitude+0.0007,longitude:origin.longitude+0.0011},
+    {latitude:origin.latitude-0.0008,longitude:origin.longitude-0.0009}];
+  const started=Date.now();
+  const api=createOpenRouteServiceClient({apiKey:process.env.OPENROUTESERVICE_API_KEY,timeoutMs:20000});
+  const result=await api.travelMatrix(testPoints);
+  if(!matrixValid(result,3)) throw new Error("ORS respondeu formato inesperado na verificacao.");
+  const legs=[result.meters[0][1],result.meters[0][2],result.seconds[0][1],result.seconds[0][2]];
+  if (legs.some(x=>!Number.isFinite(x)||x<=0))throw new Error("ORS nao conseguiu calcular as duas rotas sinteticas.");
+  if (result.meters[0][1]<haversineMeters(testPoints[0],testPoints[1])*.95 ||
+      result.meters[0][2]<haversineMeters(testPoints[0],testPoints[2])*.95)
+    throw new Error("Distancia ORS menor que distancia em linha reta na verificacao.");
+  console.log(JSON.stringify({
+    result:"PASS",provider:"openrouteservice",mode:"SYNTHETIC_PROVIDER_SMOKE",
+    matrix_requests:1,elements:api.elements,points:3,valid_legs:2,
+    response_time_ms:Date.now()-started,
+    database_read:false,real_customer_data_used:false
+  },null,2));
+}
+
 async function selftest(){
   const t0=Date.parse("2026-10-23T22:00:00Z");
   const row=n=>({platform:"ifood",order_type:"DELIVERY",delivered_by:"MERCHANT",is_test:false,latitude:"-23.6246",longitude:"-46.5549",
@@ -240,6 +267,7 @@ async function selftest(){
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
+  if(process.argv.includes("--provider-smoke"))return providerSmoke();
   const required=["DATABASE_URL","OPENROUTESERVICE_API_KEY","STORE_LAT","STORE_LON"];
   for(const name of required)if(!process.env[name])throw new Error("Ausente variavel protegida: "+name);
   if(process.env.STORE_ORIGIN_VERIFIED!=="YES"||process.env.HISTORICAL_BENCHMARK_CONFIRM!=="READ_ONLY")
