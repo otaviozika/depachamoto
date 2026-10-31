@@ -6043,30 +6043,48 @@ $('manualCourier').onchange=updateManualActiveInfo;
 const realtimeRefreshState=new Map();
 function queueRealtimeRefresh(key,task,delay=500,{visibleOnly=false}={}){
   let state=realtimeRefreshState.get(key);
-  if(!state){state={task,delay,visibleOnly,timer:null,running:false,queued:false};realtimeRefreshState.set(key,state)}
-  state.task=task;state.delay=delay;state.visibleOnly=visibleOnly;state.queued=true;
-  if(state.timer||state.running||(visibleOnly&&document.hidden))return;
+  if(!state){state={task,delay,visibleOnly,timer:null,dueAt:0,running:false,queued:false};realtimeRefreshState.set(key,state)}
+  state.task=task;state.delay=state.queued?Math.min(state.delay,delay):delay;state.visibleOnly=visibleOnly;state.queued=true;
+  if(state.running||(visibleOnly&&document.hidden))return;
+  const dueAt=Date.now()+delay;
+  if(state.timer){if(dueAt>=state.dueAt)return;clearTimeout(state.timer)}
+  state.dueAt=dueAt;
   state.timer=setTimeout(()=>flushRealtimeRefresh(key),delay);
 }
 async function flushRealtimeRefresh(key){
   const state=realtimeRefreshState.get(key);
   if(!state||state.running)return;
-  if(state.timer){clearTimeout(state.timer);state.timer=null}
+  if(state.timer){clearTimeout(state.timer);state.timer=null;state.dueAt=0}
   if(state.visibleOnly&&document.hidden)return;
   if(!state.queued)return;
   state.queued=false;state.running=true;
   try{await state.task()}catch(err){console.warn('Atualização em tempo real:',err)}finally{
     state.running=false;
-    if(state.queued&&!(state.visibleOnly&&document.hidden))state.timer=setTimeout(()=>flushRealtimeRefresh(key),Math.max(state.delay,750));
+    if(state.queued&&!(state.visibleOnly&&document.hidden)){state.dueAt=Date.now()+Math.max(state.delay,750);state.timer=setTimeout(()=>flushRealtimeRefresh(key),Math.max(state.delay,750))}
   }
 }
 function flushVisibleRealtimeRefreshes(){
   for(const [key,state] of realtimeRefreshState){
-    if(state.queued&&!state.running&&!state.timer)state.timer=setTimeout(()=>flushRealtimeRefresh(key),50);
+    if(state.queued&&!state.running&&!state.timer){state.dueAt=Date.now()+50;state.timer=setTimeout(()=>flushRealtimeRefresh(key),50)}
   }
 }
 function eventIsForCurrentCourier(data){
   return !data?.courier_id||Number(data.courier_id)===Number(me?.id);
+}
+const courierRefreshNeeds={dashboard:false,deliveries:false};
+function queueCourierResourceRefresh({dashboard=false,deliveries=false,delay=250}={}){
+  courierRefreshNeeds.dashboard=courierRefreshNeeds.dashboard||dashboard;
+  courierRefreshNeeds.deliveries=courierRefreshNeeds.deliveries||deliveries;
+  queueRealtimeRefresh('courier-dispatch',async()=>{
+    const needs={...courierRefreshNeeds};
+    courierRefreshNeeds.dashboard=false;courierRefreshNeeds.deliveries=false;
+    const results=await Promise.allSettled([
+      needs.dashboard?loadCourier({related:false}):Promise.resolve(),
+      needs.deliveries?loadCourierDeliveries():Promise.resolve()
+    ]);
+    const failed=results.find(result=>result.status==='rejected');
+    if(failed)throw failed.reason;
+  },delay,{visibleOnly:true});
 }
 function refreshAdminCore(){
   return loadAdmin().then(()=>{if($('operations')?.classList.contains('active'))return loadOperations()});
@@ -6102,7 +6120,7 @@ socket.on('dispatch:changed',d=>{
     queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
     if($('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
   }else if(me?.role==='courier'&&eventIsForCurrentCourier(d)){
-    queueRealtimeRefresh('courier-dispatch',async()=>{await loadCourier({related:false});await loadCourierDeliveries()},900,{visibleOnly:true});
+    queueCourierResourceRefresh({dashboard:true,deliveries:true,delay:900});
   }
 });
 socket.on('courier:changed',()=>{if(me?.role==='admin')queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true})});
@@ -6111,7 +6129,7 @@ socket.on('attendance:changed',d=>{
     queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
     if($('attendance')?.classList.contains('active'))queueRealtimeRefresh('attendance',loadAttendance,400,{visibleOnly:true});
   }else if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id)){
-    queueRealtimeRefresh('courier-attendance',()=>loadCourier({related:false}),300,{visibleOnly:true});
+    queueCourierResourceRefresh({dashboard:true,delay:300});
   }
 });
 socket.on('settings:changed',()=>{if(me?.role==='admin')queueRealtimeRefresh('admin-core',refreshAdminCore,400,{visibleOnly:true})});
@@ -6130,8 +6148,8 @@ socket.on('ifood:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,750,{visibleOnly:true});
   if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,750,{visibleOnly:true});
   const scopedCouriers=Array.isArray(d?.courier_ids)?d.courier_ids:null;
-  const affectsCurrentCourier=d?.scope!=='admin'&&(!scopedCouriers||scopedCouriers.some(id=>Number(id)===Number(me?.id)));
-  if(me?.role==='courier'&&affectsCurrentCourier)queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,250,{visibleOnly:true});
+  const affectsCurrentCourier=d?.scope!=='admin'&&eventIsForCurrentCourier(d)&&(!scopedCouriers||scopedCouriers.some(id=>Number(id)===Number(me?.id)));
+  if(me?.role==='courier'&&affectsCurrentCourier)queueCourierResourceRefresh({deliveries:true,delay:250});
 });
 socket.on('anotaai:changed',()=>{
   if(me?.role==='admin'&&$('anotaai')?.classList.contains('active'))queueRealtimeRefresh('anotaai-status',loadAnotaAiStatus,750,{visibleOnly:true});
@@ -6140,7 +6158,7 @@ socket.on('anotaai:changed',()=>{
 socket.on('delivery:changed',d=>{
   if(me?.role==='admin'&&$('ifood')?.classList.contains('active'))queueRealtimeRefresh('ifood-status',loadIfoodStatus,500,{visibleOnly:true});
   if(me?.role==='admin'&&$('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
-  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueRealtimeRefresh('courier-deliveries',loadCourierDeliveries,150,{visibleOnly:true});
+  if(me?.role==='courier'&&Number(d?.courier_id)===Number(me.id))queueCourierResourceRefresh({deliveries:true,delay:150});
 });
 socket.on('security:changed',()=>{if(me?.role==='admin')loadSecurity();loadPublicConfig()});
 socket.on('notification:new',n=>{

@@ -1,0 +1,87 @@
+name: Egress isolated validation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: egress_benchmark
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: staging
+      NODE_ENV: test
+      STAGING_SAFE_MODE: 'true'
+      IFOOD_ENABLED: 'false'
+      IFOOD_DISPATCH_ENABLED: 'false'
+      ANOTAAI_ENABLED: 'false'
+      EGRESS_BASELINE_DIR: ../baseline
+      EGRESS_BENCH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/egress_benchmark
+      EGRESS_CI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          path: baseline
+          ref: ${{ github.event.pull_request.base.sha || '2950118fe0f50474235cdcad571a872a26b61544' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+      - name: Install locked dependencies in both copies
+        run: |
+          npm ci --no-fund
+          npm ci --no-fund --prefix ../baseline
+      - name: Source regression suite
+        run: |
+          node --check server.js
+          failed=0
+          for test in scripts/selftest-*.js; do
+            node "$test" || failed=$((failed+1))
+          done
+          test "$failed" -eq 0
+      - name: Apply the same production prestart to both copies
+        run: |
+          npm run prestart
+          npm run prestart --prefix ../baseline
+      - name: Runtime integration regression after prestart
+        run: |
+          node --check server.js
+          node scripts/selftest-egress-equivalence.js
+          node scripts/selftest-egress-ifood-flow.js
+          node scripts/selftest-anotaai-address-preservation.js
+          node scripts/selftest-anotaai-delivery-stages.js
+          node scripts/selftest-courier-customer-card.js
+          node scripts/selftest-waze-navigation.js
+          node scripts/selftest-delivery-details.js
+      - name: Measure native PostgreSQL wire bytes, result equivalence and latency
+        run: node scripts/benchmark-egress.js
+      - name: Full HTTP comparison and transactional smoke with 30 couriers
+        run: node scripts/validate-egress-http.js
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: despachefull-egress-isolated-validation
+          path: candidate/test-results/
+          if-no-files-found: ignore
