@@ -5484,6 +5484,7 @@ async function maybeAutoMarkDispatchReturning(dispatchId, { actorUserId = null, 
 
 async function completeDispatchReturn({ dispatchId, courierId = null, actorUserId, source = "COURIER_ARRIVAL", reason = "ARRIVED_AT_STORE" }) {
   const client = await pool.connect();
+  let completed;
   try {
     await client.query("BEGIN");
     const params = [dispatchId];
@@ -5533,15 +5534,18 @@ async function completeDispatchReturn({ dispatchId, courierId = null, actorUserI
       await client.query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
     }
     await client.query("COMMIT");
-    await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
-    emitRealtime("dispatch:changed", { courier_id: q.rows[0]?.courier_id, dispatch_id: q.rows[0]?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
-    return q.rows[0] || null;
+    completed = q.rows[0] || null;
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
   } finally {
     client.release();
   }
+  // Audit uses pool.query: release the transaction's connection first. Holding
+  // every slot while requesting another connection can starve concurrent returns.
+  await auditBestEffort(actorUserId, source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "DISPATCH_RELEASED_WITH_PENDING_ORDERS" : "DISPATCH_AUTO_COMPLETED", "dispatch", dispatchId, { source, reason });
+  emitRealtime("dispatch:changed", { courier_id: completed?.courier_id, dispatch_id: completed?.id, change: source === "ADMIN_PENDING_DELIVERIES_OVERRIDE" ? "ADMIN_RELEASED_WITH_PENDING" : "COMPLETED" });
+  return completed;
 }
 
 async function getSPDate() {

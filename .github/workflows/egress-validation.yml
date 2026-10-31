@@ -69,6 +69,7 @@ jobs:
           node --check server.js
           node scripts/selftest-egress-equivalence.js
           node scripts/selftest-egress-ifood-flow.js
+          node scripts/selftest-egress-pool-release.js
           node scripts/selftest-anotaai-address-preservation.js
           node scripts/selftest-anotaai-delivery-stages.js
           node scripts/selftest-courier-customer-card.js
