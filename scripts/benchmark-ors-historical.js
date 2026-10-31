@@ -256,7 +256,7 @@ async function selftest(){
     apiKey:"selftest-key-only",
     fetchFn:async (url,opts)=>{
       mockApiCalls++;
-      assert.ok(url.endsWith("/v2/matrix/driving-car"));
+      assert.equal(url, "https://api.heigit.org/openrouteservice/v2/matrix/driving-car");
       assert.equal(opts.method,"POST");
       assert.equal(opts.headers.Authorization,"selftest-key-only");
       const body=JSON.parse(opts.body);
