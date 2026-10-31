@@ -2,6 +2,17 @@
 
 **Estado: preparado, não homologado com a API real.** Nada foi publicado em produção.
 
+## Smoke real da API HeiGIT / ORS — 31/10/2026
+
+**APROVADO apenas para a conexão API e matriz sintética.** Execução manual [#41229771535](https://github.com/otaviozika/depachamoto/actions/runs/41229771535), branch `claude/conferencia-rota-5-pedidos`, commit `2c5054ba96369757d8b826bb00cea09f05d642d7`.
+
+- `result: PASS`, provedor `openrouteservice`; 1 chamada Matrix, 3 pontos sintéticos, 9 células e 2 trechos válidos;
+- resposta API: **506 ms**; ajuste máximo de coordenada à malha viária: **32,4 m**;
+- banco consultado: `false`; dados de clientes enviados: `false`;
+- segurança, regressão e staging de 40 motoboys também passaram na execução manual.
+
+**Permanecem pendentes:** origem da loja confirmada em mapa, quota/licença para dados históricos, benchmark 50 destinos + 40 duplas, comparação Waze/Maps em celulares e liberação operacional. Não ligar flags nem fazer merge/deploy ainda.
+
 ## Evidências
 - Suíte completa de regressão, segurança e staging com 40 motoboys passou (a pré-saída testada com rota automática desligada).
 - SELECT somente leitura confirmou em 23/10/2026 51 entregas individuais iFood e 164 duplas iFood elegíveis para benchmark; 158 duplas têm confirmação dos dois pedidos.
