@@ -238,9 +238,11 @@ function resultSummary(data,clientStats,originConfirmed=true) {
 
 async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50,pairN=40}) {
   const {singles,pairs}=categorize(rows);
-  if(singles.length<soloN||pairs.length<pairN)
-    throw new Error("Historico insuficiente para 50 destinos e 40 duplas: "+singles.length+"/"+pairs.length);
-  const solo=spread(singles,soloN),paired=spread(pairs,pairN);
+  // Uma dupla com as mesmas coordenadas nao comprova uma decisao entre enderecos.
+  const distinctPairs=pairs.filter(two=>haversineMeters(two[0],two[1])>2);
+  if(singles.length<soloN||distinctPairs.length<pairN)
+    throw new Error("Historico insuficiente para 50 destinos/40 duplas distintas; suspender benchmark.");
+  const solo=spread(singles,soloN),paired=spread(distinctPairs,pairN);
   // Standard ORS: 40 chamadas Matrix/min. 2000ms garante <=30/minute com margem.
   // O plano tambem tem cota diaria compartilhada com o uso real da aplicacao.
   if (!Number.isFinite(minIntervalMs) || minIntervalMs<1550) throw new Error("Intervalo Matrix abaixo do limite seguro de 40/min.");
@@ -274,6 +276,8 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50
   if(soloMeasurements.filter(Boolean).length<Math.ceil(soloN*.95) ||
      pairMeasurements.filter(Boolean).length<Math.ceil(pairN*.95))
     throw new Error("Cobertura viaria menor que 95%; sem liberacao.");
+  if(pairMeasurements.filter(Boolean).some(p=>p.planner_first_index!==p.nearest_first_index))
+    throw new Error("Rota calculada violou primeira parada mais proxima; sem liberacao.");
    return resultSummary({solo:soloMeasurements,pairs:pairMeasurements},
     {matrix_requests:calls,planned_max:Math.ceil(soloN/25)+pairN});
 }
