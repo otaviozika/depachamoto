@@ -1,6 +1,6 @@
 # Validação real do OpenRouteService — OLD MAN / DespacheFull
 
-**Estado: preparado, não homologado com a API real.** Nada foi publicado em produção.
+**Estado: conexão ORS real testada com pontos fictícios (PASS); amostra histórica 50+40 ainda NÃO homologada pelas ruas.** Nenhuma mudança foi publicada em produção.
 
 ## Smoke real da API HeiGIT / ORS — 31/10/2026
 
