@@ -89,13 +89,35 @@ async function selectHistory(dbUrl,date) {
     await client.connect();
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL statement_timeout = '25s'");
+    // A transacao READ ONLY nao basta se a credencial tem privilegios de escrita.
+    // O teste so pode ler historico com uma role realmente limitada a SELECT.
+    const access=await client.query(`
+      SELECT NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole
+             AND NOT r.rolbypassrls AND NOT r.rolreplication
+             AND NOT EXISTS (
+               SELECT 1 FROM (
+                 VALUES ('public.dispatches'::regclass),
+                        ('public.dispatch_orders'::regclass),
+                        ('public.ifood_dispatch_links'::regclass),
+                        ('public.ifood_orders'::regclass),
+                        ('public.ifood_delivery_confirmations'::regclass)
+               ) t(tab)
+               WHERE has_table_privilege(current_user,t.tab,'INSERT')
+                  OR has_table_privilege(current_user,t.tab,'UPDATE')
+                  OR has_table_privilege(current_user,t.tab,'DELETE')
+                  OR has_table_privilege(current_user,t.tab,'TRUNCATE')
+             ) AS safe
+      FROM pg_roles r WHERE r.rolname=current_user`);
+    if(access.rows[0]?.safe!==true)
+      throw new Error("Credencial PostgreSQL rejeitada: requer conta com SELECT e sem permissao de escrita nas tabelas de pedidos.");
     const q=await client.query(HISTORICAL_SQL,[date]);
     await client.query("ROLLBACK");
     return q.rows;
   } catch(e){
     await client.query("ROLLBACK").catch(()=>{});
-    // Nunca exibir URI, usuario, host ou dados de clientes.
-    throw new Error("Falha na leitura do historico PostgreSQL (SQLSTATE "+String(e.code||"unknown")+").");
+    // Nunca exibir URI, usuario, host, SQL da consulta ou dados de clientes.
+    if(String(e.message||"").startsWith("Credencial PostgreSQL rejeitada:"))throw e;
+    throw new Error("Falha na leitura historica (SQLSTATE "+String(e.code||"UNKNOWN")+"); banco nao alterado.");
   } finally { await client.end().catch(()=>{}); }
 }
 function matrixValid(m,n){
@@ -108,13 +130,14 @@ function matrixValid(m,n){
 // Pela desigualdade triangular: linha_reta <= ajuste_saida + percurso_rua + ajuste_chegada.
 // Se os metadados faltarem, aceitamos SOMENTE quando a distancia viaria por si satisfaz
 // a desigualdade (nunca inventamos offsets). Em homologacao exigimos snap conhecido.
-function roadLegReasonable(matrix,points,from,to,{maxSnapMeters=150,toleranceMeters=5}={}) {
+function roadLegReasonable(matrix,points,from,to,{maxSnapMeters=150,toleranceMeters=5,requireSnapping=false}={}) {
   const road=matrix?.meters?.[from]?.[to];
   if(!Number.isFinite(road)||road<0||!points?.[from]||!points?.[to])return {ok:false,snap_known:false};
   const straight=haversineMeters(points[from],points[to]);
   const src=matrix.snapped_meters?.sources?.[from];
   const dst=matrix.snapped_meters?.destinations?.[to];
   const known=Number.isFinite(src)&&src>=0&&Number.isFinite(dst)&&dst>=0;
+  if(requireSnapping&&!known)return {ok:false,snap_known:false};
   if(known&&(src>maxSnapMeters||dst>maxSnapMeters))return {ok:false,snap_known:true,max_snap_meters:Math.max(src,dst)};
   const slack=known?src+dst:0;
   return {ok:road+slack+toleranceMeters>=straight,snap_known:known,
@@ -129,7 +152,7 @@ function assessPair(matrix,stops,origin=null) {
   if(origin) {
     const points=[origin,...stops];
     for(const [from,to] of [[0,1],[0,2],[1,2],[2,1]]){
-      if(!roadLegReasonable(matrix,points,from,to).ok)return null;
+      if(!roadLegReasonable(matrix,points,from,to,{requireSnapping:true}).ok)return null;
     }
   }
   const nearestIndex=m[0][1]<=m[0][2]?0:1;
@@ -152,6 +175,29 @@ function assessPair(matrix,stops,origin=null) {
     has_7km_stop:m[0][1]>=7000||m[0][2]>=7000
   };
 }
+// Analisa a elegibilidade de todos os pedidos sem transmitir GPS ou PII a terceiros.
+function preflightHistory(rows,date) {
+  const {singles,pairs}=categorize(rows);
+  const pairsWithBothConfirmations=pairs.filter(two=>two.every(s=>Number.isFinite(s.confirmation_minutes))).length;
+  const pairsWithDistinctCoordinates=pairs.filter(two=>
+    haversineMeters(two[0],two[1])>2).length;
+  return {
+    status:"READ_ONLY_SAMPLE_PREFLIGHT",
+    sample_date:date,
+    eligible_single_runs:singles.length,
+    eligible_pair_runs:pairs.length,
+    pairs_with_distinct_coordinates:pairsWithDistinctCoordinates,
+    pairs_with_two_confirmations:pairsWithBothConfirmations,
+    selected_singles:Math.min(50,singles.length),
+    selected_pairs:Math.min(40,pairs.length),
+    ready:singles.length>=50&&pairs.length>=40&&pairsWithDistinctCoordinates>=40,
+    database_mode:"READ_ONLY",
+    external_api_requests:0,
+    customer_coordinates_returned:false,
+    candidate_data_logged:false
+  };
+}
+
 function resultSummary(data,clientStats,originConfirmed=true) {
   const solo=data.solo.filter(x=>x!==null);
   const pairs=data.pairs.filter(x=>x!==null);
@@ -214,7 +260,7 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50
     if(!matrixValid(m,batch.length+1))throw new Error("ORS respondeu matriz inconsistente.");
     for(let j=0;j<batch.length;j++){
       const sec=m.seconds[0][j+1],dist=m.meters[0][j+1];
-      const geometry=roadLegReasonable(m,[origin,...batch],0,j+1);
+      const geometry=roadLegReasonable(m,[origin,...batch],0,j+1,{requireSnapping:true});
       soloMeasurements.push(Number.isFinite(sec)&&sec>=0&&Number.isFinite(dist)&&dist>=0&&geometry.ok?{
         travelMin:sec/60,roadKm:dist/1000,confirmationMin:batch[j].confirmation_minutes
       }:null);
@@ -269,6 +315,14 @@ async function selftest(){
     {departed_at:new Date(t0).toISOString(),total_legs:2,stops:[row(8),{...row(14),longitude:"-46.56"}]},
     {departed_at:new Date(t0).toISOString(),total_legs:2,stops:[row(8),{...row(14),platform:"anotaai"}]}];
   const x=categorize(rows);
+  const preflight=preflightHistory(rows,"2026-10-23");
+  assert.equal(preflight.eligible_single_runs,1);
+  assert.equal(preflight.eligible_pair_runs,1);
+  assert.equal(preflight.selected_pairs,1);
+  assert.equal(preflight.ready,false);
+  assert.equal(preflight.external_api_requests,0);
+  assert.equal(preflight.customer_coordinates_returned,false);
+  assert.equal(JSON.stringify(preflight).includes("-46.5549"),false);
   assert.equal(x.singles.length,1);
   assert.equal(x.pairs.length,1); // mistos excluidos
   assert.ok(haversineMeters(OPERATOR_ROUTE_ORIGIN,LONGE_STORE.approx)<5);
@@ -290,6 +344,7 @@ async function selftest(){
     snapped_meters:{sources:[20,20],destinations:[20,20]}};
   assert.equal(roadLegReasonable(snappedCase,gp,0,1).ok,true);
   assert.equal(roadLegReasonable({meters:snappedCase.meters},gp,0,1).ok,false);
+  assert.equal(roadLegReasonable({meters:[[0,originalStraight+30],[originalStraight+30,0]]},gp,0,1,{requireSnapping:true}).ok,false);
   assert.equal(roadLegReasonable({meters:snappedCase.meters,snapped_meters:{
     sources:[180,0],destinations:[20,0]}},gp,0,1).ok,false);
   assert.equal(roadLegReasonable({meters:[[0,originalStraight-150],[],[]],
@@ -331,7 +386,8 @@ async function selftest(){
   const mock={travelMatrix:async points=>{
     const n=points.length;
     return {seconds:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*100)),
-      meters:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*700))};
+      meters:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*700)),
+      snapped_meters:{sources:points.map(()=>0),destinations:points.map(()=>0)}};
   }};
   const sample=await runBenchmark({rows:rows.slice(0,2),origin:LONGE_STORE.approx,
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1600});
@@ -342,15 +398,19 @@ async function selftest(){
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
   assert.equal(sample.pairs.planner_respects_nearest,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
-  console.log(JSON.stringify({result:"PASS",tests:14,real_external_api_requests:0}));
+  console.log(JSON.stringify({result:"PASS",tests:16,real_external_api_requests:0}));
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
   if(process.argv.includes("--provider-smoke"))return providerSmoke();
-  const required=["DATABASE_URL","OPENROUTESERVICE_API_KEY"];
+  const preflightOnly=process.argv.includes("--preflight");
+  const required=preflightOnly?["DATABASE_URL"]:["DATABASE_URL","OPENROUTESERVICE_API_KEY"];
   for(const name of required)if(!process.env[name])throw new Error("Ausente variavel protegida: "+name);
-  if(process.env.STORE_ORIGIN_VERIFIED!=="YES"||process.env.HISTORICAL_BENCHMARK_CONFIRM!=="READ_ONLY")
-    throw new Error("Confirme origem exata e leitura exclusiva antes do benchmark.");
+  const expectedMode=preflightOnly?"PREFLIGHT_ONLY":"READ_ONLY";
+  if(process.env.STORE_ORIGIN_VERIFIED!=="YES"||process.env.HISTORICAL_BENCHMARK_CONFIRM!==expectedMode)
+    throw new Error("Confirme origem e modo seguro do benchmark."); 
+  if(!preflightOnly&&process.env.CUSTOMER_COORDINATES_TRANSFER_APPROVED!=="YES")
+    throw new Error("Transferencia de coordenadas externas nao autorizada. Nao consultar ORS.");
   const date=process.env.SAMPLE_DATE||"2026-10-23";
   if(!/^20\d\d-\d\d-\d\d$/.test(date))throw new Error("SAMPLE_DATE invalida");
   const origin={
@@ -360,6 +420,10 @@ async function main(){
   if(!checkPoint(origin)||haversineMeters(origin,OPERATOR_ROUTE_ORIGIN)>25)
     throw new Error("Origem do benchmark diverge mais de 25m do pino informado pelo operador. Revalidar antes de continuar.");
   const rows=await selectHistory(process.env.DATABASE_URL,date);
+  const preflight=preflightHistory(rows,date);
+  if(!preflight.ready)throw new Error("Historico nao atende 50 destinos/40 duplas; interrompido.");
+  if(preflightOnly) { console.log(JSON.stringify(preflight,null,2)); return; }
+  // Nenhum dado bruto vai para logs ou artifacts. Apenas coordenadas sao enviadas ao ORS.
   const road=createOpenRouteServiceClient({apiKey:process.env.OPENROUTESERVICE_API_KEY});
   const report=await runBenchmark({rows,origin,routeClient:road});
   report.date=date;
@@ -369,10 +433,13 @@ async function main(){
 }
 const running=process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1];
 if(running) main().catch(e=>{
-  const message=String(e.code||e.message||"unknown");
-  const clean=message.replace(/postgres(?:ql)?:\/\/\S+/gi,"[DB_URL]")
-    .replace(/api[_-]?key[=:]\s*\S+/gi,"[API_KEY]");
-  console.error("BENCHMARK NAO CONCLUIDO: "+clean.slice(0,250));
+  // Nao exibir resposta do provedor, pois mensagens externas podem repetir GPS de clientes.
+  const code=String(e?.code||"");
+  const known=String(e?.message||"");
+  const safe=/^ROUTES_[A-Z0-9_]+$/.test(code)?"Falha na API viaria ("+code+").":
+    /^(Credencial PostgreSQL rejeitada:|Falha na leitura historica|Historico nao atende|Cobertura viaria|Origem do benchmark|Confirme origem|Transferencia de coordenadas externas|Ausente variavel|Intervalo Matrix|Orcamento de requisicoes|ORS respondeu matriz inconsistente)/.test(known)
+    ?known:"Falha no benchmark (dados protegidos; revisar diagnostico seguro).";
+  console.error("BENCHMARK NAO CONCLUIDO: "+safe.slice(0,230));
   process.exitCode=1;
 });
 export {assessPair,categorize,runBenchmark,resultSummary,spread};
