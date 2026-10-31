@@ -5184,8 +5184,10 @@ async function createDispatchTransaction({
     }
     const closedPrevious = null;
 
+    // 64 bits de entropia evitam colisões entre saídas simultâneas no mesmo milissegundo.
+    // O antigo sufixo aleatório de 4 caracteres (36^4 combinações) podia colidir.
     const code = "DSP-" + Date.now().toString(36).toUpperCase() + "-" +
-      Math.random().toString(36).slice(2, 6).toUpperCase();
+      crypto.randomBytes(8).toString("hex").toUpperCase();
 
     const result = existingRoute ? { rows: [existingRoute] } : await client.query(`
       INSERT INTO dispatches(
