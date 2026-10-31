@@ -17,6 +17,11 @@ import pg from "pg";
 import { fileURLToPath } from "node:url";
 import { createOpenRouteServiceClient } from "../lib/route-providers.js";
 import { LONGE_STORE, haversineMeters } from "../lib/longe-zone.js";
+
+// Pino vermelho posicionado no Google Maps pelo responsavel da operacao em 31/10/2026.
+// Este dado e exclusivo do benchmark; NAO altera LONGE_STORE ou origem da producao.
+export const OPERATOR_ROUTE_ORIGIN = Object.freeze({ latitude: -23.6244855, longitude: -46.5549218 });
+
 import { planRoute } from "../lib/route-planner.js";
 
 const sleep = ms => new Promise(resolve=>setTimeout(resolve,ms));
@@ -266,6 +271,8 @@ async function selftest(){
   const x=categorize(rows);
   assert.equal(x.singles.length,1);
   assert.equal(x.pairs.length,1); // mistos excluidos
+  assert.ok(haversineMeters(OPERATOR_ROUTE_ORIGIN,LONGE_STORE.approx)<5);
+  assert.equal(checkPoint(OPERATOR_ROUTE_ORIGIN),true);
   assert.deepEqual(spread([1,2,3,4],2),[2,4]);
   const m={seconds:[[0,120,200],[120,0,100],[200,90,0]],
     meters:[[0,500,900],[500,0,380],[900,320,0]]};
@@ -340,19 +347,23 @@ async function selftest(){
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
   if(process.argv.includes("--provider-smoke"))return providerSmoke();
-  const required=["DATABASE_URL","OPENROUTESERVICE_API_KEY","STORE_LAT","STORE_LON"];
+  const required=["DATABASE_URL","OPENROUTESERVICE_API_KEY"];
   for(const name of required)if(!process.env[name])throw new Error("Ausente variavel protegida: "+name);
   if(process.env.STORE_ORIGIN_VERIFIED!=="YES"||process.env.HISTORICAL_BENCHMARK_CONFIRM!=="READ_ONLY")
     throw new Error("Confirme origem exata e leitura exclusiva antes do benchmark.");
   const date=process.env.SAMPLE_DATE||"2026-10-23";
   if(!/^20\d\d-\d\d-\d\d$/.test(date))throw new Error("SAMPLE_DATE invalida");
-  const origin={latitude:Number(process.env.STORE_LAT),longitude:Number(process.env.STORE_LON)};
-  if(!checkPoint(origin)||haversineMeters(origin,LONGE_STORE.approx)>400)
-    throw new Error("Coordenadas da loja invalidas ou distantes mais de 400m do ponto previsto");
+  const origin={
+    latitude:process.env.STORE_LAT===undefined?OPERATOR_ROUTE_ORIGIN.latitude:Number(process.env.STORE_LAT),
+    longitude:process.env.STORE_LON===undefined?OPERATOR_ROUTE_ORIGIN.longitude:Number(process.env.STORE_LON)
+  };
+  if(!checkPoint(origin)||haversineMeters(origin,OPERATOR_ROUTE_ORIGIN)>25)
+    throw new Error("Origem do benchmark diverge mais de 25m do pino informado pelo operador. Revalidar antes de continuar.");
   const rows=await selectHistory(process.env.DATABASE_URL,date);
   const road=createOpenRouteServiceClient({apiKey:process.env.OPENROUTESERVICE_API_KEY});
   const report=await runBenchmark({rows,origin,routeClient:road});
   report.date=date;
+  report.origin_source="OPERATOR_PIN_2026_10_31"; // somente origem empresarial, sem dados de clientes
   // Somente metricas agregadas. Nenhum pedido/cliente/localizacao sera impresso.
   console.log(JSON.stringify(report,null,2));
 }
