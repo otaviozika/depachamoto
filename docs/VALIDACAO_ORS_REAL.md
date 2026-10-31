@@ -11,7 +11,7 @@
 - banco consultado: `false`; dados de clientes enviados: `false`;
 - segurança, regressão e staging de 40 motoboys também passaram na execução manual.
 
-**Permanecem pendentes:** origem da loja confirmada em mapa, quota/licença para dados históricos, benchmark 50 destinos + 40 duplas, comparação Waze/Maps em celulares e liberação operacional. Não ligar flags nem fazer merge/deploy ainda.
+**Permanecem pendentes:** verificação presencial do acesso real de coleta das sacolas, quota/licença para dados históricos, benchmark 50 destinos + 40 duplas, comparação Waze/Maps em celulares e liberação operacional. Não ligar flags nem fazer merge/deploy ainda.
 
 ## Evidências
 - Suíte completa de regressão, segurança e staging com 40 motoboys passou (a pré-saída testada com rota automática desligada).
@@ -53,18 +53,18 @@ Fonte oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservi
 - Primeiro link informado pelo responsável: https://maps.app.goo.gl/kfz37jquuGCeA3YLA?g_st=ic
 - **Segundo link recebido em 31/10/2026:** https://maps.app.goo.gl/RScsEzTwB4akMkD96?g_st=ic
 - Local público verificado por fontes independentes: Rua Tapajós, 846 — Barcelona, São Caetano do Sul/SP.
-- **Ponto exato da saída dos motoboys ainda NÃO certificado.** Os dois links curtos não disponibilizaram coordenadas do pino no ambiente de verificação, inclusive o segundo link; sem resolver a URL final não é possível distinguir o marcador do estabelecimento de um pino na porta de despacho.
-- **Não definir STORE_LAT/STORE_LON com base em centro do mapa, endereço textual ou código aproximado.** Manter `LONGE_STORE.approx` somente como referência de validação de desvio, nunca como origem homologada.
-- A origem só fica liberada quando o responsável informar o par latitude/longitude de um pino solto posicionado sobre a saída das entregas (ou um link longo com coordenadas explicitamente verificáveis).
-- Não acionar o benchmark histórico nem atualizar as configurações de produção até essa certificação. O smoke com três pontos fictícios já foi aprovado.
+- **Pino de saída informado pelo responsável em captura de tela do Google Maps em 31/10/2026**: latitude **-23.6244855**, longitude **-46.5549218**, local apontado junto à Rua Tapajós, 846. Evidência: pino vermelho solto com coordenadas visíveis. A imagem não prova se o ponto corresponde à porta de retirada: conferir presencialmente no piloto.
+- O pino indicado está a **3,08 m** do valor aproximado em `LONGE_STORE.approx`; o benchmark utiliza **exclusivamente** as coordenadas do pino enviado pelo usuário. Não modificar `LONGE_STORE.approx`, o polígono LONGE, pagamentos ou configurações de produção.
+- A condição de **coordenadas para o benchmark** foi atendida pelo screenshot. A configuração efetiva de `route_store_origin` no aplicativo exigirá o fluxo de confirmação administrativa, com auditoria e sem pré-saídas abertas.
+- Não acionar o benchmark histórico sem credencial PostgreSQL de leitura restrita, aceite operacional de privacidade e verificação de cota. O smoke com três pontos fictícios já foi aprovado. Não fazer alterações em produção.
 
 ## Etapa B — Benchmark histórico
-1. Confirmar o ponto exato da loja (Rua Tapajós, 846) em mapa e presencialmente; guardar em STORE_LAT e STORE_LON.
+1. Coordenadas do pino de saída recebidas e fixadas apenas no benchmark: `-23.6244855, -46.5549218`. Conferir o acesso de retirada presencialmente antes do piloto.
 2. Usar DATABASE_URL de uma credencial PostgreSQL exclusiva com acesso somente de leitura, não a credencial administrativa da produção.
-3. Confirmar quota disponível e licença; executar fora do pico.
-4. Definir OPENROUTESERVICE_API_KEY, DATABASE_URL, STORE_LAT, STORE_LON no ambiente, e executar:
+3. Confirmar quota disponível, finalidade e tratamento de dados pelo provedor; executar fora do pico.
+4. Definir somente `OPENROUTESERVICE_API_KEY` e `DATABASE_URL` no ambiente; o código usa o pino informado e rejeita substituições a mais de 25 m desse ponto. Executar:
    STORE_ORIGIN_VERIFIED=YES HISTORICAL_BENCHMARK_CONFIRM=READ_ONLY SAMPLE_DATE=2026-10-23 node scripts/benchmark-ors-historical.js
-5. O código exige validação humana da origem, valida a distância desta até a aproximação e faz BEGIN READ ONLY sem escrever ou revelar pedidos.
+5. O código exige `STORE_ORIGIN_VERIFIED=YES`, valida a distância das coordenadas até o pino informado e faz `BEGIN READ ONLY`, sem escrever ou revelar pedidos.
 
 ## Gate de liberação
 - [ ] Autenticação e matriz ORS real verificadas.
