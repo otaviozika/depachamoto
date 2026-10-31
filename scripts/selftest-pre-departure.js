@@ -244,6 +244,7 @@ for (const n of [1, 2, 3, 4, 5]) {
     const orders = [];
     for (let i = 0; i < n; i++) orders.push(i % 2 ? await anota(1000 + n * 10 + i, at(40 + i * 70, 900 + i * 400), { age: 10 + i * 5 }) : await ifood(1000 + n * 10 + i, at(40 + i * 70, 900 + i * 400), { age: 10 + i * 5 }));
     const { pd, dispatch, steps } = await fullFlow(n + 1, orders);
+    assert.match(dispatch.dispatch_code, /^DSP-[A-Z0-9]+-[0-9A-F]{16}$/, "Código de saída precisa de 64 bits de entropia.");
     const stops = await stopsOf(dispatch.id);
     assert.equal(stops.length, n);
     assert.equal((await query("SELECT COUNT(*)::int c FROM pre_departure_events WHERE pre_departure_id=$1 AND event='BAG_CHECKED'", [pd.id])).rows[0].c, n);
