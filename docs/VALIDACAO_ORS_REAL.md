@@ -50,9 +50,10 @@ Fonte oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservi
 **Alternativa por terminal de ambiente confiável:** `HISTORICAL_BENCHMARK_CONFIRM=SMOKE_ONLY node scripts/benchmark-ors-historical.js --provider-smoke` com a chave já definida na variável `OPENROUTESERVICE_API_KEY`. Esta execução usa **somente três coordenadas fictícias** e não acessa PostgreSQL ou clientes. Falhas 401/403/429 exigem investigação, sem continuar com histórico.
 
 ## Localização enviada pelo responsável — 31/10/2026
-- Link informado pelo responsável para a origem da OLD MAN: https://maps.app.goo.gl/kfz37jquuGCeA3YLA?g_st=ic
+- Primeiro link informado pelo responsável: https://maps.app.goo.gl/kfz37jquuGCeA3YLA?g_st=ic
+- **Segundo link recebido em 31/10/2026:** https://maps.app.goo.gl/RScsEzTwB4akMkD96?g_st=ic
 - Local público verificado por fontes independentes: Rua Tapajós, 846 — Barcelona, São Caetano do Sul/SP.
-- **Ponto exato da saída dos motoboys ainda NÃO certificado.** O link curto não disponibilizou coordenadas do pino no ambiente de verificação; a listagem pública pode indicar apenas o estabelecimento, não sua entrada de despacho.
+- **Ponto exato da saída dos motoboys ainda NÃO certificado.** Os dois links curtos não disponibilizaram coordenadas do pino no ambiente de verificação, inclusive o segundo link; sem resolver a URL final não é possível distinguir o marcador do estabelecimento de um pino na porta de despacho.
 - **Não definir STORE_LAT/STORE_LON com base em centro do mapa, endereço textual ou código aproximado.** Manter `LONGE_STORE.approx` somente como referência de validação de desvio, nunca como origem homologada.
 - A origem só fica liberada quando o responsável informar o par latitude/longitude de um pino solto posicionado sobre a saída das entregas (ou um link longo com coordenadas explicitamente verificáveis).
 - Não acionar o benchmark histórico nem atualizar as configurações de produção até essa certificação. O smoke com três pontos fictícios já foi aprovado.
