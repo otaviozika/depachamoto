@@ -149,6 +149,22 @@ jobs:
       - name: Pre-departure smoke - 40 couriers on real PostgreSQL
         run: node scripts/smoke-staging-predeparture.js
 
+      # Manual-only: only synthetic coordinates, never a customer, order or production DB.
+      # The existing workflow is present on main, so the user can select the PR branch
+      # under Actions > Staging release gate > Run workflow.
+      - name: OpenRouteService provider smoke - manual, synthetic points only
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          HISTORICAL_BENCHMARK_CONFIRM: SMOKE_ONLY
+        shell: bash
+        run: |
+          if [ -z "$OPENROUTESERVICE_API_KEY" ]; then
+            echo "::error::Configure OPENROUTESERVICE_API_KEY em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js --provider-smoke
+
       - name: Diagnostic evidence when staging fails
         if: failure()
         shell: bash
