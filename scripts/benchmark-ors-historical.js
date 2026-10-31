@@ -99,11 +99,34 @@ function matrixValid(m,n){
     m.seconds.every(r=>Array.isArray(r)&&r.length===n)&&
     m.meters.every(r=>Array.isArray(r)&&r.length===n);
 }
-function assessPair(matrix,stops) {
+// Verificacao geometrica da malha: o ORS mede entre pontos "snapados" nas ruas.
+// Pela desigualdade triangular: linha_reta <= ajuste_saida + percurso_rua + ajuste_chegada.
+// Se os metadados faltarem, aceitamos SOMENTE quando a distancia viaria por si satisfaz
+// a desigualdade (nunca inventamos offsets). Em homologacao exigimos snap conhecido.
+function roadLegReasonable(matrix,points,from,to,{maxSnapMeters=150,toleranceMeters=5}={}) {
+  const road=matrix?.meters?.[from]?.[to];
+  if(!Number.isFinite(road)||road<0||!points?.[from]||!points?.[to])return {ok:false,snap_known:false};
+  const straight=haversineMeters(points[from],points[to]);
+  const src=matrix.snapped_meters?.sources?.[from];
+  const dst=matrix.snapped_meters?.destinations?.[to];
+  const known=Number.isFinite(src)&&src>=0&&Number.isFinite(dst)&&dst>=0;
+  if(known&&(src>maxSnapMeters||dst>maxSnapMeters))return {ok:false,snap_known:true,max_snap_meters:Math.max(src,dst)};
+  const slack=known?src+dst:0;
+  return {ok:road+slack+toleranceMeters>=straight,snap_known:known,
+    max_snap_meters:known?Math.max(src,dst):null};
+}
+
+function assessPair(matrix,stops,origin=null) {
   if(!matrixValid(matrix,3))return null;
   const t=matrix.seconds,m=matrix.meters;
   const needed=[t[0][1],t[0][2],t[1][2],t[2][1],m[0][1],m[0][2]];
   if(needed.some(x=>!Number.isFinite(x)||x<0))return null;
+  if(origin) {
+    const points=[origin,...stops];
+    for(const [from,to] of [[0,1],[0,2],[1,2],[2,1]]){
+      if(!roadLegReasonable(matrix,points,from,to).ok)return null;
+    }
+  }
   const nearestIndex=m[0][1]<=m[0][2]?0:1;
   const firstA=t[0][1]+t[1][2],firstB=t[0][2]+t[2][1];
   const fastestIndex=firstA<=firstB?0:1;
@@ -186,23 +209,21 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50
     if(!matrixValid(m,batch.length+1))throw new Error("ORS respondeu matriz inconsistente.");
     for(let j=0;j<batch.length;j++){
       const sec=m.seconds[0][j+1],dist=m.meters[0][j+1];
-      soloMeasurements.push(Number.isFinite(sec)&&sec>=0&&Number.isFinite(dist)&&dist>=0?{
-        travelMin:sec/60,roadKm:dist/1000,confirmationMin:batch[j].confirmation_minutes,
-        impossible_shorter_than_straight:dist+50<haversineMeters(origin,batch[j])
+      const geometry=roadLegReasonable(m,[origin,...batch],0,j+1);
+      soloMeasurements.push(Number.isFinite(sec)&&sec>=0&&Number.isFinite(dist)&&dist>=0&&geometry.ok?{
+        travelMin:sec/60,roadKm:dist/1000,confirmationMin:batch[j].confirmation_minutes
       }:null);
     }
   }
   const pairMeasurements=[];
   for(const stops of paired){
     const matrix=await paced([origin,...stops]);
-    pairMeasurements.push(assessPair(matrix,stops));
+    pairMeasurements.push(assessPair(matrix,stops,origin));
   }
   if(soloMeasurements.filter(Boolean).length<Math.ceil(soloN*.95) ||
      pairMeasurements.filter(Boolean).length<Math.ceil(pairN*.95))
     throw new Error("Cobertura viaria menor que 95%; sem liberacao.");
-  if(soloMeasurements.some(x=>x?.impossible_shorter_than_straight))
-    throw new Error("Matriz retornou distancia menor que linha reta; revisar origem e coordenadas.");
-  return resultSummary({solo:soloMeasurements,pairs:pairMeasurements},
+   return resultSummary({solo:soloMeasurements,pairs:pairMeasurements},
     {matrix_requests:calls,planned_max:Math.ceil(soloN/25)+pairN});
 }
 
@@ -221,12 +242,15 @@ async function providerSmoke() {
   if(!matrixValid(result,3)) throw new Error("ORS respondeu formato inesperado na verificacao.");
   const legs=[result.meters[0][1],result.meters[0][2],result.seconds[0][1],result.seconds[0][2]];
   if (legs.some(x=>!Number.isFinite(x)||x<=0))throw new Error("ORS nao conseguiu calcular as duas rotas sinteticas.");
-  if (result.meters[0][1]<haversineMeters(testPoints[0],testPoints[1])*.95 ||
-      result.meters[0][2]<haversineMeters(testPoints[0],testPoints[2])*.95)
-    throw new Error("Distancia ORS menor que distancia em linha reta na verificacao.");
+  const validations=[1,2].map(to=>roadLegReasonable(result,testPoints,0,to,{maxSnapMeters:250}));
+  if(validations.some(v=>!v.snap_known))
+    throw new Error("ORS nao informou distancias dos pontos ajustados a vias (snapping).");
+  if(validations.some(v=>!v.ok))
+    throw new Error("Ajuste a via excessivo ou geometria inconsistente na matriz ORS.");
   console.log(JSON.stringify({
     result:"PASS",provider:"openrouteservice",mode:"SYNTHETIC_PROVIDER_SMOKE",
     matrix_requests:1,elements:api.elements,points:3,valid_legs:2,
+    max_snap_meters:round(Math.max(...validations.map(v=>v.max_snap_meters)),1),
     response_time_ms:Date.now()-started,
     database_read:false,real_customer_data_used:false
   },null,2));
