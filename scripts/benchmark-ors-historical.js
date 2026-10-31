@@ -273,6 +273,20 @@ async function selftest(){
   assert.equal(score.nearest_first_index,0);
   assert.equal(score.planner_first_index,0);
   assert.equal(score.first_confirmed_nearest_proxy,true);
+  // Um trecho na rua pode medir menos que a linha reta entre coordenadas ORIGINAIS:
+  // o ORS mede entre pontos ajustados a rede. So aceitar diferenca matematicamente
+  // explicada pelo snapping; jamais aceitar deslocamento maior que o limiar.
+  const gp=[{latitude:-23.62446,longitude:-46.55491},
+    {latitude:-23.62446,longitude:-46.55381}];
+  const originalStraight=haversineMeters(gp[0],gp[1]);
+  const snappedCase={meters:[[0,originalStraight-30],[originalStraight-30,0]],
+    snapped_meters:{sources:[20,20],destinations:[20,20]}};
+  assert.equal(roadLegReasonable(snappedCase,gp,0,1).ok,true);
+  assert.equal(roadLegReasonable({meters:snappedCase.meters},gp,0,1).ok,false);
+  assert.equal(roadLegReasonable({meters:snappedCase.meters,snapped_meters:{
+    sources:[180,0],destinations:[20,0]}},gp,0,1).ok,false);
+  assert.equal(roadLegReasonable({meters:[[0,originalStraight-150],[],[]],
+    snapped_meters:{sources:[20,20],destinations:[20,20]}},gp,0,1).ok,false);
   // Contrato real do payload ORS: Authorization server-side, longitude antes de latitude,
   // metricas completas e nenhuma chamada externa no teste desconectado.
   let mockApiCalls=0;
@@ -290,7 +304,9 @@ async function selftest(){
       assert.equal(body.locations.length,3);
       return {ok:true,text:async()=>JSON.stringify({
         durations:[[0,120,180],[150,0,80],[210,95,0]],
-        distances:[[0,650,1000],[710,0,370],[1100,420,0]]
+        distances:[[0,650,1000],[710,0,370],[1100,420,0]],
+        sources:[{snapped_distance:17},{snapped_distance:32},{snapped_distance:41}],
+        destinations:[{snapped_distance:17},{snapped_distance:32},{snapped_distance:41}]
       })};
     }
   });
@@ -303,6 +319,8 @@ async function selftest(){
   assert.equal(mockedORS.elements,9);
   assert.equal(mockedMatrix.seconds[0][1],120);
   assert.equal(mockedMatrix.meters[0][2],1000);
+  assert.equal(mockedMatrix.snapped_meters.sources[1],32);
+  assert.equal(mockedMatrix.snapped_meters.destinations[2],41);
   const mock={travelMatrix:async points=>{
     const n=points.length;
     return {seconds:points.map((_,i)=>points.map((__,j)=>i===j?0:Math.abs(i-j)*100)),
@@ -317,7 +335,7 @@ async function selftest(){
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
   assert.equal(sample.pairs.planner_respects_nearest,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
-  console.log(JSON.stringify({result:"PASS",tests:12,real_external_api_requests:0}));
+  console.log(JSON.stringify({result:"PASS",tests:14,real_external_api_requests:0}));
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
