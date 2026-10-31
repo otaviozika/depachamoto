@@ -6,6 +6,21 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      historical_mode:
+        description: "Histórico: sem acesso (none), pré-auditoria sem API (preflight) ou 50+40 com ORS (full)"
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - preflight
+          - full
+      coordinates_transfer_approved:
+        description: "Autoriza enviar apenas as coordenadas dos pedidos historicos ao ORS? (somente full)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -153,7 +168,7 @@ jobs:
       # The existing workflow is present on main, so the user can select the PR branch
       # under Actions > Staging release gate > Run workflow.
       - name: OpenRouteService provider smoke - manual, synthetic points only
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode != 'preflight'
         env:
           OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
           HISTORICAL_BENCHMARK_CONFIRM: SMOKE_ONLY
@@ -164,6 +179,47 @@ jobs:
             exit 1
           fi
           node scripts/benchmark-ors-historical.js --provider-smoke
+
+      # O DATABASE_URL acima pertence SOMENTE ao staging efemero. O URL abaixo
+      # e uma credencial DIFERENTE e de SOMENTE LEITURA, em segredo separado.
+      # Esta etapa nunca usa ORS nem envia coordenadas de clientes pela rede.
+      - name: Historical preflight - somente SELECT, nenhum envio externo
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode == 'preflight'
+        env:
+          DATABASE_URL: ${{ secrets.DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL }}
+          STORE_ORIGIN_VERIFIED: "YES"
+          HISTORICAL_BENCHMARK_CONFIRM: PREFLIGHT_ONLY
+          SAMPLE_DATE: "2026-10-23"
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Configure o segredo DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL com role PostgreSQL exclusiva de SELECT."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js --preflight | tee historical-preflight-report.json
+
+      # Somente dispara com selecao MANUAL 'full' e segundo aceite explicito.
+      # Nenhuma chamada a tabelas do staging e nenhuma mutacao de producao.
+      - name: Historical Matrix benchmark - 50 destinos e 40 duplas com ORS
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode == 'full'
+        env:
+          DATABASE_URL: ${{ secrets.DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          STORE_ORIGIN_VERIFIED: "YES"
+          HISTORICAL_BENCHMARK_CONFIRM: READ_ONLY
+          CUSTOMER_COORDINATES_TRANSFER_APPROVED: ${{ inputs.coordinates_transfer_approved && 'YES' || 'NO' }}
+          SAMPLE_DATE: "2026-10-23"
+        shell: bash
+        run: |
+          if [ "$CUSTOMER_COORDINATES_TRANSFER_APPROVED" != "YES" ]; then
+            echo "::error::Marque a autorizacao de envio de coordenadas antes de executar o teste completo."
+            exit 1
+          fi
+          if [ -z "$DATABASE_URL" ] || [ -z "$OPENROUTESERVICE_API_KEY" ]; then
+            echo "::error::Faltam secrets da conta PostgreSQL de somente leitura ou do OpenRouteService."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js | tee historical-benchmark-report.json
 
       - name: Diagnostic evidence when staging fails
         if: failure()
@@ -207,6 +263,8 @@ jobs:
             health.json
             staging-smoke-report.json
             staging-predeparture-report.json
+            historical-preflight-report.json
+            historical-benchmark-report.json
             fault-injection-f01-f08.json
             fault-injection-f09-f15.json
             fault-injection-f16-f18.json
