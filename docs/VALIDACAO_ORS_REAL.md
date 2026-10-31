@@ -72,6 +72,13 @@ Consulta real somente de leitura no Supabase, **sem envio de coordenadas** ao OR
 
 As **164 duplas têm coordenadas distintas**. 158 possuem confirmação para ambos os pedidos. Nenhuma das 379 paradas elegíveis está a 7 km ou mais **em linha reta**; isso **não** permite classificar distâncias rodoviárias de 7 km ou pagamentos LONGE.
 
+**Comparação exploratória da ordem histórica de confirmação (proxy, não GPS):**
+- Nas 164 duplas: 158 têm ordem de confirmação conhecida; em 127 delas, o pedido geograficamente mais próximo da loja (distância **reta**) foi confirmado primeiro (**80,4%**).
+- Na seleção sistemática de 40 duplas ordenadas por horário e ID de saída: 38 têm ordem de confirmação conhecida; em 30, o mais próximo por linha reta foi confirmado primeiro (**78,9%**). As outras 8 **não significam necessariamente** rota errada: a confirmação no app pode acontecer depois da entrega e a regra final usa **distâncias pelas ruas**, não linha reta.
+- Distância mediana em linha reta da loja até a parada mais próxima dessas 40 duplas: **1.257 m**. Esse valor não é previsão de distância viária nem ETA.
+
+Esses resultados validam a relevância da comparação por matriz de vias e fornecem uma referência a ser confrontada com o OpenRouteService; não permitem julgar motoboys individualmente.
+
 **Gate técnico introduzido no PR:**
 - O benchmark só aceita um banco com credencial limitada a `SELECT`; detecta e bloqueia contas com poderes de escrita nas tabelas usadas.
 - O modo manual `preflight` acessa somente PostgreSQL e devolve **contagens agregadas**; não acessa API de rotas.
