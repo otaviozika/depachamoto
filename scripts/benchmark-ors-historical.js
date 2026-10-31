@@ -80,7 +80,7 @@ const HISTORICAL_SQL=[
 " jsonb_agg(jsonb_build_object('platform',platform,'order_type',order_type,'delivered_by',delivered_by,'is_test',is_test, 'latitude',latitude,'longitude',longitude,",
 " 'order_created_at',order_created_at,'confirmed_at',confirmed_at) ORDER BY order_created_at NULLS LAST,order_id) AS stops",
 " FROM legs GROUP BY dispatch_id",
-") SELECT departed_at,total_legs,stops FROM runs WHERE total_legs IN (1,2) ORDER BY departed_at"
+") SELECT departed_at,total_legs,stops FROM runs WHERE total_legs IN (1,2) ORDER BY departed_at,dispatch_id"
 ].join("\n");
 
 async function selectHistory(dbUrl,date) {
