@@ -121,7 +121,7 @@ await test("openrouteservice (gratuito): matriz, localização precisa × aproxi
   const points = [{ latitude: -23.62, longitude: -46.55 }, { latitude: -23.61, longitude: -46.56 }, { latitude: -23.63, longitude: -46.54 }];
   const m = await client.travelMatrix(points);
   const matrixCall = requests[0];
-  assert.match(matrixCall.url, /\/v2\/matrix\/driving-car$/);
+  assert.equal(matrixCall.url, "https://api.heigit.org/openrouteservice/v2/matrix/driving-car");
   assert.equal(matrixCall.options.headers.Authorization, "ORS-KEY-123");
   assert.deepEqual(JSON.parse(matrixCall.options.body).locations[0], [-46.55, -23.62], "ORS usa [longitude, latitude]");
   assert.deepEqual(JSON.parse(matrixCall.options.body).metrics, ["duration", "distance"]);
@@ -131,6 +131,10 @@ await test("openrouteservice (gratuito): matriz, localização precisa × aproxi
   const rough = await client.geocodeAddress("Rua X, Centro, São Caetano do Sul", points[0]);
   assert.equal(rough.precise, false, "só a rua: aproximado");
   const geocodeUrl = new URL(requests[1].url);
+  assert.equal(geocodeUrl.origin, "https://api.heigit.org");
+  assert.equal(geocodeUrl.pathname, "/pelias/v1/search");
+  assert.equal(geocodeUrl.searchParams.has("api_key"), false, "chave nunca na URL da busca");
+  assert.equal(requests[1].options.headers.Authorization, "ORS-KEY-123");
   assert.equal(geocodeUrl.searchParams.get("boundary.country"), "BR");
   assert.ok(geocodeUrl.searchParams.get("focus.point.lat"));
   await assert.rejects(client.geocodeAddress("Rua Inexistente, 1", points[0]), e => e.code === "ROUTES_ADDRESS_NOT_FOUND");
