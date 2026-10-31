@@ -5,7 +5,7 @@
 ## Por que uma conta separada?
 O script `scripts/benchmark-ors-historical.js` precisa de dados históricos de cinco tabelas e não deve receber a credencial `postgres` de administração, nem a chave `service_role`. Ele exige `BEGIN READ ONLY`, verifica privilégios do usuário conectado e sai sem executar se tiver escrita nas tabelas dos pedidos.
 
-A role tem permissões de `SELECT` apenas em:
+A role tem permissões de `SELECT` **somente nas colunas necessárias**, nas tabelas:
 - `public.dispatches`;
 - `public.dispatch_orders`;
 - `public.ifood_dispatch_links`;
@@ -27,13 +27,17 @@ ALTER ROLE despachefull_benchmark_ro SET statement_timeout = '25s';
 GRANT CONNECT ON DATABASE postgres TO despachefull_benchmark_ro;
 GRANT USAGE ON SCHEMA public TO despachefull_benchmark_ro;
 
-GRANT SELECT ON
-  public.dispatches,
-  public.dispatch_orders,
-  public.ifood_dispatch_links,
-  public.ifood_orders,
-  public.ifood_delivery_confirmations
-TO despachefull_benchmark_ro;
+-- Restringir inclusive as COLUNAS; nao dar SELECT irrestrito a outras tabelas.
+GRANT SELECT (id, departed_at)
+  ON public.dispatches TO despachefull_benchmark_ro;
+GRANT SELECT (dispatch_id, platform, order_number)
+  ON public.dispatch_orders TO despachefull_benchmark_ro;
+GRANT SELECT (dispatch_id, local_order_number, ifood_order_id)
+  ON public.ifood_dispatch_links TO despachefull_benchmark_ro;
+GRANT SELECT (order_id, order_created_at, order_type, delivered_by, is_test, payload)
+  ON public.ifood_orders TO despachefull_benchmark_ro;
+GRANT SELECT (dispatch_id, ifood_order_id, concluded_at)
+  ON public.ifood_delivery_confirmations TO despachefull_benchmark_ro;
 ```
 
 Para repetir a criação, **não** reutilizar `CREATE ROLE` quando a role já existe; primeiro conferir privilégios, responsável e identidade. **Não conceder `service_role`, `postgres`, `pg_write_all_data` nem `BYPASSRLS`.** A remoção/rotação da role depois da homologação deve ser coordenada com o responsável por banco.
