@@ -58,6 +58,30 @@ Fonte oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservi
 - A condição de **coordenadas para o benchmark** foi atendida pelo screenshot. A configuração efetiva de `route_store_origin` no aplicativo exigirá o fluxo de confirmação administrativa, com auditoria e sem pré-saídas abertas.
 - Não acionar o benchmark histórico sem credencial PostgreSQL de leitura restrita, aceite operacional de privacidade e verificação de cota. O smoke com três pontos fictícios já foi aprovado. Não fazer alterações em produção.
 
+## Pré-homologação histórica por SELECT — 31/10/2026
+
+Consulta real somente de leitura no Supabase, **sem envio de coordenadas** ao ORS e sem alterações no banco. Amostra de saídas do **dia 23/10/2026**:
+
+| Medida | 1 pedido | 2 pedidos |
+|---|---:|---:|
+| Saídas iFood elegíveis | 51 | 164 |
+| Total de paradas | 51 | 328 |
+| Mediana de distância reta da loja | 2.044 m | 2.046 m |
+| Percentil 90 de distância reta | 3.322 m | 3.546 m |
+| Média de idade do pedido na saída | 16,2 min | 20,8 min |
+
+As **164 duplas têm coordenadas distintas**. 158 possuem confirmação para ambos os pedidos. Nenhuma das 379 paradas elegíveis está a 7 km ou mais **em linha reta**; isso **não** permite classificar distâncias rodoviárias de 7 km ou pagamentos LONGE.
+
+**Gate técnico introduzido no PR:**
+- O benchmark só aceita um banco com credencial limitada a `SELECT`; detecta e bloqueia contas com poderes de escrita nas tabelas usadas.
+- O modo manual `preflight` acessa somente PostgreSQL e devolve **contagens agregadas**; não acessa API de rotas.
+- O modo manual `full` exige também `coordinates_transfer_approved`, limita as consultas Matrix e só envia **coordenadas**, sem nome, texto do endereço ou identificador do pedido.
+- Se faltar snap metadata viário, a homologação rejeita o trecho; o planejador nunca pode escolher primeiro um endereço diferente do mais próximo por metros de rua.
+- Consultas do provedor não deixam mensagens externas brutas nos logs para evitar vazamento de coordenadas.
+- [Acesso PostgreSQL de mínimo privilégio, sem segredos em código](ACESSO_READONLY_BENCHMARK_ORS.md).
+
+**Estado atual:** somente o pré-levantamento via conector Supabase foi executado. A execução `preflight` do GitHub e o benchmark `full` dependem da credencial PostgreSQL dedicada de leitura; nenhum desses testes foi apresentado falsamente como concluído.
+
 ## Etapa B — Benchmark histórico
 1. Coordenadas do pino de saída recebidas e fixadas apenas no benchmark: `-23.6244855, -46.5549218`. Conferir o acesso de retirada presencialmente antes do piloto.
 2. Usar DATABASE_URL de uma credencial PostgreSQL exclusiva com acesso somente de leitura, não a credencial administrativa da produção.
@@ -67,7 +91,7 @@ Fonte oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservi
 5. O código exige `STORE_ORIGIN_VERIFIED=YES`, valida a distância das coordenadas até o pino informado e faz `BEGIN READ ONLY`, sem escrever ou revelar pedidos.
 
 ## Gate de liberação
-- [ ] Autenticação e matriz ORS real verificadas.
+- [x] Autenticação e matriz ORS real verificadas em smoke sintético; **não** valida 50+40.
 - [ ] 50 destinos e 40 duplas; pelo menos 95% de cobertura viária válida.
 - [ ] Primeira parada obrigatória mais próxima pelas vias respeitada em todas as duplas válidas.
 - [ ] Nenhuma distância viária menor que a linha reta (além da tolerância definida).
