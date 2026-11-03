@@ -9,7 +9,7 @@ assert.doesNotMatch(server,/setInterval\(\(\) => emitRealtime\("server:time",[\s
 assert.match(server,/app\.use\(compression\(\{ threshold: 1024 \}\)\)/);
 assert.equal(typeof pkg.dependencies.compression,"string");
 assert.match(ui,/queueRealtimeRefresh\('admin-core',refreshAdminCore,1200/);
-assert.match(ui,/queueRealtimeRefresh\('courier-dispatch',[^\n]*900/);
+assert.match(ui,/queueCourierResourceRefresh\(\{dashboard:true,deliveries:true,delay:900\}\)/);
 assert.match(sw,/if \(url\.pathname\.startsWith\("\/api\/"\) \|\| url\.pathname\.startsWith\("\/socket\.io\/"\)\) return/);
 assert.match(sw,/if \(req\.method !== "GET"\) return/);
 assert.match(sw,/if \(cached\)/);

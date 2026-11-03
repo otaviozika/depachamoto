@@ -32,6 +32,12 @@ await db.exec(source.split("await pool.query(`")[1].split("`);")[0]);
 let tail = Promise.resolve();
 const query = async (sql, args = []) => {
   if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
+  // The card's 48-hour window must use the fixture clock, not the calendar day
+  // when CI happens to run. Keep this clock override inside the test adapter.
+  if (sql.includes('FROM ifood_dispatch_links l') && sql.includes("NOW()-INTERVAL '48 hours'")) {
+    sql = sql.replaceAll('NOW()', '$' + (args.length + 1) + '::timestamptz');
+    args = [...args, clock.toISOString()];
+  }
   const result = await db.query(sql, args);
   return { ...result, rowCount: result.affectedRows ?? result.rows.length };
 };
