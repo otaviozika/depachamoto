@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import { planRoute } from "../lib/route-planner.js";
+import { planRoute, planFastestViableRoute, FASTEST_VIABLE_POLICY } from "../lib/route-planner.js";
 
 let checks = 0;
 function check(name, fn) { fn(); checks++; console.log("PASS", name); }
@@ -62,12 +62,46 @@ check("nenhum botão antigo de mapa fica ativo antes do Ciente", () => {
   assert.match(section, /navBlocked\?[^\n]*courierDeliveryNavigationButtons\(routeNavigation\)/);
   assert.match(section, /activeStop\?\.navigation\?\.prefer_coordinates===true/);
 });
-check("distância viária e pino são a base da rota operacional", () => {
+check("tempo viário e pino exato são a base da rota operacional", () => {
   const service = fs.readFileSync(new URL("../lib/pre-departure-service.js", import.meta.url), "utf8");
-  assert.match(service, /requiredFirstIndex = fromOrigin\.indexOf\(nearestMeters\)/);
-  assert.match(service, /matrix\.meters\?\.\[0\]/);
+  assert.match(service, /planFastestViableRoute\(/);
+  assert.match(service, /matrix\.minutes/);
+  assert.doesNotMatch(service, /requiredFirstIndex = fromOrigin/);
   assert.match(service, /prefer_coordinates: validCoordinate\(address\)/);
 });
+check("mais próximo em metros não obriga desvio demorado", () => {
+  // A esta a 4 min da loja; B a 6 min, mas A->B leva 20 min.
+  // B->A leva 2 min: a ordem B,A entrega ambos em 8 min (vs 24 min).
+  const trip = planFastestViableRoute({
+    stops: [{key:"A", age_minutes:15},{key:"B", age_minutes:15}],
+    minutes:[[0,4,6],[4,0,20],[6,2,0]]
+  });
+  assert.deepEqual(trip.best.sequence, ["B","A"]);
+  assert.equal(trip.best.duration_minutes, 8);
+  assert.equal(trip.fastest_duration_minutes, 8);
+  assert.equal(trip.evaluated, 2);
+  assert.equal(trip.extra_minutes, 0);
+});
+check("idade antiga pode ganhar prioridade sem desvio acima de 10% ou 3 min", () => {
+  const stops=[{key:"A",age_minutes:70},{key:"B",age_minutes:10},{key:"C",age_minutes:5}];
+  const minutes=[[0,5,5,8],[5,0,4,4],[5,4,0,4],[8,4,4,0]];
+  const p=planFastestViableRoute({stops,minutes,keepCandidates:true});
+  assert.equal(p.evaluated,6);
+  assert.ok(p.best.duration_minutes <= p.fastest_duration_minutes + p.max_extra_minutes + 1e-9);
+  assert.ok(p.max_extra_minutes <= FASTEST_VIABLE_POLICY.max_extra_minutes);
+  assert.ok(p.max_extra_minutes <= p.fastest_duration_minutes * FASTEST_VIABLE_POLICY.max_extra_ratio + 1e-9);
+  assert.ok(p.candidates.every(c=>c.duration_minutes <= p.fastest_duration_minutes + p.max_extra_minutes + 1e-9));
+});
+check("cinco destinos têm 120 rotas analisadas e limite temporal verificado", () => {
+  const ss=Array.from({length:5},(_,i)=>({key:"p"+i,age_minutes:5+i*12}));
+  const mm=Array.from({length:6},(_,i)=>Array.from({length:6},(_,j)=>i===j?0:1+((i*7+j*11)%13)));
+  const r=planFastestViableRoute({stops:ss,minutes:mm});
+  assert.equal(r.evaluated,120);
+  assert.ok(r.eligible_evaluated>=1&&r.eligible_evaluated<=120);
+  assert.equal(new Set(r.best.sequence).size,5);
+  assert.ok(r.extra_minutes<=r.max_extra_minutes+1e-9);
+});
+
 check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => {
   const start = html.indexOf("function courierDeliveryRow(x){");
   const end = html.indexOf("async function loadCourierDeliveries()", start);
