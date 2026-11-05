@@ -83,8 +83,17 @@ const HISTORICAL_SQL=[
 ") SELECT departed_at,total_legs,stops FROM runs WHERE total_legs IN (1,2) ORDER BY departed_at,dispatch_id"
 ].join("\n");
 
+// Mesmo TLS da producao (server.js): conexao cifrada aceitando a cadeia do Supabase,
+// cuja CA propria nao esta no repositorio de confianca do Node. O sslmode da URL
+// precisa sair: o pg deixa a URL sobrescrever a opcao ssl e trata "require" como verify-full.
+function readOnlyClientConfig(dbUrl) {
+  const url=new URL(dbUrl);
+  for(const key of ["sslmode","sslrootcert","sslcert","sslkey","uselibpqcompat"])url.searchParams.delete(key);
+  return {connectionString:url.toString(),ssl:{rejectUnauthorized:false},connectionTimeoutMillis:12000,statement_timeout:25000};
+}
+
 async function selectHistory(dbUrl,date) {
-  const client=new pg.Client({connectionString:dbUrl,connectionTimeoutMillis:12000,statement_timeout:25000});
+  const client=new pg.Client(readOnlyClientConfig(dbUrl));
   try{
     await client.connect();
     await client.query("BEGIN READ ONLY");
@@ -334,6 +343,10 @@ async function selftest(){
   assert.equal(preflight.external_api_requests,0);
   assert.equal(preflight.customer_coordinates_returned,false);
   assert.equal(JSON.stringify(preflight).includes("-46.5549"),false);
+  const tls=readOnlyClientConfig("postgresql://leitor:segredo@db.example.com:6543/postgres?sslmode=require&application_name=bench");
+  assert.equal(tls.ssl.rejectUnauthorized,false);
+  assert.equal(new URL(tls.connectionString).searchParams.has("sslmode"),false);
+  assert.equal(new URL(tls.connectionString).searchParams.get("application_name"),"bench");
   assert.equal(x.singles.length,1);
   assert.equal(x.pairs.length,1); // mistos excluidos
   assert.ok(haversineMeters(OPERATOR_ROUTE_ORIGIN,LONGE_STORE.approx)<5);
@@ -417,7 +430,7 @@ async function selftest(){
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
   assert.equal(sample.pairs.planner_within_time_bound,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
-  console.log(JSON.stringify({result:"PASS",tests:16,real_external_api_requests:0}));
+  console.log(JSON.stringify({result:"PASS",tests:17,real_external_api_requests:0}));
 }
 async function main(){
   if(process.argv.includes("--selftest"))return selftest();
