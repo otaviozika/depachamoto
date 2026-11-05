@@ -1,6 +1,14 @@
 # Validação real do OpenRouteService — OLD MAN / DespacheFull
 
-**Estado: conexão ORS real testada com pontos fictícios (PASS); amostra histórica 50+40 ainda NÃO homologada pelas ruas.** Nenhuma mudança foi publicada em produção.
+**Estado em 05/11/2026: conexão ORS real testada com pontos fictícios (PASS); amostra histórica 50+40 ainda NÃO homologada pelas ruas.** A política atual do PR é menor tempo viável por percurso, com pedido antigo considerado. A roteirização automática NÃO foi publicada em produção.
+
+## Política de menor tempo viável — 05/11/2026
+
+- Calcula a matriz de **tempo real de percurso estimado pelas ruas** (carro, sem trânsito ao vivo), preservando mão única e assimetria origem-destino.
+- Avalia até 5! = **120** sequências. A duração mínima é a melhor entre todas; só ficam elegíveis roteiros com **até 10% de duração adicional, limitado também a 3 minutos**.
+- Entre os elegíveis, aplica a penalização existente por tempo de espera e pedidos acima de 45 minutos, mantendo proteção contra atrasos antigos sem produzir desvios excessivos.
+- Não exige que o primeiro pedido seja o mais próximo em quilômetros. Com dois destinos, quando o mais próximo exige grande retorno, o otimizador escolhe a combinação mais rápida.
+- Todas as afirmações acima descrevem a implementação e testes sintéticos do PR, **não** resultados de benchmark histórico nem de trânsito de motocicleta.
 
 ## Smoke real da API HeiGIT / ORS — 31/10/2026
 
@@ -74,7 +82,7 @@ As **164 duplas têm coordenadas distintas**. 158 possuem confirmação para amb
 
 **Comparação exploratória da ordem histórica de confirmação (proxy, não GPS):**
 - Nas 164 duplas: 158 têm ordem de confirmação conhecida; em 127 delas, o pedido geograficamente mais próximo da loja (distância **reta**) foi confirmado primeiro (**80,4%**).
-- Na seleção sistemática de 40 duplas ordenadas por horário e ID de saída: 38 têm ordem de confirmação conhecida; em 30, o mais próximo por linha reta foi confirmado primeiro (**78,9%**). As outras 8 **não significam necessariamente** rota errada: a confirmação no app pode acontecer depois da entrega e a regra final usa **distâncias pelas ruas**, não linha reta.
+- Na seleção sistemática de 40 duplas ordenadas por horário e ID de saída: 38 têm ordem de confirmação conhecida; em 30, o mais próximo por linha reta foi confirmado primeiro (**78,9%**). As outras 8 **não significam necessariamente** rota errada: a confirmação no app pode acontecer depois da entrega. A política atual usa **tempos de percurso pelas ruas**, não proximidade aérea nem quilometragem mínima obrigatória.
 - Distância mediana em linha reta da loja até a parada mais próxima dessas 40 duplas: **1.257 m**. Esse valor não é previsão de distância viária nem ETA.
 
 Esses resultados validam a relevância da comparação por matriz de vias e fornecem uma referência a ser confrontada com o OpenRouteService; não permitem julgar motoboys individualmente.
@@ -83,11 +91,11 @@ Esses resultados validam a relevância da comparação por matriz de vias e forn
 - O benchmark só aceita um banco com credencial limitada a `SELECT`; detecta e bloqueia contas com poderes de escrita nas tabelas usadas.
 - O modo manual `preflight` acessa somente PostgreSQL e devolve **contagens agregadas**; não acessa API de rotas.
 - O modo manual `full` exige também `coordinates_transfer_approved`, limita as consultas Matrix e só envia **coordenadas**, sem nome, texto do endereço ou identificador do pedido.
-- Se faltar snap metadata viário, a homologação rejeita o trecho; o planejador nunca pode escolher primeiro um endereço diferente do mais próximo por metros de rua.
+- Se faltar snap metadata viário, a homologação rejeita o trecho; a sequência otimizada deve ter duração até 10% (no máximo 3 min) superior à duração mínima e priorizar, dentro dessa faixa, pedidos que esperam há mais tempo. A primeira parada não precisa ter o menor km.
 - Consultas do provedor não deixam mensagens externas brutas nos logs para evitar vazamento de coordenadas.
 - [Acesso PostgreSQL de mínimo privilégio, sem segredos em código](ACESSO_READONLY_BENCHMARK_ORS.md).
 
-**Estado atual:** somente o pré-levantamento via conector Supabase foi executado. A execução `preflight` do GitHub e o benchmark `full` dependem da credencial PostgreSQL dedicada de leitura; nenhum desses testes foi apresentado falsamente como concluído.
+**Estado atual:** a conta PostgreSQL `despachefull_benchmark_ro` foi criada e suas permissões restritas conferidas em 04/11/2026. Ainda não há evidência de execução `preflight` ou `full` via GitHub: precisa validar existência da URL protegida no segredo `DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL`, aprovação de transferência externa de coordenadas e quota disponível. Nenhum benchmark histórico foi apresentado falsamente como concluído.
 
 ## Etapa B — Benchmark histórico
 1. Coordenadas do pino de saída recebidas e fixadas apenas no benchmark: `-23.6244855, -46.5549218`. Conferir o acesso de retirada presencialmente antes do piloto.
@@ -100,9 +108,9 @@ Esses resultados validam a relevância da comparação por matriz de vias e forn
 ## Gate de liberação
 - [x] Autenticação e matriz ORS real verificadas em smoke sintético; **não** valida 50+40.
 - [ ] 50 destinos e 40 duplas; pelo menos 95% de cobertura viária válida.
-- [ ] Primeira parada obrigatória mais próxima pelas vias respeitada em todas as duplas válidas.
+- [ ] Para todas as duplas válidas, a rota escolhida respeita teto de duração de 10%/3 min sobre a rota mais rápida; registrar diferença de tempo para a ordem que força menor km.
 - [ ] Nenhuma distância viária menor que a linha reta (além da tolerância definida).
-- [ ] Divergência entre rota mais rápida e regra de prioridade quantificada.
+- [ ] Atrasos de pedidos antigos, diferença versus caminho mínimo e ordem histórica de confirmação quantificados (confirmação não é GPS).
 - [ ] Pelo menos 30 pinos validados em Waze/Maps em iOS e Android, inclusive endereço corrigido.
 - [ ] 429, 5xx, indisponibilidade e correção manual do caixa homologados.
 - [ ] Rollback ensaiado, aprovação operacional registrada e piloto pequeno antes de liberar todos.
