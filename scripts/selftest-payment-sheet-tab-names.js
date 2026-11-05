@@ -6,7 +6,7 @@
 // "A aba ... não existe na planilha vinculada".
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { findPaymentDayTab, syncPaymentDayToGoogleSheets, testGoogleSheetsConnection } from "../lib/google-sheets.js";
+import { paymentDaySheetTitle, findPaymentDayTab, syncPaymentDayToGoogleSheets, testGoogleSheetsConnection } from "../lib/google-sheets.js";
 
 const tabs = titles => titles.map((title, i) => ({ properties: { title, sheetId: 1000 + i } }));
 const days = (fmt, n = 30) => Array.from({ length: n }, (_, i) => fmt(String(i + 1).padStart(2, "0")));
@@ -21,6 +21,19 @@ assert.equal(findPaymentDayTab(lunchSept, "2026-09-03", "LUNCH").title, "03/09")
 assert.equal(findPaymentDayTab(tabs(["03/10", "31/10", "13/10x", "113/10"]), "2026-10-13", "LUNCH"), null, "não pode casar outro dia");
 assert.equal(findPaymentDayTab(tabs(["13/10", "13/10 T"]), "2026-10-13", "DINNER").title, "13/10 T", "nome exato tem prioridade");
 assert.throws(() => findPaymentDayTab(tabs(["13/10 ", "13/10 Q"]), "2026-10-13", "LUNCH"), /mais de uma aba/);
+
+// 1b) Regressao 11/2026: as abas reais ora usam "DDMM X", ora "DD/MM X".
+const novTitles = Array.from({ length: 30 }, (_, i) => paymentDaySheetTitle(`2026-11-${String(i + 1).padStart(2, "0")}`, "DINNER"));
+const novLunch = tabs(novTitles.map(title => title.replace("/", "")));
+const novDinner = tabs(novTitles.map((title, i) => i === 1 ? title : title.replace("/", "")));
+assert.equal(findPaymentDayTab(novLunch, "2026-11-01", "LUNCH").title, "0111 D");
+assert.equal(findPaymentDayTab(novDinner, "2026-11-02", "DINNER").title, "02/11 S");
+assert.equal(findPaymentDayTab(novDinner, "2026-11-03", "DINNER").title, "0311 T");
+assert.equal(findPaymentDayTab(novDinner, "2026-11-04", "DINNER").title, "0411 Q");
+assert.equal(findPaymentDayTab(tabs(["0211 S", "0311 T"]), "2026-11-01", "DINNER"), null);
+assert.equal(findPaymentDayTab(tabs(["0310 S", "0311 T"]), "2026-10-03", "DINNER").title, "0310 S");
+assert.throws(() => findPaymentDayTab(tabs(["0311 T", "0311"]), "2026-11-03", "DINNER"), /mais de uma aba/);
+assert.equal(findPaymentDayTab(tabs(["03/11 T", "0311 T"]), "2026-11-03", "DINNER").title, "03/11 T");
 
 // 2) Envio completo com API do Google simulada (aba de almoço sem letra)
 const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
@@ -62,5 +75,43 @@ const conn = await testGoogleSheetsConnection({ month: "2026-10", lunchSpreadshe
 assert.equal(conn.lunch.missingTabs.length, 0, JSON.stringify(conn.lunch.missingTabs));
 assert.equal(conn.dinner.missingTabs.length, 0, JSON.stringify(conn.dinner.missingTabs));
 assert.equal(conn.ok, true);
+
+// 4) Preflight de novembro: todos os 30 dias existem nos modelos reais sem "/" e misto.
+const connNov = await testGoogleSheetsConnection({
+  month: "2026-11", lunchSpreadsheetId: "NOV_LUNCH", dinnerSpreadsheetId: "NOV_DINNER",
+  env, fetchFn: async (url) => {
+    const u = String(url);
+    const ok = data => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
+    if (u.includes("oauth2.googleapis.com")) return ok({ access_token: "tok" });
+    return ok({ properties: { title: "Novembro 2026" }, sheets: u.includes("NOV_LUNCH") ? novLunch : novDinner });
+  }
+});
+assert.equal(connNov.ok, true, "todos os 30 dias devem ser encontrados sem renomear as planilhas");
+assert.equal(connNov.lunch.tabsFound, 30);
+assert.equal(connNov.dinner.tabsFound, 30);
+
+// 5) Envio de janta em 03/11 deve usar exatamente a aba existente "0311 T".
+const novWrites = {};
+const novCalls = [];
+const novResult = await syncPaymentDayToGoogleSheets({
+  date: "2026-11-03", shiftCode: "DINNER", rows, spreadsheetId: "NOV_DINNER", env,
+  fetchFn: async (url, options = {}) => {
+    const u = String(url);
+    novCalls.push({ url: u, method: options.method || "GET" });
+    const ok = data => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
+    if (u.includes("oauth2.googleapis.com")) return ok({ access_token: "tok" });
+    if (u.includes("values:batchClear")) return ok({});
+    if (u.includes("values:batchUpdate")) {
+      for (const row of JSON.parse(options.body).data) novWrites[row.range] = row.values;
+      return ok({});
+    }
+    if (u.includes("/values/")) return ok({ values: novWrites[decodeURIComponent(u.split("/values/")[1].split("?")[0])] || [] });
+    return ok({ properties: { title: "Novembro 2026" }, sheets: novDinner });
+  }
+});
+assert.equal(novResult.tabTitle, "0311 T");
+assert.deepEqual(novWrites["'0311 T'!A4:A5"], [["Ana"], ["João D'Ávila"]]);
+assert.ok(!novCalls.some(c => c.url.includes("NOV_LUNCH")), "janta nunca escreve na planilha de almoço");
+assert.ok(!Object.keys(novWrites).some(range => range.includes("03/11 T")), "nao criar/selecionar aba inexistente");
 
 console.log("PASS: aba do dia encontrada nos formatos 'DD/MM X' (janta) e 'DD/MM' (almoço); envio e teste de conexão verificados.");
