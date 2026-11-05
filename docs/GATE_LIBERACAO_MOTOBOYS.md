@@ -1,9 +1,9 @@
 # Gate de liberação — OLD MAN / DespacheFull
 
-**Situação em 30/10/2026:** PR #76 em desenvolvimento. Não liberar a roteirização para os motoboys enquanto os critérios abaixo não estiverem comprovados. As novas funcionalidades começam desligadas.
+**Situação em 05/11/2026:** PR #76 em homologação, sem merge ou publicação. Não liberar a roteirização para os motoboys enquanto os critérios abaixo não estiverem comprovados. As novas funcionalidades começam desligadas.
 
 ## Regras obrigatórias
-- A primeira parada é o destino mais próximo da origem em distância viária (metros). Só o caixa pode autorizar outra ordem, com motivo auditado.
+- A sequência prioriza **menor tempo viável pelas vias**, não menor distância em km. São avaliadas todas as 1–120 permutações: só entram candidatas com duração no máximo 10% ou 3 minutos acima da rota de menor duração (o menor dos dois limites). Entre elas, minimiza a espera acumulada e o atraso dos pedidos antigos. O caixa pode reordenar com motivo auditado.
 - Conferência individual de 1 a 5 sacolas antes de sair. Pré-saída não aciona as plataformas nem o cronômetro.
 - Entrega é sempre confirmada explicitamente, com código no iFood e botão no Anota AI.
 - O pino usado na matriz e no Waze/Maps da nova rota deve ser o mesmo; endereço corrigido exige Ciente.
@@ -13,7 +13,7 @@
 ## Testes e segurança — todos obrigatórios
 - [ ] Dois workflows GitHub Actions no SHA final do PR #76 concluídos SUCCESS, com jobs revisados.
 - [ ] Regressão integral de todos os scripts selftest depois do prestart, inclusive execução repetida e idempotente.
-- [ ] Novo selftest-nearest-route-safety aprovado: proximidade, 120/24 rotas, pino e bloqueio de atalhos.
+- [ ] Selftest de viabilidade por tempo aprovado: desvios de mão única, limites 10%/3 minutos, 120 permutações, pino e bloqueio de atalhos.
 - [ ] Selftests de pré-saída e provedores aprovados; npm audit sem vulnerabilidades altas ou críticas.
 - [ ] Migrações aditivas ensaiadas em banco isolado; tabelas sem acesso público; Supabase Advisors verificados.
 - [ ] Relatórios e pagamentos conferidos sem alterar valores já pagos.
@@ -21,7 +21,7 @@
 ## Homologação em rotas reais
 - [ ] Confirmar ponto exato da loja na Rua Tapajós, 846, pelo admin.
 - [ ] Configurar uma chave server-side para OpenRouteService ou Google; comprovar limites, licenciamento e custos.
-- [ ] Testar no mínimo 50 destinos e 40 duplas reais com a API escolhida. Comparar distâncias e tempos por vias, não distâncias aéreas.
+- [ ] Testar no mínimo 50 destinos e 40 duplas reais com a API escolhida. Comparar tempo do roteiro escolhido versus menor tempo possível e versus primeira entrega forçada por km; medir atrasos e cobertura. Não usar distância aérea como ETA.
 - [ ] Conferir 30 destinos no Waze/Maps quanto ao pino, número, rua, complemento e referência. Divergências devem bloquear a rota.
 - [ ] Testar ruas paralelas, conversões proibidas, portarias, números semelhantes e correções do caixa.
 - [ ] Testar fluxos 1–5 pedidos em iPhone e Android reais, inclusive rede instável, reinício e reenvio.
@@ -38,6 +38,6 @@
 6. Ao primeiro incidente relevante, desligar a conferência e voltar ao fluxo legado; rollback testado previamente.
 
 ## Condições de NO-GO
-Falha de CI, serviço de rotas sem chave/cota/licença, pino da loja não confirmado, origem/destino incoerentes, rota que viola prioridade, perda ou duplicação de pedido, carga insuficiente, falha de autorização, pagamento divergente ou rollback não verificado.
+Falha de CI, serviço de rotas sem chave/cota/licença, pino da loja não confirmado, origem/destino incoerentes, rota que exceda o limite viável de 10%/3 min, perda ou duplicação de pedido, carga insuficiente, falha de autorização, pagamento divergente ou rollback não verificado.
 
 Simulações e testes com APIs falsas não significam homologação com motoboys reais.
