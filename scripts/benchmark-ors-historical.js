@@ -22,7 +22,7 @@ import { LONGE_STORE, haversineMeters } from "../lib/longe-zone.js";
 // Este dado e exclusivo do benchmark; NAO altera LONGE_STORE ou origem da producao.
 export const OPERATOR_ROUTE_ORIGIN = Object.freeze({ latitude: -23.6244855, longitude: -46.5549218 });
 
-import { planRoute } from "../lib/route-planner.js";
+import { planFastestViableRoute } from "../lib/route-planner.js";
 
 const sleep = ms => new Promise(resolve=>setTimeout(resolve,ms));
 const round = (value,n=2) => Number.isFinite(value) ? Number(value.toFixed(n)) : null;
@@ -161,15 +161,18 @@ function assessPair(matrix,stops,origin=null) {
   const nearestDuration=nearestIndex===0?firstA:firstB;
   const fastestDuration=Math.min(firstA,firstB);
   const minutes=t.map(row=>row.map(x=>Number.isFinite(x)?x/60:null));
-  const plan=planRoute({stops:stops.map((s,i)=>({key:String(i),age_minutes:s.age_minutes})),
-    minutes,requiredFirstIndex:nearestIndex});
+  const plan=planFastestViableRoute({stops:stops.map((s,i)=>({key:String(i),age_minutes:s.age_minutes})), minutes});
   const c0=stops[0].confirmation_minutes,c1=stops[1].confirmation_minutes;
   const hasProxy=Number.isFinite(c0)&&Number.isFinite(c1)&&c0>=0&&c1>=0&&c0!==c1;
   return {
     nearest_first_index:nearestIndex,
     fastest_first_index:fastestIndex,
     planner_first_index:plan.best.order[0],
-    business_rule_extra_minutes:Math.max(0,(nearestDuration-fastestDuration)/60),
+    nearest_priority_extra_minutes:Math.max(0,(nearestDuration-fastestDuration)/60),
+    planner_saved_vs_nearest_minutes:(nearestDuration/60)-plan.best.duration_minutes,
+    planner_extra_vs_fastest_minutes:plan.extra_minutes,
+    planner_max_extra_minutes:plan.max_extra_minutes,
+    planner_policy_compliant:plan.extra_minutes<=plan.max_extra_minutes+1e-7,
     first_confirmed_nearest_proxy:hasProxy?(c0<c1?0:1)===nearestIndex:null,
     first_age_minutes:stops[nearestIndex].age_minutes,
     has_7km_stop:m[0][1]>=7000||m[0][2]>=7000
@@ -217,9 +220,13 @@ function resultSummary(data,clientStats,originConfirmed=true) {
     },
     pairs:{
       nearest_is_fastest:pairs.filter(x=>x.nearest_first_index===x.fastest_first_index).length,
-      planner_respects_nearest:pairs.filter(x=>x.nearest_first_index===x.planner_first_index).length,
-      extra_travel_time_from_nearest_priority_median_min:round(median(pairs.map(x=>x.business_rule_extra_minutes))),
-      extra_travel_time_from_nearest_priority_p90_min:round(quantile(pairs.map(x=>x.business_rule_extra_minutes),.9)),
+      planner_first_is_nearest_by_km:pairs.filter(x=>x.nearest_first_index===x.planner_first_index).length,
+      planner_first_is_fastest_direct_by_time:pairs.filter(x=>x.fastest_first_index===x.planner_first_index).length,
+      planner_within_time_bound:pairs.filter(x=>x.planner_policy_compliant).length,
+      time_saved_vs_forced_nearest_median_min:round(median(pairs.map(x=>x.planner_saved_vs_nearest_minutes))),
+      time_saved_vs_forced_nearest_p90_min:round(quantile(pairs.map(x=>x.planner_saved_vs_nearest_minutes),.9)),
+      extra_travel_time_if_forced_nearest_median_min:round(median(pairs.map(x=>x.nearest_priority_extra_minutes))),
+      extra_travel_time_if_forced_nearest_p90_min:round(quantile(pairs.map(x=>x.nearest_priority_extra_minutes),.9)),
       confirmation_order_proxy_sample_size:proxy.length,
       nearest_confirmed_first_proxy:proxy.filter(x=>x.first_confirmed_nearest_proxy).length,
       with_7km_plus_stop:pairs.filter(x=>x.has_7km_stop).length
@@ -229,7 +236,7 @@ function resultSummary(data,clientStats,originConfirmed=true) {
       "Perfil driving-car nao e moto; tempos e distancias sao simulacoes atuais das ruas.",
       "O horario de confirmacao iFood nao equivale a chegada GPS, podendo atrasar.",
       "As duplas iFood + Anota AI ficam fora deste primeiro teste, sem classificacao errada.",
-      "A prioridade obrigatoria e o endereco mais proximo por km de rua, salvo excecao auditada do caixa.",
+      "A prioridade e menor tempo total viavel (ate 10%/3min extras para reduzir esperas); a primeira parada nao precisa ter menor km.",
       "Regra de pagamento 7km ainda precisa ser alinhada com o codigo LEGADO de 6,7km.",
       "Nenhuma linha de producao e alterada por este benchmark."
     ]
@@ -276,8 +283,8 @@ async function runBenchmark({rows,origin,routeClient,minIntervalMs=2000,soloN=50
   if(soloMeasurements.filter(Boolean).length<Math.ceil(soloN*.95) ||
      pairMeasurements.filter(Boolean).length<Math.ceil(pairN*.95))
     throw new Error("Cobertura viaria menor que 95%; sem liberacao.");
-  if(pairMeasurements.filter(Boolean).some(p=>p.planner_first_index!==p.nearest_first_index))
-    throw new Error("Rota calculada violou primeira parada mais proxima; sem liberacao.");
+  if(pairMeasurements.filter(Boolean).some(p=>!p.planner_policy_compliant))
+    throw new Error("Rota calculada excedeu limite de tempo viavel; sem liberacao.");
    return resultSummary({solo:soloMeasurements,pairs:pairMeasurements},
     {matrix_requests:calls,planned_max:Math.ceil(soloN/25)+pairN});
 }
@@ -337,6 +344,14 @@ async function selftest(){
   const score=assessPair(m,x.pairs[0]);
   assert.equal(score.nearest_first_index,0);
   assert.equal(score.planner_first_index,0);
+  assert.equal(score.planner_policy_compliant,true);
+  const contrary={seconds:[[0,240,360],[240,0,1200],[360,120,0]],
+    meters:[[0,600,1200],[600,0,3200],[1200,400,0]]};
+  const faster=assessPair(contrary,x.pairs[0]);
+  assert.equal(faster.nearest_first_index,0);
+  assert.equal(faster.planner_first_index,1);
+  assert.ok(faster.planner_saved_vs_nearest_minutes>10);
+  assert.equal(faster.planner_policy_compliant,true);
   assert.equal(score.first_confirmed_nearest_proxy,true);
   // Um trecho na rua pode medir menos que a linha reta entre coordenadas ORIGINAIS:
   // o ORS mede entre pontos ajustados a rede. So aceitar diferenca matematicamente
@@ -400,7 +415,7 @@ async function selftest(){
   assert.equal(sample.requests.matrix_requests,2);
   await assert.rejects(() => runBenchmark({rows:rows.slice(0,2),origin:LONGE_STORE.approx,
     routeClient:mock,soloN:1,pairN:1,minIntervalMs:1000}),/Intervalo Matrix/);
-  assert.equal(sample.pairs.planner_respects_nearest,1);
+  assert.equal(sample.pairs.planner_within_time_bound,1);
   assert.ok(!JSON.stringify(sample).includes("46.5549"));
   console.log(JSON.stringify({result:"PASS",tests:16,real_external_api_requests:0}));
 }
