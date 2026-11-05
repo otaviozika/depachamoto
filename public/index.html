@@ -4249,8 +4249,14 @@ function preDepartureRouteHtml(pd){
   const r=pd.route;
   const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
   const source=['ROAD_MATRIX','GOOGLE_ROUTES'].includes(r.source)
-    ? `Endereço mais próximo primeiro; depois melhor sequência entre ${Number(r.evaluated)} ordens avaliadas (sem trânsito ao vivo).`
+    ? r.strategy==='FASTEST_VIABLE'
+      ? `Sequência otimizada por tempo entre ${Number(r.evaluated)} possibilidades. Considera também pedidos antigos (sem trânsito ao vivo).`
+      : `Sequência calculada pelas vias entre ${Number(r.evaluated)} possibilidades (sem trânsito ao vivo).`
     : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
+  const extra=Number(r.extra_minutes);
+  const efficiency=r.strategy==='FASTEST_VIABLE'&&Number.isFinite(extra)
+    ? extra<=0.05?'Menor tempo de percurso entre as rotas avaliadas.':`Até ${preDepartureMinutes(extra)} adicionais para reduzir a espera de pedidos antigos (limite operacional controlado).`
+    : '';
   const stops=r.stops.map((s,i)=>{
     const o=byKey.get(s.platform+':'+s.external_order_id)||{};
     return routeStopHtml({order_number:s.order_number,customer_name:o.customer_name||s.customer_name,address_text:o.address?.text||''},
@@ -4258,7 +4264,7 @@ function preDepartureRouteHtml(pd){
   }).join('');
   return `<div class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${pd.counts.total} entrega(s)</h2>
     <div class="my-route-meta">Motoboy: ${escapeHtml(pd.courier?.name||'')} · Sacolas conferidas: ${pd.counts.checked}/${pd.counts.total}</div>
-    <div class="route-hint">${escapeHtml(source)}</div><div class="route-stops">${stops}</div>
+    <div class="route-hint">${escapeHtml(source)}</div>${efficiency?`<div class="route-hint">${escapeHtml(efficiency)}</div>`:''}<div class="route-stops">${stops}</div>
     ${r.duration_minutes!=null?`<div class="route-total">Tempo total estimado da rota: <b>${preDepartureMinutes(r.duration_minutes)}</b></div>`:''}
     ${r.attribution?`<div class="route-hint">Rotas: ${escapeHtml(r.attribution)}</div>`:''}</div>`;
 }
