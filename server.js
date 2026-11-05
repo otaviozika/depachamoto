@@ -1613,11 +1613,11 @@ function validAnotaAiDate(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-async function upsertAnotaAiOrder(pageId, normalized) {
+async function upsertAnotaAiOrder(pageId, normalized, previousOrder = undefined) {
   if (!normalized.orderId) return { inserted: false, changed: false };
-  const previous = (await pool.query(`
+  const previous = previousOrder === undefined ? (await pool.query(`
     SELECT status_code,remote_updated_at FROM anotaai_orders WHERE order_id=$1
-  `, [normalized.orderId])).rows[0];
+  `, [normalized.orderId])).rows[0] : previousOrder;
   const remoteCreatedAt = validAnotaAiDate(normalized.remoteCreatedAt);
   const remoteUpdatedAt = validAnotaAiDate(normalized.remoteUpdatedAt);
   await pool.query(`
@@ -1776,27 +1776,42 @@ async function syncAnotaAiPage(pageId) {
       const limit = Math.max(1, Number(info.limit || 100));
       const total = Math.max(docs.length, Number(info.count || docs.length));
 
-      for (const summary of docs) {
-        const summaryOrder = normalizeAnotaAiOrder(summary);
+      const summaries = docs.map(summary => ({ summary, order: normalizeAnotaAiOrder(summary) }));
+      const orderIds = [...new Set(summaries.map(item => item.order.orderId).filter(id => id && !seen.has(id)))];
+      // Return only the facts needed by polling, not every order's full payload.
+      const stored = orderIds.length ? (await pool.query(`
+        SELECT order_id,status_code,remote_updated_at,display_id,order_type,
+          COALESCE(jsonb_typeof(payload->'items')='array',FALSE) AS has_items,
+          CASE jsonb_typeof(payload)
+            WHEN 'object' THEN (SELECT COUNT(*)>1 FROM jsonb_object_keys(payload))
+            WHEN 'array' THEN jsonb_array_length(payload)>1
+            -- JavaScript Object.keys(string) counts UTF-16 code units; a
+            -- single non-BMP character also has two keys in the legacy check.
+            WHEN 'string' THEN length(payload #>> '{}')>1 OR octet_length(payload #>> '{}')>3
+            ELSE FALSE
+          END AS has_detail_payload
+        FROM anotaai_orders WHERE order_id=ANY($1::text[])
+      `, [orderIds])).rows : [];
+      const previousById = new Map(stored.map(row => [row.order_id, row]));
+
+      for (const { summary, order: summaryOrder } of summaries) {
         if (!summaryOrder.orderId || seen.has(summaryOrder.orderId)) continue;
         seen.add(summaryOrder.orderId);
         listed += 1;
 
-        const previous = (await pool.query(`
-          SELECT status_code,remote_updated_at,payload,display_id,order_type FROM anotaai_orders WHERE order_id=$1
-        `, [summaryOrder.orderId])).rows[0];
+        const previous = previousById.get(summaryOrder.orderId);
         const summaryUpdated = validAnotaAiDate(summaryOrder.remoteUpdatedAt);
         const missingHumanReference = !previous ||
           !anotaAiHasHumanReference(previous.display_id, summaryOrder.orderId);
         // Repair active delivery payloads erased by older summary-only polls once.
         const missingDeliveryDetails = previous && previous.order_type === "DELIVERY" &&
           ["ANALYSIS","PRODUCTION","READY"].includes(summaryOrder.status) &&
-          !Array.isArray(previous.payload?.items);
+          !previous.has_items;
         const shouldFetch = !previous || missingHumanReference ||
           missingDeliveryDetails ||
           Number(previous.status_code) !== Number(summaryOrder.statusCode) ||
           (summaryUpdated && validAnotaAiDate(previous.remote_updated_at) !== summaryUpdated) ||
-          !previous.payload || Object.keys(previous.payload).length < 2;
+          !previous.has_detail_payload;
 
         let normalized = summaryOrder;
         if (shouldFetch) {
@@ -1821,7 +1836,7 @@ async function syncAnotaAiPage(pageId) {
           }
         }
 
-        const result = await upsertAnotaAiOrder(pageId, normalized);
+        const result = await upsertAnotaAiOrder(pageId, normalized, previous || null);
         if (result.inserted) {
           inserted += 1;
           createNotification({
@@ -2688,7 +2703,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       j.ifood_order_id,j.dispatch_id,j.status,j.attempts,
       o.display_id,o.merchant_id,o.status AS order_status,o.order_type,o.delivered_by,o.is_test,
       l.local_order_number,l.ifood_dispatch_status,
-      d.departed_at,u.name AS courier_name
+      d.departed_at,d.courier_id,u.name AS courier_name
     FROM ifood_dispatch_jobs j
     JOIN ifood_orders o ON o.order_id=j.ifood_order_id
     JOIN ifood_dispatch_links l ON l.ifood_order_id=j.ifood_order_id
@@ -2792,7 +2807,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
       uniqueKey: `ifood-dispatch-accepted:${job.ifood_order_id}`
     }).catch(() => {});
 
-    emitRealtime("ifood:changed");
+    emitRealtime("ifood:changed", { courier_id: data.courier_id });
 
     return {
       ok: true,
@@ -2835,7 +2850,7 @@ async function processClaimedIfoodDispatchJob(job, { manualTest = false } = {}) 
         WHERE ifood_order_id=$1
       `, [job.ifood_order_id]);
 
-      emitRealtime("ifood:changed");
+      emitRealtime("ifood:changed", { courier_id: data.courier_id });
 
       return {
         ok: false,
@@ -4017,7 +4032,14 @@ async function getCourierIfoodDeliveries(courierId) {
   const rows = (await pool.query(`
     SELECT
       o.order_id,o.display_id,o.status AS order_status,o.order_type,o.delivered_by,
-      o.merchant_id,o.last_event_code,o.last_event_at,o.payload,
+      o.merchant_id,o.last_event_code,o.last_event_at,
+      CASE WHEN jsonb_typeof(o.payload)='object' THEN jsonb_build_object(
+        'customer',o.payload->'customer',
+        'customerName',o.payload->'customerName','customer_name',o.payload->'customer_name',
+        'delivery',o.payload->'delivery','payments',o.payload->'payments',
+        'deliveryAddress',o.payload->'deliveryAddress',
+        'delivery_address',o.payload->'delivery_address','address',o.payload->'address'
+      ) ELSE o.payload END AS payload,
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,d.status AS dispatch_status,
       c.status AS confirmation_status,c.attempts AS confirmation_attempts,
@@ -7370,7 +7392,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
       }
     );
 
-    emitRealtime("ifood:changed");
+    emitRealtime("ifood:changed", { courier_id: req.session.user.id });
     emitRealtime("delivery:changed", {
       courier_id: req.session.user.id,
       order_id: row.order_id
@@ -8813,7 +8835,7 @@ app.post("/api/admin/dispatch-orders/:orderItemId/transfer", auth, adminOnly, as
     emitRealtime("dispatch:changed", { courier_id: transfer.to_courier_id, dispatch_id: transfer.to_dispatch_id, change: "ORDER_TRANSFERRED" });
     emitRealtime("payment:changed", { courier_id: transfer.from_courier_id, change: "ORDER_TRANSFERRED" });
     emitRealtime("payment:changed", { courier_id: transfer.to_courier_id, change: "ORDER_TRANSFERRED" });
-    emitRealtime("ifood:changed");
+    emitRealtime("ifood:changed", { courier_ids: [transfer.from_courier_id, transfer.to_courier_id] });
     emitRealtime("anotaai:changed");
 
     res.json({
