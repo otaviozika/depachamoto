@@ -114,4 +114,16 @@ assert.deepEqual(novWrites["'0311 T'!A4:A5"], [["Ana"], ["João D'Ávila"]]);
 assert.ok(!novCalls.some(c => c.url.includes("NOV_LUNCH")), "janta nunca escreve na planilha de almoço");
 assert.ok(!Object.keys(novWrites).some(range => range.includes("03/11 T")), "nao criar/selecionar aba inexistente");
 
+// 6) Google 403 por permissao vira erro claro; nao muda credenciais nem faz retry de escrita.
+await assert.rejects(
+  () => testGoogleSheetsConnection({
+    month: "2026-11", lunchSpreadsheetId: "NOV_LUNCH", dinnerSpreadsheetId: "NOV_DINNER", env,
+    fetchFn: async (url) => {
+      if (String(url).includes("oauth2.googleapis.com")) return {ok:true,status:200,text:async()=>JSON.stringify({access_token:"tok"})};
+      return {ok:false,status:403,text:async()=>JSON.stringify({error:{message:"The caller does not have permission"}})};
+    }
+  }),
+  error => error.code === "GOOGLE_SHEETS_PERMISSION_DENIED" && /Compartilhe/.test(error.message) && !error.message.includes("The caller")
+);
+
 console.log("PASS: aba do dia encontrada nos formatos 'DD/MM X' (janta) e 'DD/MM' (almoço); envio e teste de conexão verificados.");
