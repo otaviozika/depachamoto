@@ -89,6 +89,14 @@ async function seed() {
   const adminLogin=await must("/api/login","","POST",{username:process.env.ADMIN_USERNAME,password:process.env.ADMIN_PASSWORD},200);
   adminCookie=adminLogin.cookie;
   assert.ok(adminCookie,"admin staging login");
+  // One and only one courier can use the incident feature; default remains OFF.
+  const off=await must("/api/courier/pre-departure",cookies[0],"GET",null,200);
+  assert.equal(off.value.incident_feature?.enabled,false,"incident feature must fail closed");
+  const activated=await must("/api/admin/delivery-incidents/pilot",adminCookie,"PUT",
+    {enabled:true,courier_id:users[0].id,reason:"Piloto sintetico com motoboy zero"},200);
+  assert.equal(activated.value.settings.courier_id,users[0].id);
+  assert.equal((await must("/api/courier/pre-departure",cookies[0],"GET",null,200)).value.incident_feature.enabled,true);
+  assert.equal((await must("/api/courier/pre-departure",cookies[1],"GET",null,200)).value.incident_feature.enabled,false);
   assert.equal(cookies.length,COURIERS);
   assert.ok(cookies.every(Boolean),"cada cookie precisa pertencer ao motoboy correto");
 }
@@ -123,7 +131,8 @@ async function executeTwo(i,courierIndex){
     const orderId=String(pd.route.stops[0].external_order_id);
     const reportPath="/api/courier/dispatches/"+dispatchId+"/incidents";
     const payload={platform:"anotaai",order_id:orderId,reason:"CLIENT_NOT_FOUND"};
-    await must(reportPath,cookies[1],"POST",payload,404);
+    const other=await must(reportPath,cookies[1],"POST",payload,409);
+    assert.equal(other.value.code,"INCIDENT_FEATURE_DISABLED");
     incidentValidation.other_courier_rejected=true;
     await must(reportPath,cookie,"POST",{...payload,reason:"CODE_UNAVAILABLE"},400);
     incidentValidation.code_on_anota_rejected=true;
@@ -234,7 +243,8 @@ try{
     const path="/api/courier/dispatches/"+fakeDispatch+"/incidents";
     const created=await must(path,cookies[0],"POST",{platform:"ifood",order_id:orderId,reason:"CODE_UNAVAILABLE"},201);
     const incidentId=Number(created.value.incident.id);assert.ok(incidentId>0);
-    await must(path,cookies[1],"POST",{platform:"ifood",order_id:orderId,reason:"CODE_UNAVAILABLE"},404);
+    const other=await must(path,cookies[1],"POST",{platform:"ifood",order_id:orderId,reason:"CODE_UNAVAILABLE"},409);
+    assert.equal(other.value.code,"INCIDENT_FEATURE_DISABLED");
     const approval=await must("/api/admin/delivery-incidents/"+incidentId+"/decision",adminCookie,"POST",
       {action:"APPROVE_CONTINUE",reason:"Codigo ainda indisponivel, seguir orientacao"},200);
     assert.equal(approval.value.incident.status,"CONTINUE_APPROVED");
@@ -253,4 +263,10 @@ try{
     incidentValidation.external_confirmation_reconciled=true;
   }
   assert.equal(Object.keys(incidentValidation).length,10,"dez verificacoes de ocorrencia");
+  const off=await must("/api/admin/delivery-incidents/pilot",adminCookie,"PUT",
+    {enabled:false,courier_id:users[0].id,reason:"Encerrar o piloto sintetico"},200);
+  assert.equal(off.value.settings.enabled,false);
+  assert.equal((await must("/api/courier/pre-departure",cookies[0],"GET",null,200)).value.incident_feature.enabled,false);
+  incidentValidation.pilot_disable_verified=true;
+  assert.equal(Object.keys(incidentValidation).length,11,"piloto desligado apos a simulacao");
 }finally{await pool.end().catch(()=>{});}
