@@ -28,6 +28,7 @@ const password="FridaySyntheticOnly!001";
 const fixedNow="2026-09-29T15:00:00Z";
 const shift=operationalShiftAt(new Date(fixedNow),{required:true});
 const cookies=[],users=[],records=[],routeTimes=[],fullTimes=[],waveTimes=[],failures=[];
+let adminCookie=null;const incidentValidation={};
 const statuses={};
 const jsonHeaders={ "content-type":"application/json","x-load-test-key":process.env.LOAD_TEST_KEY };
 function percentile(xs,p) {
@@ -85,6 +86,9 @@ async function seed() {
     assert.ok(login.cookie);
     cookies[i]=login.cookie;
   }));
+  const adminLogin=await must("/api/login","","POST",{username:process.env.ADMIN_USERNAME,password:process.env.ADMIN_PASSWORD},200);
+  adminCookie=adminLogin.cookie;
+  assert.ok(adminCookie,"admin staging login");
   assert.equal(cookies.length,COURIERS);
   assert.ok(cookies.every(Boolean),"cada cookie precisa pertencer ao motoboy correto");
 }
@@ -115,9 +119,60 @@ async function executeTwo(i,courierIndex){
     {pre_departure_id:pd.id,composition_version:pd.composition_version},201);
   const dispatchId=Number(depart.value?.dispatch?.id);
   assert.ok(dispatchId>0);
+  if(i===0){
+    const orderId=String(pd.route.stops[0].external_order_id);
+    const reportPath="/api/courier/dispatches/"+dispatchId+"/incidents";
+    const payload={platform:"anotaai",order_id:orderId,reason:"CLIENT_NOT_FOUND"};
+    await must(reportPath,cookies[1],"POST",payload,404);
+    incidentValidation.other_courier_rejected=true;
+    await must(reportPath,cookie,"POST",{...payload,reason:"CODE_UNAVAILABLE"},400);
+    incidentValidation.code_on_anota_rejected=true;
+    const createdIncident=await must(reportPath,cookie,"POST",payload,201);
+    const incidentId=Number(createdIncident.value.incident.id);
+    assert.ok(incidentId>0);
+    incidentValidation.report_created=true;
+    const duplicate=await must(reportPath,cookie,"POST",payload,200);
+    assert.equal(Number(duplicate.value.incident.id),incidentId);
+    incidentValidation.idempotent=true;
+    const listPath="/api/admin/delivery-incidents";
+    await must(listPath,cookie,"GET",null,403);
+    const list=await must(listPath,adminCookie,"GET",null,200);
+    assert.ok(list.value.incidents.some(x=>Number(x.id)===incidentId && x.status==="OPEN"));
+    incidentValidation.role_scoped=true;
+    const before=(await must("/api/courier/pre-departure",cookie,"GET",null,200)).value.route;
+    assert.equal(before.stops.find(x=>x.external_order_id===orderId).incident.status,"OPEN");
+    assert.equal(before.ack_required,false);
+    const approve=await must("/api/admin/delivery-incidents/"+incidentId+"/decision",adminCookie,"POST",
+      {action:"APPROVE_CONTINUE",reason:"Proxima entrega liberada pelo caixa"},200);
+    assert.equal(approve.value.incident.status,"CONTINUE_APPROVED");
+    const after=(await must("/api/courier/pre-departure",cookie,"GET",null,200)).value.route;
+    assert.equal(after.ack_required,true,"precisa de Ciente");
+    assert.equal(after.stops.find(x=>x.external_order_id===orderId).is_deferred,true);
+    assert.equal(after.stops.filter(x=>x.is_next).length,1,"outra entrega precisa tornar-se proxima");
+    const pending=(await pool.query("SELECT count(*)::int AS n FROM anotaai_delivery_confirmations WHERE anotaai_order_id=$1",[orderId])).rows[0];
+    assert.equal(pending.n,0,"a decisao nunca confirma entrega");
+    const d=(await pool.query("SELECT status FROM dispatches WHERE id=$1",[dispatchId])).rows[0];
+    assert.equal(d.status,"ON_ROAD","nao liberou nova saida");
+    await must("/api/courier/routes/"+dispatchId+"/ack",cookie,"POST",{route_version:after.route_version},200);
+    incidentValidation.continue_without_delivery=true;
+    const reversed=await must("/api/admin/delivery-incidents/"+incidentId+"/decision",adminCookie,"POST",
+      {action:"REQUIRE_RETRY",reason:"Cliente retornou; tentar novamente"},200);
+    assert.equal(reversed.value.incident.status,"OPEN");
+    const rechecked=(await must("/api/courier/pre-departure",cookie,"GET",null,200)).value.route;
+    assert.equal(rechecked.stops.find(x=>x.external_order_id===orderId).is_deferred,false);
+    await must("/api/courier/routes/"+dispatchId+"/ack",cookie,"POST",{route_version:rechecked.route_version},200);
+    incidentValidation.retry_restored=true;
+  }
   for(const o of batch){
     const confirmation=await must(`/api/courier/anotaai/orders/${o.orderId}/confirm-delivery`,cookie,"POST",{},200);
     assert.equal(confirmation.value.confirmed,true);
+  }
+  if(i===0){
+    const active=Number((await pool.query("SELECT count(*)::int AS n FROM dispatch_delivery_incidents WHERE dispatch_id=$1 AND status IN ('OPEN','CONTINUE_APPROVED')",[dispatchId])).rows[0].n);
+    const resolved=Number((await pool.query("SELECT count(*)::int AS n FROM dispatch_delivery_incidents WHERE dispatch_id=$1 AND status='RESOLVED'",[dispatchId])).rows[0].n);
+    assert.equal(active,0);
+    assert.equal(resolved,1,"confirmacao Anota AI deve encerrar a ocorrencia");
+    incidentValidation.real_confirmation_resolves=true;
   }
   const q=await pool.query("SELECT status FROM dispatches WHERE id=$1",[dispatchId]);
   assert.equal(q.rows[0]?.status,"RELEASED","motoboy deve estar livre para nova saida");
@@ -152,7 +207,7 @@ try{
     orders_requested:ORDERS,couriers:COURIERS,dispatches_expected:300,
     counts:{...totals,completed_routes:routeTimes.length,full_roundtrips:fullTimes.length,quota_reservations:slotCount},
     route_http_latency:metrics(routeTimes),full_predeparture_to_confirmation_latency:metrics(fullTimes),
-    wave_elapsed:metrics(waveTimes),status_codes:statuses,
+    wave_elapsed:metrics(waveTimes),status_codes:statuses,incident_validation:incidentValidation,
     failures:failures.slice(0,12),
     limitations:["mock ORS 150-650ms, no external latency or real API quota",
       "PostgreSQL local on GitHub runner; NOT Supabase hosted latency",
@@ -164,4 +219,5 @@ try{
   assert.equal(Number(totals.dispatches),300);
   assert.equal(Number(totals.ready),300);
   assert.equal(routeTimes.length,300);
+  assert.equal(Object.keys(incidentValidation).length,8,"oitava verificacao de ocorrencia");
 }finally{await pool.end().catch(()=>{});}
