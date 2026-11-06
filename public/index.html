@@ -2230,7 +2230,7 @@ let attendanceQrExpiresAt=0,attendanceQrRefreshTimer=null,attendanceQrCountdownT
 let courierAttendancePresent=false,courierShiftEnded=false;
 // Pré-saída (conferência de sacolas): estado carregado em loadCourierPreDeparture.
 const PRE_DEPARTURE_OPEN=['DRAFT','AWAITING_CHECK','PARTIALLY_CHECKED','CHECKED','ROUTE_READY','BLOCKED'];
-let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},pre_departure:null,route:null};
+let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},incident_feature:{enabled:false,pilot_only:true},pre_departure:null,route:null};
 let preDepartureBusy=false;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
@@ -4272,6 +4272,7 @@ function incidentActionHtml(stop){
    return '<div class="incident-alert '+(approved?'approved':'')+'">'+
      (approved?'✓ Caixa autorizou continuar. Este pedido continua pendente.':'⚠ '+escapeHtml(INCIDENT_LABELS[stop.incident.reason]||'Ocorrência')+' · aguardando caixa.')+'</div>';
  }
+ if(courierPreDeparture?.incident_feature?.enabled!==true)return '';
  return '<button type="button" class="incident-btn" data-platform="'+escapeHtml(stop.platform)+
    '" data-order="'+escapeHtml(stop.external_order_id)+
    '" onclick="openDeliveryIncident(this.dataset.platform,this.dataset.order)">⚠ Problema na entrega</button>';
@@ -4281,6 +4282,7 @@ function closeDeliveryIncident(){
  $('deliveryIncidentModal').style.display='none';incidentContext=null;
 }
 function openDeliveryIncident(platform,orderId){
+ if(courierPreDeparture?.incident_feature?.enabled!==true)return alert('O recurso de ocorrências não está habilitado para seu perfil. Informe o caixa.');
  const r=courierPreDeparture?.route;
  const stop=r?.stops?.find(x=>x.platform===platform&&String(x.external_order_id)===String(orderId)&&x.state==='PENDING');
  if(!stop||r.dispatch_status!=='ON_ROAD')return alert('Atualize a rota antes de registrar a ocorrência.');
@@ -6050,7 +6052,18 @@ function addressFixButton(platform,externalId,label='Corrigir endereço'){
 function renderIncidentAdmin(st){
  const el=$('deliveryIncidentAdmin');if(!el)return;
  const all=st.delivery_incidents||[];
- el.innerHTML='<div class="small muted" style="margin:10px 0"><b>⚠ Problemas nas entregas ('+all.length+')</b> · Acompanhe e autorize quando necessário.</div>'+
+ const pilot=st.incident_pilot||{enabled:false,courier_id:null};
+ const couriers=(dashboard?.couriers||[]).filter(u=>u.active&&u.approval_status==='APPROVED');
+ const selected=Number(pilot.courier_id||0);
+ const pilotOptions='<option value="">Selecione um motoboy</option>'+
+   couriers.map(u=>'<option value="'+Number(u.id)+'" '+(selected===Number(u.id)?'selected':'')+'>'+escapeHtml(u.name)+'</option>').join('');
+ const pilotPanel='<div class="pd-admin-item" style="margin:10px 0;border:1px solid #596275;border-radius:12px;padding:12px">'+
+   '<b>Controle do piloto — problemas na entrega</b><p class="small">Desligado por padrão. Somente um motoboy autorizado pode abrir novas ocorrências. Desativar não apaga ocorrências pendentes.</p>'+
+   '<div class="small" style="margin:7px 0"><b>Situação:</b> '+(pilot.enabled?'ATIVO PARA UM MOTOBOY':'DESLIGADO')+'</div>'+
+   '<label class="small">Motoboy autorizado<select id="incidentPilotCourier" style="width:100%;margin:6px 0;padding:9px">'+pilotOptions+'</select></label>'+
+   '<div class="pd-admin-actions"><button type="button" class="btn outline" onclick="adminSetIncidentPilot(false)">Desligar ocorrências</button>'+
+   '<button type="button" class="btn primary" onclick="adminSetIncidentPilot(true)">Habilitar piloto</button></div></div>';
+ el.innerHTML=pilotPanel+'<div class="small muted" style="margin:10px 0"><b>⚠ Problemas nas entregas ('+all.length+')</b> · Acompanhe e autorize quando necessário.</div>'+
  (all.map(i=>{
   const open=i.status==='OPEN',label=INCIDENT_LABELS[i.reason]||i.reason;
   return '<div class="pd-admin-item '+(open?'incident-open':'incident-approved')+'">'+
@@ -6065,6 +6078,20 @@ function renderIncidentAdmin(st){
     '" onclick="adminIncidentDecision(this.dataset.id,this.dataset.action)">'+(open?'Autorizar próxima entrega':'Pedir nova tentativa')+'</button></div>':
     '<p class="small muted">Saída encerrada: tratar pendência no caixa.</p>')+'</div>';
  }).join('')||'<div class="empty">Nenhum problema em aberto.</div>');
+}
+async function adminSetIncidentPilot(enabled){
+ const selected=Number($('incidentPilotCourier')?.value||preDepartureAdminState?.incident_pilot?.courier_id||0);
+ if(enabled&&(!Number.isSafeInteger(selected)||selected<1))return alert('Selecione um motoboy ativo e aprovado.');
+ if(!confirm(enabled?'Habilitar ocorrências para somente este motoboy?':'Desligar novas ocorrências para todos os motoboys? As pendências existentes serão preservadas.'))return;
+ const reason=prompt('Motivo da alteração (mínimo de 5 caracteres):');
+ if(reason===null)return;
+ if(reason.trim().length<5)return alert('Informe um motivo de pelo menos 5 caracteres.');
+ try{
+   await api('/api/admin/delivery-incidents/pilot',{method:'PUT',body:JSON.stringify({
+     enabled,courier_id:Number.isSafeInteger(selected)&&selected>0?selected:null,reason:reason.trim()
+   })});
+   await loadPreDepartureAdmin();
+ }catch(e){alert(e.message||'Não foi possível alterar o piloto.')}
 }
 async function adminIncidentDecision(id,action){
  if(!['APPROVE_CONTINUE','REQUIRE_RETRY'].includes(action))return;
