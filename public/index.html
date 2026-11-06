@@ -977,6 +977,18 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 #adminApp .longe-step,#adminApp .longe-order{border-color:#252b33}
 #adminApp .longe-map{border-color:#252b33}
 @media(max-width:850px){.longe-steps{grid-template-columns:1fr}}
+
+#courierApp .incident-btn{width:100%;min-height:45px;border-radius:12px;border:1px solid #ad843c;background:#473722;color:#ffcf78;font-weight:850;padding:10px;cursor:pointer}
+#courierApp .incident-btn:focus-visible{outline:3px solid #f2b443;outline-offset:2px}
+#courierApp .incident-alert{padding:12px;border-radius:12px;border:1px solid #9c793d;background:#3d3123;color:#f5cd8e;font-weight:700;font-size:13px;line-height:1.5}
+#courierApp .incident-alert.approved{background:#1e3930;border-color:#4a8564;color:#adebc6}
+#courierApp .route-stop.incident-deferred{border-color:#9e834c}
+#courierApp .route-stop .incident-btn{margin-top:9px}
+#deliveryIncidentModal .modal-box{background:#142130;color:#f5f8ff;border:1px solid #40566c}
+#deliveryIncidentModal .incident-option{border:1px solid #677d94;background:#233448;color:#fafafa;border-radius:11px;min-height:51px;text-align:left;padding:13px;font-weight:800;cursor:pointer}
+#deliveryIncidentModal .incident-option:disabled{opacity:.4}
+.pd-admin-item.incident-open{border-left:4px solid #dba43f}
+.pd-admin-item.incident-approved{border-left:4px solid #4d996f}
 /* Pré-saída: conferência de sacolas e Minha Rota (motoboy) */
 #courierApp .pre-departure-card{padding:20px;border-top:4px solid var(--courier-accent);scroll-margin-top:78px}
 .pd-progress{display:flex;align-items:center;gap:12px;margin:12px 0 14px;font-weight:850;color:#111827;font-size:15px}
@@ -1283,6 +1295,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div id="preDepartureFlags" class="pd-admin-flags"></div>
           <div id="preDepartureParams"></div>
           <div class="pd-admin-search"><b class="small">Corrigir endereço de um pedido</b><input id="addressLookupNumber" placeholder="#4521" onkeydown="if(event.key==='Enter')lookupOrderAddress()"><button class="btn outline" type="button" onclick="lookupOrderAddress()">Buscar pedido</button><span id="addressLookupResults" class="small"></span></div>
+          <div id="deliveryIncidentAdmin" class="pd-admin-list" aria-live="polite"></div>
           <div id="preDepartureOpen" class="pd-admin-list"></div>
           <div id="preDepartureRoutes" class="pd-admin-list"></div>
         </div>
@@ -2008,6 +2021,23 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <div id="addressFixBody"></div>
   </div>
 </div>
+<div id="deliveryIncidentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="deliveryIncidentHeading">
+ <div class="modal-box" style="max-width:460px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:9px">
+   <h2 id="deliveryIncidentHeading" style="margin:0;font-size:21px">⚠ Problema na entrega</h2>
+   <button class="btn outline" type="button" onclick="closeDeliveryIncident()" aria-label="Fechar">×</button>
+  </div>
+  <p id="incidentOrderLabel" class="small" style="color:#b5c8db"></p>
+  <p class="small" style="color:#c8d8e7">Qual problema ocorreu? O caixa será avisado.</p>
+  <div style="display:grid;gap:10px">
+   <button class="incident-option" type="button" onclick="submitDeliveryIncident('CLIENT_NOT_FOUND')">⚠ Cliente não localizado</button>
+   <button id="incidentNoCode" class="incident-option" type="button" onclick="submitDeliveryIncident('CODE_UNAVAILABLE')">⚠ Sem código (iFood)</button>
+  </div>
+  <p class="small" style="background:#43341d;padding:12px;border-radius:9px;color:#f1d6a7">Registrar não confirma, cancela nem libera o pedido. Aguarde o caixa.</p>
+  <div id="incidentSubmitMsg" aria-live="polite"></div>
+ </div>
+</div>
+
 <div id="longeOrdersModal" class="modal">
   <div class="modal-box" style="width:min(760px,100%)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -4176,7 +4206,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
+    <div class="delivery-actions">${incidentActionHtml(activeStop)}${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
@@ -4232,16 +4262,64 @@ async function loadCourierPreDeparture(){
   renderCourierMyRoute();
   return courierPreDeparture;
 }
+const INCIDENT_LABELS={CLIENT_NOT_FOUND:'Cliente não localizado',CODE_UNAVAILABLE:'Sem código de confirmação'};
+let incidentContext=null,incidentBusy=false;
+function incidentActionHtml(stop){
+ if(!stop||stop.state!=='PENDING'||!stop.platform||!stop.external_order_id)return '';
+ if(stop.incident){
+   const approved=stop.incident.status==='CONTINUE_APPROVED';
+   return '<div class="incident-alert '+(approved?'approved':'')+'">'+
+     (approved?'✓ Caixa autorizou continuar. Este pedido continua pendente.':'⚠ '+escapeHtml(INCIDENT_LABELS[stop.incident.reason]||'Ocorrência')+' · aguardando caixa.')+'</div>';
+ }
+ return '<button type="button" class="incident-btn" data-platform="'+escapeHtml(stop.platform)+
+   '" data-order="'+escapeHtml(stop.external_order_id)+
+   '" onclick="openDeliveryIncident(this.dataset.platform,this.dataset.order)">⚠ Problema na entrega</button>';
+}
+function closeDeliveryIncident(){
+ if(incidentBusy)return;
+ $('deliveryIncidentModal').style.display='none';incidentContext=null;
+}
+function openDeliveryIncident(platform,orderId){
+ const r=courierPreDeparture?.route;
+ const stop=r?.stops?.find(x=>x.platform===platform&&String(x.external_order_id)===String(orderId)&&x.state==='PENDING');
+ if(!stop||r.dispatch_status!=='ON_ROAD')return alert('Atualize a rota antes de registrar a ocorrência.');
+ if(stop.incident)return alert('Esta entrega já tem uma ocorrência. Procure o caixa.');
+ incidentContext={dispatchId:r.dispatch_id,platform,orderId};
+ $('incidentOrderLabel').textContent=stop.order_number+' · '+(platform==='ifood'?'iFood':'Anota AI');
+ $('incidentNoCode').classList.toggle('hidden',platform!=='ifood');
+ $('incidentSubmitMsg').textContent='';
+ $('deliveryIncidentModal').style.display='grid';
+}
+async function submitDeliveryIncident(reason){
+ if(incidentBusy||!incidentContext||!Object.hasOwn(INCIDENT_LABELS,reason))return;
+ const c=incidentContext;if(reason==='CODE_UNAVAILABLE'&&c.platform!=='ifood')return;
+ incidentBusy=true;const buttons=$('deliveryIncidentModal').querySelectorAll('.incident-option');
+ buttons.forEach(b=>b.disabled=true);
+ try{
+   await api('/api/courier/dispatches/'+Number(c.dispatchId)+'/incidents',{method:'POST',body:JSON.stringify({
+      platform:c.platform,order_id:c.orderId,reason
+   })});
+   incidentBusy=false;buttons.forEach(b=>b.disabled=false);closeDeliveryIncident();
+   await loadCourierPreDeparture();await loadCourierDeliveries();
+   alert('Ocorrência registrada. A entrega continua pendente. Aguarde orientação do caixa.');
+ }catch(e){
+   $('incidentSubmitMsg').textContent=e.message||'Falha ao registrar.';
+   incidentBusy=false;buttons.forEach(b=>b.disabled=false);
+   if(['INCIDENT_DISPATCH_CLOSED','INCIDENT_ORDER_FINISHED','INCIDENT_ORDER_NOT_ASSIGNED'].includes(e.code))await loadCourierPreDeparture();
+ }
+}
+
 function preDepartureMinutes(v){return v===null||v===undefined?'—':`${Math.max(1,Math.round(Number(v)))} min`}
-function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,eta=null,changed=false}){
+function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,eta=null,changed=false,deferred=false}){
   const tag=state==='DELIVERED'?'ENTREGUE':state==='CANCELLED'?'CANCELADO':next?'PRÓXIMA':'PENDENTE';
   const nav=showNav&&stop.navigation?courierDeliveryNavigationButtons({navigation:stop.navigation}):'';
-  return `<div class="route-stop ${next?'next':''} ${state!=='PENDING'?'done':''}">
+  return `<div class="route-stop ${next?'next':''} ${state!=='PENDING'?'done':''} ${deferred?'incident-deferred':''}">
     <div class="route-stop-head"><span class="route-stop-pos">${Number(position)}ª entrega</span><span class="route-stop-number">Pedido ${escapeHtml(stop.order_number)}</span><span class="route-stop-tag">${tag}</span></div>
     ${stop.customer_name?`<div class="route-stop-line"><span>Cliente:</span> ${escapeHtml(stop.customer_name)}</div>`:''}
     ${stop.address_text?`<div class="route-stop-line"><span>Endereço:</span> ${escapeHtml(stop.address_text)}</div>`:''}
     ${eta!==null&&eta!==undefined?`<div class="route-stop-line"><span>Previsão de chegada:</span> <b>${preDepartureMinutes(eta)}</b></div>`:''}
     ${changed?'<div class="route-stop-changed">Endereço alterado pelo admin</div>':''}
+    ${incidentActionHtml({...stop,state})}
     ${nav}
   </div>`;
 }
@@ -4410,12 +4488,15 @@ function renderCourierMyRoute(){
   if(!r||r.dispatch_status!=='ON_ROAD'){el.innerHTML='';return}
   const changed=r.stops.filter(s=>s.changed_unacked);
   const ack=r.ack_required?`<div class="pd-alert"><b>Rota atualizada pelo admin</b>${changed.length?`Endereço alterado: ${changed.map(s=>escapeHtml(s.order_number)).join(', ')}. `:''}Consulte as alterações somente com a moto parada, em local seguro.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`:'';
-  const stops=r.stops.map(s=>routeStopHtml({order_number:s.order_number,customer_name:s.customer_name,address_text:s.address?.text||'',navigation:s.navigation},
-    {position:s.sequence,state:s.state,next:s.is_next,showNav:s.is_next&&!r.ack_required,changed:s.changed_unacked})).join('');
+  const stops=r.stops.map(s=>routeStopHtml({order_number:s.order_number,customer_name:s.customer_name,address_text:s.address?.text||'',navigation:s.navigation,platform:s.platform,external_order_id:s.external_order_id,incident:s.incident},
+    {position:s.sequence,state:s.state,next:s.is_next,showNav:s.is_next&&!r.ack_required,changed:s.changed_unacked,deferred:s.is_deferred})).join('');
+  const deferred=r.stops.filter(s=>s.state==='PENDING'&&s.is_deferred);
+  const incidentHint=deferred.length?'<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes, mesmo após autorização do caixa.</div>':'';
+  const pendingHint=r.counts.pending>0&&!r.stops.some(s=>s.is_next)?'<div class="incident-alert">Nenhuma próxima parada liberada. Aguarde orientação do caixa.</div>':'';
   const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
   el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
     <div class="my-route-meta">${r.route_status==='ADMIN'?'Sequência definida pelo admin.':'Siga a sequência calculada.'} Confirme cada entrega no card do pedido, em Entregas e confirmações.</div>
-    ${ack}<div class="route-stops">${stops}</div>${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
+    ${ack}${incidentHint}<div class="route-stops">${stops}</div>${pendingHint}${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
 }
 async function ackCourierRoute(dispatchId,version){
   try{
@@ -5965,9 +6046,39 @@ async function loadPreDepartureAdmin(){
 function addressFixButton(platform,externalId,label='Corrigir endereço'){
   return `<button type="button" class="btn outline" data-platform="${escapeHtml(platform)}" data-order="${escapeHtml(externalId)}" onclick="openAddressFix(this.dataset.platform,this.dataset.order)">${escapeHtml(label)}</button>`;
 }
+function renderIncidentAdmin(st){
+ const el=$('deliveryIncidentAdmin');if(!el)return;
+ const all=st.delivery_incidents||[];
+ el.innerHTML='<div class="small muted" style="margin:10px 0"><b>⚠ Problemas nas entregas ('+all.length+')</b> · Acompanhe e autorize quando necessário.</div>'+
+ (all.map(i=>{
+  const open=i.status==='OPEN',label=INCIDENT_LABELS[i.reason]||i.reason;
+  return '<div class="pd-admin-item '+(open?'incident-open':'incident-approved')+'">'+
+   '<div class="pd-admin-item-head"><b>⚠ '+escapeHtml(i.order_number)+' · '+escapeHtml(i.platform==='ifood'?'iFood':'Anota AI')+'</b>'+
+   '<span class="badge '+(open?'red':'green')+'">'+(open?'Aguardando caixa':'Continuar autorizado')+'</span></div>'+
+   '<p class="small" style="margin:8px 0"><b>'+escapeHtml(label)+'</b> · '+escapeHtml(i.courier_name||String(i.courier_id))+
+   ' · '+escapeHtml(i.reported_at?localTime(i.reported_at):'—')+'</p>'+
+   '<p class="small muted">Saída #'+Number(i.dispatch_id)+' · Pedido ainda não confirmado.'+
+   (i.approval_reason?' Motivo do caixa: '+escapeHtml(i.approval_reason):'')+'</p>'+
+   (i.dispatch_status==='ON_ROAD'?'<div class="pd-admin-actions"><button type="button" class="btn '+(open?'primary':'outline')+
+    '" data-id="'+Number(i.id)+'" data-action="'+(open?'APPROVE_CONTINUE':'REQUIRE_RETRY')+
+    '" onclick="adminIncidentDecision(this.dataset.id,this.dataset.action)">'+(open?'Autorizar próxima entrega':'Pedir nova tentativa')+'</button></div>':
+    '<p class="small muted">Saída encerrada: tratar pendência no caixa.</p>')+'</div>';
+ })).join('')||'<div class="empty">Nenhum problema em aberto.</div>');
+}
+async function adminIncidentDecision(id,action){
+ if(!['APPROVE_CONTINUE','REQUIRE_RETRY'].includes(action))return;
+ const reason=prompt(action==='APPROVE_CONTINUE'?'Por que permitir seguir? O pedido continua pendente.':'Qual a orientação para nova tentativa?');
+ if(reason===null)return;
+ if(reason.trim().length<5)return alert('Motivo de pelo menos 5 caracteres.');
+ if(action==='APPROVE_CONTINUE'&&!confirm('Autorizar apenas a continuação da rota? A entrega NÃO será confirmada.'))return;
+ try{await api('/api/admin/delivery-incidents/'+Number(id)+'/decision',{method:'POST',body:JSON.stringify({action,reason:reason.trim()})});}
+ catch(e){alert(e.message);}
+ await loadPreDepartureAdmin();
+}
 function renderPreDepartureAdmin(){
   const st=preDepartureAdminState;if(!st)return;
   const s=st.settings,p=s.params||{};
+  renderIncidentAdmin(st);
   const flag=(key,title,desc)=>`<div class="pd-flag"><b>${title}</b><p class="small muted">${desc}</p><span class="pd-flag-state ${s[key]?'on':'off'}">${s[key]?'LIGADA':'DESLIGADA'}</span><button type="button" class="btn ${s[key]?'outline':'primary'}" data-flag="${key}" data-value="${s[key]?'false':'true'}" onclick="togglePreDepartureFlag(this.dataset.flag,this.dataset.value==='true')">${s[key]?'Desligar':'Ligar'}</button></div>`;
   $('preDepartureFlags').innerHTML=flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
     flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pelas vias, sem trânsito ao vivo. Depende da conferência e da chave do serviço de rotas.')+
