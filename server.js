@@ -21,6 +21,7 @@ import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
 import { createDeliveryIncidentService } from "./lib/delivery-incidents.js";
+import { incidentEnabledForCourier, readIncidentPilotSettings, saveIncidentPilotSettings } from "./lib/delivery-incident-pilot.js";
 import { longeUnitAmount } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
@@ -1292,6 +1293,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS delivery_incident_one_active_order_idx
  WHERE status IN ('OPEN','CONTINUE_APPROVED');
 CREATE INDEX IF NOT EXISTS delivery_incident_status_reported_idx
  ON dispatch_delivery_incidents(status,reported_at DESC);
+-- Fail closed for Data API roles: internal operations use server-side PostgreSQL.
+ALTER TABLE dispatch_delivery_incidents ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE dispatch_delivery_incidents FROM PUBLIC;
+DO $ BEGIN
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+   REVOKE ALL ON TABLE dispatch_delivery_incidents FROM anon;
+ END IF;
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+   REVOKE ALL ON TABLE dispatch_delivery_incidents FROM authenticated;
+ END IF;
+END $;
 
 CREATE TABLE IF NOT EXISTS route_matrix_cache (
   from_key TEXT NOT NULL,
@@ -11541,10 +11553,22 @@ async function resolvePreDepartureLinks(orderNumbers, body) {
 
 // Apenas relatórios de problema. Nunca confirma entrega nem desbloqueia uma saída.
 app.post("/api/courier/dispatches/:id/incidents",auth,courierOnly,deliveryIncidentLimiter,serviceRoute(async(req,res)=>{
+ const pilot=await readIncidentPilotSettings(pool);
+ if(!incidentEnabledForCourier(pilot,req.session.user.id)){
+   return res.status(409).json({error:"Ocorrências ainda não habilitadas para este motoboy.",code:"INCIDENT_FEATURE_DISABLED"});
+ }
  const result=await deliveryIncidentService.report({courierId:req.session.user.id,
    dispatchId:routeId(req.params.id),platform:req.body?.platform,orderId:req.body?.order_id,reason:req.body?.reason});
  res.status(result.created?201:200).json({incident:result.incident,created:result.created,
    message:"Ocorrência registrada; entrega continua pendente.",server_now:new Date().toISOString()});
+}));
+app.put("/api/admin/delivery-incidents/pilot",auth,adminOnly,serviceRoute(async(req,res)=>{
+ const settings=await saveIncidentPilotSettings({
+   pool,adminId:req.session.user.id,enabled:req.body?.enabled,
+   courierId:req.body?.courier_id,reason:req.body?.reason,
+   audit:auditBestEffort,emitRealtime
+ });
+ res.json({settings,server_now:new Date().toISOString()});
 }));
 app.get("/api/admin/delivery-incidents",auth,adminOnly,serviceRoute(async(req,res)=>{
  res.json({incidents:await deliveryIncidentService.list({includeResolved:req.query?.history==="true",limit:req.query?.limit}),
@@ -11560,12 +11584,14 @@ app.post("/api/admin/delivery-incidents/:id/decision",auth,adminOnly,serviceRout
 
 app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req, res) => {
   const settings = await preDepartureService.readSettings();
-  const [preDeparture, route] = await Promise.all([
+  const [preDeparture, route, incidentPilot] = await Promise.all([
     settings.pre_departure ? preDepartureService.current(req.session.user.id) : null,
-    preDepartureService.activeRouteForCourier(req.session.user.id)
+    preDepartureService.activeRouteForCourier(req.session.user.id),
+    readIncidentPilotSettings(pool)
   ]);
   res.json({
     enabled: { pre_departure: settings.pre_departure, route_planner: settings.route_planner },
+    incident_feature: { enabled: incidentEnabledForCourier(incidentPilot,req.session.user.id), pilot_only: true },
     pre_departure: preDeparture,
     route,
     server_now: new Date().toISOString()
@@ -11643,8 +11669,10 @@ app.post("/api/courier/routes/:dispatchId/ack", auth, courierOnly, serviceRoute(
 }));
 
 app.get("/api/admin/pre-departure/overview", auth, adminOnly, serviceRoute(async (req, res) => {
-  const [overview,incidents]=await Promise.all([preDepartureService.adminOverview(),deliveryIncidentService.list({limit:100})]);
-  res.json({ ...overview,delivery_incidents:incidents,server_now:new Date().toISOString() });
+  const [overview,incidents,incidentPilot]=await Promise.all([
+    preDepartureService.adminOverview(),deliveryIncidentService.list({limit:100}),readIncidentPilotSettings(pool)
+  ]);
+  res.json({ ...overview,delivery_incidents:incidents,incident_pilot:incidentPilot,server_now:new Date().toISOString() });
 }));
 
 app.put("/api/admin/pre-departure/settings", auth, adminOnly, serviceRoute(async (req, res) => {
