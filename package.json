@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js",
+    "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js && node scripts/apply-delivery-incident-pilot-ui.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
@@ -41,7 +41,8 @@
     "selftest:longe": "node scripts/selftest-longe-zone.js && node scripts/selftest-longe-payments.js && node scripts/selftest-longe-ui.js",
     "selftest:pre-departure": "node scripts/selftest-route-planner.js && node scripts/selftest-pre-departure.js",
     "simulate:route": "node scripts/simulate-route-planner.js --write docs/ROTEIRIZACAO_SIMULACOES.md",
-    "security:audit": "npm audit --omit=dev --audit-level=high"
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "selftest:delivery-incident-pilot": "node scripts/selftest-delivery-incident-pilot.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
