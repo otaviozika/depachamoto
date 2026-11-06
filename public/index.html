@@ -4206,7 +4206,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${incidentActionHtml(activeStop)}${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
+    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
@@ -4319,7 +4319,7 @@ function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,e
     ${stop.address_text?`<div class="route-stop-line"><span>Endereço:</span> ${escapeHtml(stop.address_text)}</div>`:''}
     ${eta!==null&&eta!==undefined?`<div class="route-stop-line"><span>Previsão de chegada:</span> <b>${preDepartureMinutes(eta)}</b></div>`:''}
     ${changed?'<div class="route-stop-changed">Endereço alterado pelo admin</div>':''}
-    ${incidentActionHtml({...stop,state})}
+    ${typeof incidentActionHtml==='function'?incidentActionHtml({...stop,state}):''}
     ${nav}
   </div>`;
 }

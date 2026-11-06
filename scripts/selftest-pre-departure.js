@@ -78,6 +78,7 @@ const context = vm.createContext({
   pool, console, Date: TestDate, process: { env: { IFOOD_MERCHANT_ID: "shop" } }, Intl, JSON, Math, crypto,
   app: { get: register("GET"), post: register("POST"), put: register("PUT"), delete: register("DELETE") },
   auth, courierOnly, adminOnly, asyncRoute: fn => fn,
+  deliveryIncidentLimiter: (_req,_res,next)=>next(),
   emitRealtime: (e, p) => emitted.push([e, p]), auditBestEffort: async (...a) => { audits.push(a); },
   logOperationalConflict: async () => {}, touchPresence: async () => {},
   currentUser: async id => ({ id, must_change_password: false }),
