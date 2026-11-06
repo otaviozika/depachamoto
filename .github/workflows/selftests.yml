@@ -51,3 +51,4 @@ jobs:
           node scripts/selftest-delivery-details.js
           node scripts/selftest-courier-customer-card.js
           node scripts/selftest-approved-courier-layout.js
+          node scripts/selftest-pre-departure.js

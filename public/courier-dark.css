@@ -232,3 +232,27 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 #courierApp .delivery-copy-button:active{background:#2b3e53}
 #courierApp .delivery-item-head .badge.green{box-shadow:none!important}
 @media(max-width:380px){#courierApp .delivery-orderline{gap:8px}#courierApp .delivery-platform-logo{padding-left:9px;font-size:15px}#courierApp .delivery-platform-logo.anotaai{font-size:12px}}
+
+/* Pré-saída: conferência de sacolas e Minha Rota no tema escuro fosco. */
+#courierApp .pre-departure-card{border-top:3px solid #dba037}
+#courierApp .pd-progress{color:#e7edf6}
+#courierApp .pd-progress-bar{background:#233447}
+#courierApp .pd-progress-bar span{background:#3fb37a}
+#courierApp .pd-bag{background:#111e2b;border-color:#304154}
+#courierApp .pd-bag.checked{background:#12261f;border-color:#2c5b46}
+#courierApp .pd-bag-number{color:#f6f8fc}
+#courierApp .pd-bag-state{background:#3a2e17;color:#f1c36d}
+#courierApp .pd-bag.checked .pd-bag-state{background:#173b2c;color:#9be7c0}
+#courierApp .pd-bag-meta{color:#aab9cb}
+#courierApp .pd-check{background:#152230;border-color:#3a4c61;color:#f5f7fb}
+#courierApp .pd-bag.checked .pd-check{border-color:#2c5b46}
+#courierApp .pd-check input{accent-color:#3fb37a}
+#courierApp .pd-link,#courierApp .pd-cancel{color:#aab9cb}
+#courierApp .pd-alert{background:#25251f;border-color:#574629;color:#f4ead7}
+#courierApp .pd-alert.blocked{background:#372027;border-color:#74404c;color:#ffcad0}
+#courierApp .delivery-address-changed,#courierApp .route-stop-changed{background:#3a2e17;color:#f6d38f;border:1px solid #574629}
+#courierApp .my-route{background:#101b27;border:1px solid #304154}
+#courierApp .route-stop{background:#152230;border-color:#304154}
+#courierApp .route-stop.next{background:#1c2d40;color:#f6f8fc;border-color:#dba037}
+#courierApp .route-stop.next .route-stop-tag{background:#e6a52d;color:#111827}
+#courierApp .route-stop.done .route-stop-tag{background:#173b2c;color:#9be7c0}
