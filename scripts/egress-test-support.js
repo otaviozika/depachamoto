@@ -72,11 +72,11 @@ export function frontendHarness(html,{id=2,hidden=false,holdDashboard=false,hold
     hide:value=>{context.document.hidden=value;},flushVisible:()=>context.flushVisibleRealtimeRefreshes(),
     event:(name,body={})=>handlers.get(name)?.(body)};
 }
-export function confirmationEvents(server,courierId) {
-  const events=[];const context=vm.createContext({req:{session:{user:{id:courierId}}},row:{order_id:'synthetic'},emitRealtime:(event,body={})=>events.push({event,body:plain(body)})});
+export async function confirmationEvents(server,courierId) {
+  const events=[];const context=vm.createContext({req:{session:{user:{id:courierId}}},row:{order_id:'synthetic'},markConfirmedIncident:async()=>0,emitRealtime:(event,body={})=>events.push({event,body:plain(body)})});
   const from=server.indexOf('"IFOOD_DELIVERY_CODE_VERIFIED"'),at=server.indexOf('    emitRealtime("ifood:changed"',from),to=server.indexOf('    await maybeAutoMarkDispatchReturning',at);
   assert.ok(from>=0&&at>from&&to>at);
-  vm.runInContext(server.slice(at,to),context);
+  await vm.runInContext('(async()=>{'+server.slice(at,to)+'})()',context);
   // This is the completion event emitted by the shared local finalization flow.
   events.push({event:'dispatch:changed',body:{courier_id:courierId,change:'COMPLETED'}});
   return events;

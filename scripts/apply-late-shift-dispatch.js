@@ -48,6 +48,10 @@ if(server.includes(original))server=server.replace(original,'const routeShift = 
 const departure='const departureShift = getCurrentOperationalShift();';
 let count=server.split(departure).length-1;
 if(count>0)server=server.split(departure).join('const departureShift = dispatchShiftAt();');
+// Pré-saída (conferência de sacolas) usa a mesma janela da saída definitiva.
+const preDeparture='const preDepartureShift = getCurrentOperationalShift();';
+if(server.includes(preDeparture))server=server.replace(preDeparture,'const preDepartureShift = dispatchShiftAt();');
 if(!server.includes('const routeShift = dispatchShiftAt();')||server.split('const departureShift = dispatchShiftAt();').length!==3)throw Error('Departure replacements not verified');
+if(!server.includes('const preDepartureShift = dispatchShiftAt();'))throw Error('Pre-departure shift replacement not verified');
 fs.writeFileSync(serverFile,server);
 console.log('Late dispatch windows installed; lunch until 17:59, dinner until 01:59.');

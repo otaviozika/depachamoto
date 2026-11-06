@@ -92,7 +92,7 @@ try {
     const h=frontendHarness(html,{failDashboard:true,holdDeliveries:true});h.event('dispatch:changed',{courier_id:2});await h.advance(900);assert.equal(h.counts.deliveries,1);h.event('delivery:changed',{courier_id:2});await h.advance(2000);assert.equal(h.counts.deliveries,1);h.releaseDeliveries();await h.settle();await h.advance(750);assert.equal(h.counts.deliveries,2);
   });
   await test('confirmation event identifies its courier and transfer identifies both couriers',async()=>{
-    const events=confirmationEvents(source,2);assert.equal(events[0].body.courier_id,2);
+    const events=await confirmationEvents(source,2);assert.equal(events[0].body.courier_id,2);
     assert.match(source,/emitRealtime\("ifood:changed", \{ courier_ids: \[transfer\.from_courier_id, transfer\.to_courier_id\] \}\)/);
   });
   console.log(JSON.stringify({result:'PASS',scenarios:tests,payloadCases:payloads.length,jsonFlagCases:17}));

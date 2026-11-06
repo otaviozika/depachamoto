@@ -12,7 +12,7 @@ let handler,mode='valid',apiCalls=0,gate=null,seq=0,tests=0;
 const events=[],audits=[];
 const context=deliveryContext(source,query);
 Object.assign(context,{auth(){},courierOnly(){},deliveryCodeLimiter(){},asyncRoute:fn=>fn,app:{post:(_, ...args)=>{handler=args.at(-1);}},
-  touchPresence:async()=>{},ifoodConfigured:()=>true,ifoodMerchantAllowed:id=>id==='synthetic-shop',IFOOD_ORDER_BASE:'https://ifood.test.invalid',
+  touchPresence:async()=>{},markConfirmedIncident:async()=>0,ifoodConfigured:()=>true,ifoodMerchantAllowed:id=>id==='synthetic-shop',IFOOD_ORDER_BASE:'https://ifood.test.invalid',
   ifoodSafeError:e=>e.message,auditBestEffort:async(...args)=>audits.push(args),emitRealtime:(event,body)=>events.push({event,body:plain(body)}),
   maybeAutoMarkDispatchReturning:async()=>{},setImmediate(){},syncIfoodOnce:async()=>{},assertExternalMutationAllowed(){},createNotification:async()=>{},
   ifoodApi:async(url,options)=>{apiCalls++;if(gate)await gate;

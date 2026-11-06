@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 
 // Real production SQL/functions; isolated PostgreSQL, synthetic data and fake iFood.
@@ -32,7 +33,7 @@ class TestDate extends Date {
   static now() { return clock; }
 }
 const fetched = [];
-const context = vm.createContext({ pool, console, Date: TestDate, process: { env: { IFOOD_MERCHANT_ID: 'shop' } },
+const context = vm.createContext({ pool, console, crypto, Date: TestDate, process: { env: { IFOOD_MERCHANT_ID: 'shop' } },
   io: { emit() {} }, emitRealtime:()=>{}, auditBestEffort: async () => {},
   inspectAnotaAiOrdersForAdminAllocation:async()=>({accepted:[],blocked:[],matched:[]}),
   normalizeIfoodLifecycleStatus: v => String(v || '').toUpperCase(),

@@ -39,6 +39,8 @@
     "selftest:socket-security": "node scripts/selftest-socket-security.js",
     "selftest:dispatch-recovery": "node scripts/selftest-dispatch-recovery.js",
     "selftest:longe": "node scripts/selftest-longe-zone.js && node scripts/selftest-longe-payments.js && node scripts/selftest-longe-ui.js",
+    "selftest:pre-departure": "node scripts/selftest-route-planner.js && node scripts/selftest-pre-departure.js",
+    "simulate:route": "node scripts/simulate-route-planner.js --write docs/ROTEIRIZACAO_SIMULACOES.md",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
