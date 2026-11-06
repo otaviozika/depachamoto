@@ -4181,7 +4181,8 @@ function courierDeliveryRow(x){
   const activeRoute=typeof courierPreDeparture==='undefined'?null:courierPreDeparture?.route;
   const awaitingAck=activeRoute?.dispatch_status==='ON_ROAD'&&activeRoute?.ack_required===true;
   const activeStop=(activeRoute?.stops||[]).find(s=>s.platform===platform&&String(s.external_order_id)===String(x.order_id));
-  const navBlocked=awaitingAck&&!!activeStop;
+  // Em rota ativa, o atalho legado so abre a proxima parada autorizada.
+  const navBlocked=!!activeStop&&(awaitingAck||activeStop.is_next!==true);
   // Mesmo no card legado, navegar ao pino da nova rota, nunca ao endereço textual divergente.
   const routeNavigation=activeStop?.navigation?.prefer_coordinates===true
     ? {...x,navigation:activeStop.navigation} : x;
@@ -4206,7 +4207,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Rota alterada: consulte com a moto parada e toque em Ciente antes de abrir o mapa.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
+    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Navegação indisponível: siga a próxima parada indicada na Minha Rota ou confirme a atualização com Ciente.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }

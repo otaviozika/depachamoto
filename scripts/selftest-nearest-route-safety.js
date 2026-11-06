@@ -109,7 +109,7 @@ check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => 
   const ctx = vm.createContext({
     courierPreDeparture: { route: {
       dispatch_status: "ON_ROAD", ack_required: false,
-      stops: [{ platform: "ifood", external_order_id: "order-x",
+      stops: [{ platform: "ifood", external_order_id: "order-x", is_next: true,
         navigation: { latitude: -23.62446, longitude: -46.55491, address: "Rua Original", prefer_coordinates: true } }]
     } },
     escapeHtml: x => String(x ?? ""),
@@ -127,6 +127,9 @@ check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => 
     navigation: { address: "Rua Original", address_complete: true }, can_confirm: false };
   const enabled = ctx.courierDeliveryRow(order);
   assert.match(enabled, /DESTINO:-23\.62446/);
+  ctx.courierPreDeparture.route.stops[0].is_next=false;
+  assert.doesNotMatch(ctx.courierDeliveryRow(order), /DESTINO:/);
+  ctx.courierPreDeparture.route.stops[0].is_next=true;
   ctx.courierPreDeparture.route.ack_required = true;
   const blocked = ctx.courierDeliveryRow(order);
   assert.doesNotMatch(blocked, /DESTINO:/);
