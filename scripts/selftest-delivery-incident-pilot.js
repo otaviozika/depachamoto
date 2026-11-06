@@ -72,7 +72,7 @@ const missing=db();
 equal(await readIncidentPilotSettings(missing),{enabled:false,pre_departure_enabled:false,courier_id:null},"fail closed default");
 const active=db({preDeparture:true,enabled:true,courier:11});
 equal(await readIncidentPilotSettings(active),settings,"read selected pilot");
-const off=db({preDeparture:true});
+const off=db({preDeparture:false});
 await reject(()=>saveIncidentPilotSettings(services(off,{enabled:true,courierId:null})),"INCIDENT_PILOT_REQUIRED");
 await reject(()=>saveIncidentPilotSettings(services(off,{enabled:"true"})),"INCIDENT_FLAG_INVALID");
 await reject(()=>saveIncidentPilotSettings(services(off,{enabled:true,reason:"x"})),"INCIDENT_SETTINGS_REASON_REQUIRED");
