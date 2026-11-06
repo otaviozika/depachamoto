@@ -41,8 +41,9 @@ try {
     }
     const values=stats.map(s=>({requests:s.times.length,queries:s.calls,jsonResultBytes:s.jsonResultBytes,pgWireBytes:nativeUrl?s.wireBytes:null,p50Ms:percentile(s.times,.5),p95Ms:percentile(s.times,.95),p99Ms:percentile(s.times,.99)}));
     const reduction=100*(1-values[1].jsonResultBytes/values[0].jsonResultBytes);
-    assert.ok(reduction>=60,'Card database result reduction must be >=60% on the declared fixture');
     report.deliveries.push({concurrency,baseline:values[0],candidate:values[1],resultReductionPercent:Number(reduction.toFixed(2)),identicalResponses:true});
+    console.log('EGRESS_DELIVERY_DIAGNOSTIC',JSON.stringify(report.deliveries.at(-1)));
+    assert.ok(reduction>=60,'Card database result reduction must be >=60% on the declared fixture: measured '+reduction.toFixed(2)+'%');
   }
   const pollStats=[{times:[],calls:0,jsonResultBytes:0,wireBytes:0,metadataReads:0},{times:[],calls:0,jsonResultBytes:0,wireBytes:0,metadataReads:0}];
   for(let round=0;round<4;round++){
@@ -60,7 +61,7 @@ try {
     const variants=[];
     for(let v=0;v<2;v++){
       const harnesses=Array.from({length:clients},(_,i)=>frontendHarness(sources[v].html,{id:i+2}));
-      for(const {event,body} of confirmationEvents(sources[v].server,2))for(const h of harnesses)h.event(event,body);
+      for(const {event,body} of await confirmationEvents(sources[v].server,2))for(const h of harnesses)h.event(event,body);
       for(const h of harnesses)await h.advance(2000);
       variants.push({deliveryApiRequests:harnesses.reduce((n,h)=>n+h.counts.deliveries*2,0),dashboardApiRequests:harnesses.reduce((n,h)=>n+h.counts.dashboard,0),affectedCourierFirstRefreshMs:harnesses[0].times.find(x=>x.kind==='deliveries').at,unrelatedCouriersRefreshed:harnesses.slice(1).filter(h=>h.counts.deliveries>0).length});
     }
