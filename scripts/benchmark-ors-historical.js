@@ -13,6 +13,7 @@
  * O punto da loja codificado em LONGE_STORE.approx NAO serve como GPS confirmado.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { fileURLToPath } from "node:url";
 import { createOpenRouteServiceClient } from "../lib/route-providers.js";
@@ -83,13 +84,16 @@ const HISTORICAL_SQL=[
 ") SELECT departed_at,total_legs,stops FROM runs WHERE total_legs IN (1,2) ORDER BY departed_at,dispatch_id"
 ].join("\n");
 
-// Mesmo TLS da producao (server.js): conexao cifrada aceitando a cadeia do Supabase,
-// cuja CA propria nao esta no repositorio de confianca do Node. O sslmode da URL
-// precisa sair: o pg deixa a URL sobrescrever a opcao ssl e trata "require" como verify-full.
+// Certificado publico da autoridade Supabase Root 2021 CA, verificado contra
+// o certificado fornecido pelo operador. Verificacao TLS completa obrigatoria:
+// a cadeia E o hostname devem corresponder. NUNCA desabilitar rejectUnauthorized.
+// Remover parametros SSL da URL e essencial: node-postgres substituiria o objeto ssl.
+const SUPABASE_ROOT_CA = readFileSync(new URL("../certs/supabase-root-ca-2021.crt", import.meta.url), "utf8");
 function readOnlyClientConfig(dbUrl) {
   const url=new URL(dbUrl);
+  if (!["postgres:","postgresql:"].includes(url.protocol))throw new Error("Esquema da URL PostgreSQL invalido.");
   for(const key of ["sslmode","sslrootcert","sslcert","sslkey","uselibpqcompat"])url.searchParams.delete(key);
-  return {connectionString:url.toString(),ssl:{rejectUnauthorized:false},connectionTimeoutMillis:12000,statement_timeout:25000};
+  return {connectionString:url.toString(),ssl:{ca:SUPABASE_ROOT_CA,rejectUnauthorized:true,servername:url.hostname},connectionTimeoutMillis:12000,statement_timeout:25000};
 }
 
 async function selectHistory(dbUrl,date) {
@@ -344,7 +348,9 @@ async function selftest(){
   assert.equal(preflight.customer_coordinates_returned,false);
   assert.equal(JSON.stringify(preflight).includes("-46.5549"),false);
   const tls=readOnlyClientConfig("postgresql://leitor:segredo@db.example.com:6543/postgres?sslmode=require&application_name=bench");
-  assert.equal(tls.ssl.rejectUnauthorized,false);
+  assert.equal(tls.ssl.rejectUnauthorized,true);
+  assert.equal(tls.ssl.servername,"db.example.com");
+  assert.match(tls.ssl.ca,/BEGIN CERTIFICATE/);
   assert.equal(new URL(tls.connectionString).searchParams.has("sslmode"),false);
   assert.equal(new URL(tls.connectionString).searchParams.get("application_name"),"bench");
   assert.equal(x.singles.length,1);
