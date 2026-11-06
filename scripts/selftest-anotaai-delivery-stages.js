@@ -39,6 +39,7 @@ const context = vm.createContext({
   emitRealtime() {}, auditBestEffort: async () => {},
   createNotification: async value => notifications.set(value.uniqueKey, value),
   touchPresence: async () => {}, maybeAutoMarkDispatchReturning: async () => {},
+  markConfirmedIncident: async (dispatchId,platform,orderId) => { assert.equal(platform,"anotaai"); assert.ok(dispatchId); assert.ok(orderId); },
   auth() {}, courierOnly() {}, asyncRoute: fn => fn,
   app: { post: (_, ...handlers) => { confirm = handlers.at(-1); } }
 });

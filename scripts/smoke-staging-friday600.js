@@ -219,5 +219,38 @@ try{
   assert.equal(Number(totals.dispatches),300);
   assert.equal(Number(totals.ready),300);
   assert.equal(routeTimes.length,300);
-  assert.equal(Object.keys(incidentValidation).length,8,"oitava verificacao de ocorrencia");
+  assert.equal(Object.keys(incidentValidation).length,8,"oito verificacoes de ocorrencia Anota AI");
+  // iFood falso adicional, fora das 600 entregas Anota AI. Nao chama API real.
+  {
+    const orderId=run+"_ifood_synthetic",orderNumber="#92004567";
+    const fakeDispatch=(await pool.query("INSERT INTO dispatches(dispatch_code,order_number,courier_id) VALUES($1,$2,$3) RETURNING id",
+      [run+"_ifood",orderNumber,users[0].id])).rows[0].id;
+    await pool.query("INSERT INTO ifood_orders(order_id,display_id,status,order_type,delivered_by) VALUES($1,'92004567','DISPATCHED','DELIVERY','MERCHANT')",[orderId]);
+    await pool.query("INSERT INTO dispatch_orders(dispatch_id,order_number,platform) VALUES($1,$2,'ifood')",[fakeDispatch,orderNumber]);
+    await pool.query("INSERT INTO dispatch_routes(dispatch_id,route_version,route_status,route,acked_version) VALUES($1,1,'ADMIN',$2::jsonb,1)",
+      [fakeDispatch,JSON.stringify({source:"ADMIN_SEQUENCE",duration_minutes:0})]);
+    await pool.query("INSERT INTO dispatch_route_stops(dispatch_id,sequence,order_number,platform,external_order_id) VALUES($1,1,$2,'ifood',$3)",
+      [fakeDispatch,orderNumber,orderId]);
+    const path="/api/courier/dispatches/"+fakeDispatch+"/incidents";
+    const created=await must(path,cookies[0],"POST",{platform:"ifood",order_id:orderId,reason:"CODE_UNAVAILABLE"},201);
+    const incidentId=Number(created.value.incident.id);assert.ok(incidentId>0);
+    await must(path,cookies[1],"POST",{platform:"ifood",order_id:orderId,reason:"CODE_UNAVAILABLE"},404);
+    const approval=await must("/api/admin/delivery-incidents/"+incidentId+"/decision",adminCookie,"POST",
+      {action:"APPROVE_CONTINUE",reason:"Codigo ainda indisponivel, seguir orientacao"},200);
+    assert.equal(approval.value.incident.status,"CONTINUE_APPROVED");
+    const view=(await must("/api/courier/pre-departure",cookies[0],"GET",null,200)).value.route;
+    assert.equal(view.stops[0].is_deferred,true);
+    assert.equal(view.stops[0].state,"PENDING");
+    assert.equal(view.stops.filter(x=>x.is_next).length,0);
+    const noConfirm=await pool.query("SELECT count(*)::int AS n FROM ifood_delivery_confirmations WHERE ifood_order_id=$1",[orderId]);
+    assert.equal(noConfirm.rows[0].n,0,"caixa nao deve validar codigo");
+    await pool.query("UPDATE ifood_orders SET status='DELIVERED' WHERE order_id=$1",[orderId]);
+    const list=await must("/api/admin/delivery-incidents",adminCookie,"GET",null,200);
+    assert.ok(!list.value.incidents.some(x=>Number(x.id)===incidentId),"sync deve resolver ocorrencia apos confirmacao de plataforma");
+    const resolved=(await pool.query("SELECT status FROM dispatch_delivery_incidents WHERE id=$1",[incidentId])).rows[0];
+    assert.equal(resolved.status,"RESOLVED");
+    incidentValidation.ifood_no_code_validated=true;
+    incidentValidation.external_confirmation_reconciled=true;
+  }
+  assert.equal(Object.keys(incidentValidation).length,10,"dez verificacoes de ocorrencia");
 }finally{await pool.end().catch(()=>{});}
