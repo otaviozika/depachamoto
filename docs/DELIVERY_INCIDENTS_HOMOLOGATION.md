@@ -98,3 +98,23 @@ Não há GPS contínuo nem tempo real de tráfego, envio de mensagens ao cliente
 prova física de tentativas de contato ou confirmação excepcional do código iFood.
 Não se presume que o operador de mapas tenha autorização para armazenar
 coordenadas históricas de endereços de clientes.
+
+## Piloto controlado (proposta de segurança para revisão)
+
+- Branch `feat/incident-pilot-safety-gate-20261106`, derivada do PR #79, com as dependências de roteirização do PR #76. **Não integrada em `main` nem publicada**.
+- Chaves internas `delivery_incidents_enabled` e `delivery_incidents_pilot_courier_id` em `app_settings`: ausência equivale a **desligado**.
+- Somente o administrador pode configurar o piloto; exige justificativa, motoboy ativo/aprovado e conferência de sacolas previamente habilitada.
+- Somente o motoboy selecionado pode abrir novas ocorrências. O endpoint valida o vínculo no servidor; esconder o botão não é um mecanismo suficiente de autorização.
+- Desativar o piloto bloqueia novos relatos sem apagar ou concluir pendências já abertas; o administrador ainda consegue tratar ocorrências existentes.
+- A tabela de ocorrências habilita RLS e remove concessões diretas de `anon`/`authenticated` (o backend continua utilizando a conexão privilegiada existente). Confirmar grants efetivos em banco efêmero.
+- O controle é **global, para apenas um motoboy por vez**, não é rollout gradual por percentual. A ampliação precisa de uma mudança de escopo acompanhada de novos testes.
+
+### Liberação condicionada
+
+1. Reexecutar os workflows no SHA final da branch piloto, incluindo startup PostgreSQL e testes após `npm run prestart`.
+2. Confirmar a segurança das integrações e que o isolamento de staging impede mutações reais.
+3. Validar manualmente com iPhone e Android, com rotas de 2–5 pedidos e perda de conexão.
+4. Validar latência de Render/Supabase sob carga equivalente ao pico, sem usar a base de produção para testes.
+5. Planejar rollback e monitoramento com o operador; somente depois solicitar aprovação explícita para deploy.
+
+**Critério NO-GO:** qualquer falha de pipeline, idempotência, isolamento de contas, confirmação, desbloqueio, inicialização SQL ou degradação de desempenho.
