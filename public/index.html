@@ -6063,7 +6063,7 @@ function renderIncidentAdmin(st){
     '" data-id="'+Number(i.id)+'" data-action="'+(open?'APPROVE_CONTINUE':'REQUIRE_RETRY')+
     '" onclick="adminIncidentDecision(this.dataset.id,this.dataset.action)">'+(open?'Autorizar próxima entrega':'Pedir nova tentativa')+'</button></div>':
     '<p class="small muted">Saída encerrada: tratar pendência no caixa.</p>')+'</div>';
- })).join('')||'<div class="empty">Nenhum problema em aberto.</div>');
+ }).join('')||'<div class="empty">Nenhum problema em aberto.</div>');
 }
 async function adminIncidentDecision(id,action){
  if(!['APPROVE_CONTINUE','REQUIRE_RETRY'].includes(action))return;
