@@ -37,7 +37,7 @@ function syntheticGroup(n, salt) {
   for(let i=0;i<n;i++) {
     points.push({latitude:center.latitude+(rnd()-.5)*.012,longitude:center.longitude+(rnd()-.5)*.012});
     // 20% com pedido antigo, 10% recentes; mistura de plataformas sem identificar clientes.
-    const age = i%5===0 ? 50+rnd()*70 : rnd()*55;
+    const age = rnd()<.20 ? 50+rnd()*70 : rnd()*55;
     stops.push({key:`synthetic_${salt}_${i}`,age_minutes:fix(age)});
   }
   return {stops,points};
@@ -193,7 +193,7 @@ errors.network_failure="PASS";
 assert.throws(()=>planFastestViableRoute({stops:five.stops,minutes:[[0]]}),e=>e.code==="ROUTE_MATRIX_INCOMPLETE");
 errors.incomplete_matrix="PASS";
 assert.throws(()=>planFastestViableRoute({stops:five.stops.slice(0,4),minutes:fiveMatrix.minutes}),e=>e.code==="ROUTE_MATRIX_INCOMPLETE");
-errors.stale_composition="PASS";
+errors.matrix_dimensions_invalid="PASS";
 const missingTime=syntheticGroup(2,"missing-time");
 missingTime.stops[0].age_minutes=null;
 assert.throws(()=>planFastestViableRoute({stops:missingTime.stops,minutes:syntheticRoadMatrix(missingTime.points).minutes}),e=>e.code==="ROUTE_ORDER_TIME_MISSING");

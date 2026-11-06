@@ -74,7 +74,10 @@ jobs:
         run: |
           node --check scripts/mock-ors-friday.js
           node --check scripts/smoke-staging-friday600.js
-          APP_ENV=production node --import ./scripts/mock-ors-friday.js -e '' && exit 1 || true
+          if APP_ENV=production node --import ./scripts/mock-ors-friday.js -e ''; then
+            echo "::error::mock ORS nao bloqueou o modo production"
+            exit 1
+          fi
       - name: Start isolated server with mock ORS
         run: |
           node --import ./scripts/mock-ors-friday.js server.js > friday-staging-server.log 2>&1 &

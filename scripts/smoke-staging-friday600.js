@@ -80,12 +80,13 @@ async function seed() {
   }
   await pool.query("INSERT INTO app_settings(setting_key,setting_value) VALUES('pre_departure_enabled','true'),('route_planner_enabled','true'),('address_correction_enabled','false'),('route_store_origin',$1) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value",
     [JSON.stringify({...origin,source:"ADMIN_CONFIRMED",confirmed_at:new Date().toISOString()})]);
-  await Promise.all(users.map(async u=>{
+  await Promise.all(users.map(async (u,i)=>{
     const login=await must("/api/login","","POST",{username:u.username,password},200);
     assert.ok(login.cookie);
-    cookies.push(login.cookie);
+    cookies[i]=login.cookie;
   }));
   assert.equal(cookies.length,COURIERS);
+  assert.ok(cookies.every(Boolean),"cada cookie precisa pertencer ao motoboy correto");
 }
 async function executeTwo(i,courierIndex){
   const begin=performance.now();
