@@ -6785,6 +6785,7 @@ socket.on('server:time',d=>syncServerTime(d.now));
 socket.on('dispatch:changed',d=>{
   if(me?.role==='admin'){
     queueRealtimeRefresh('admin-core',refreshAdminCore,1200,{visibleOnly:true});
+    if(String(d?.change||'').startsWith('DELIVERY_INCIDENT_')&&$('operations')?.classList.contains('active'))queueRealtimeRefresh('delivery-incidents',loadPreDepartureAdmin,700,{visibleOnly:true});
     if($('wallboard')?.classList.contains('active'))queueRealtimeRefresh('wallboard',loadWallboard,500,{visibleOnly:true});
   }else if(me?.role==='courier'&&eventIsForCurrentCourier(d)){
     queueCourierResourceRefresh({dashboard:true,deliveries:true,delay:900});
