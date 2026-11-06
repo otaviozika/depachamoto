@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createPreDepartureService, canTransition, PRE_DEPARTURE_OPEN_STATES } from "../lib/pre-departure-service.js";
+import { readIncidentPilotSettings, incidentEnabledForCourier } from "../lib/delivery-incident-pilot.js";
 import { factorial, permutations, planRoute, ROUTE_PLANNER_DEFAULTS } from "../lib/route-planner.js";
 import { destinationPoint, haversineMeters, LONGE_STORE } from "../lib/longe-zone.js";
 import { SCENARIOS, syntheticMatrix } from "./simulate-route-planner.js";
@@ -79,6 +80,7 @@ const context = vm.createContext({
   app: { get: register("GET"), post: register("POST"), put: register("PUT"), delete: register("DELETE") },
   auth, courierOnly, adminOnly, asyncRoute: fn => fn,
   deliveryIncidentLimiter: (_req,_res,next)=>next(),
+  readIncidentPilotSettings, incidentEnabledForCourier,
   emitRealtime: (e, p) => emitted.push([e, p]), auditBestEffort: async (...a) => { audits.push(a); },
   logOperationalConflict: async () => {}, touchPresence: async () => {},
   currentUser: async id => ({ id, must_change_password: false }),
