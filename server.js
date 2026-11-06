@@ -1296,14 +1296,14 @@ CREATE INDEX IF NOT EXISTS delivery_incident_status_reported_idx
 -- Fail closed for Data API roles: internal operations use server-side PostgreSQL.
 ALTER TABLE dispatch_delivery_incidents ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE dispatch_delivery_incidents FROM PUBLIC;
-DO $ BEGIN
+DO $incident_security$ BEGIN
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
    REVOKE ALL ON TABLE dispatch_delivery_incidents FROM anon;
  END IF;
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
    REVOKE ALL ON TABLE dispatch_delivery_incidents FROM authenticated;
  END IF;
-END $;
+END $incident_security$;
 
 CREATE TABLE IF NOT EXISTS route_matrix_cache (
   from_key TEXT NOT NULL,
