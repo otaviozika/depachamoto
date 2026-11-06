@@ -110,11 +110,10 @@ yes(server.includes("REVOKE ALL ON TABLE dispatch_delivery_incidents FROM PUBLIC
 const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"));
 yes(pkg.scripts.prestart.includes("apply-delivery-incident-pilot-ui.js"),"UI prestart enabled");
 const script=fs.readFileSync(path.join(root,"scripts","apply-delivery-incident-pilot-ui.js"),"utf8");
-yes(script.includes("renderIncidentPilotAdmin"),"admin UI implementation");
-yes(script.includes("incident_feature?.enabled!==true"),"courier UI hides feature for other motoboys");
+yes(script.includes("adminSetIncidentPilot"),"admin UI contract validation");
+yes(script.includes("incident_feature?.enabled!==true"),"courier UI contract validation");
 const html=fs.readFileSync(path.join(root,"public","index.html"),"utf8");
-if(html.includes('id="incidentPilotAdmin"')){
-  yes(html.includes("function renderIncidentPilotAdmin(st)"),"transformed admin UI");
-  yes(html.includes("if(courierPreDeparture?.incident_feature?.enabled!==true)return ''"),"transformed courier UI");
-}
+yes(html.includes("function adminSetIncidentPilot(enabled)"),"admin UI wired");
+yes(html.includes("if(courierPreDeparture?.incident_feature?.enabled!==true)return ''"),"courier action gated");
+yes(html.includes("id=\\\"incidentPilotCourier\\\"".replaceAll("\\","")),"pilot dropdown present");
 console.log("PASS delivery incident pilot gate: "+checks+" checks");
