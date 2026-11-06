@@ -10,6 +10,17 @@ const baseline=path.resolve(process.env.EGRESS_BASELINE_DIR||'../despachefull-ba
 const candidate=path.resolve('.');
 const sources=[baseline,candidate].map(root=>({server:fs.readFileSync(path.join(root,'server.js'),'utf8'),html:fs.readFileSync(path.join(root,'public/index.html'),'utf8')}));
 const nativeUrl=process.env.EGRESS_BENCH_DATABASE_URL;
+// A main ja pode conter a otimizacao: comparar implementacoes identicas exige
+// NAO-REGRESSAO, nao uma reducao nova de 60% sobre o mesmo codigo.
+const functionText=(src,name)=>{
+  const start=src.indexOf('async function '+name+'(');
+  assert.ok(start>=0,'Benchmark source missing '+name);
+  const end=src.indexOf('\n}',start);
+  assert.ok(end>start,'Benchmark source boundary missing '+name);
+  return src.slice(start,end+2);
+};
+const deliveryAlreadyOptimized=functionText(sources[0].server,'getCourierIfoodDeliveries')===functionText(sources[1].server,'getCourierIfoodDeliveries');
+const anotaAlreadyOptimized=functionText(sources[0].server,'syncAnotaAiPage')===functionText(sources[1].server,'syncAnotaAiPage');
 let db,pool,wireBytes=0;
 if(nativeUrl){const url=new URL(nativeUrl);assert.ok(['127.0.0.1','localhost','[::1]'].includes(url.hostname),'Only a loopback disposable database is allowed');assert.match(url.pathname,/egress/);pool=new pg.Pool({connectionString:nativeUrl,ssl:false,max:20});pool.on('connect',client=>client.connection.stream.on('data',chunk=>{wireBytes+=chunk.length;}));db={query:(...args)=>pool.query(...args),exec:sql=>pool.query(sql),close:()=>pool.end()};}
 else {db=new PGlite();}
@@ -23,7 +34,7 @@ const measuredQuery=async(sql,args=[])=>{const r=await baseQuery(sql,args);meter
 const contexts=sources.map(s=>({delivery:deliveryContext(s.server,measuredQuery),anota:anotaContext(s.server,measuredQuery,docs)}));
 const reset=()=>{meters={calls:0,rows:0,jsonResultBytes:0,metadataReads:0};wireBytes=0;};
 const percentile=(values,p)=>{const a=[...values].sort((a,b)=>a-b);return Number(a[Math.min(a.length-1,Math.ceil(a.length*p)-1)].toFixed(3));};
-const report={engine:nativeUrl?'PostgreSQL native, TCP loopback':'PGlite, PostgreSQL WASM single connection',node:process.version,syntheticOnly:true,couriers:30,ordersPerCourier:18,deliveries:[],anota:{},frontend:[],limitations:['Local/CI measurements do not measure Render-to-Supabase internet latency or actual monthly billing.']};
+const report={engine:nativeUrl?'PostgreSQL native, TCP loopback':'PGlite, PostgreSQL WASM single connection',node:process.version,syntheticOnly:true,couriers:30,ordersPerCourier:18,deliveries:[],anota:{},frontend:[],comparisonMode:{delivery:deliveryAlreadyOptimized?'ALREADY_OPTIMIZED_NO_REGRESSION':'LEGACY_REDUCTION',anota:anotaAlreadyOptimized?'ALREADY_OPTIMIZED_NO_REGRESSION':'LEGACY_REDUCTION'},limitations:['Local/CI measurements do not measure Render-to-Supabase internet latency or actual monthly billing.']};
 try {
   if(pool)await Promise.all(Array.from({length:20},()=>pool.query('SELECT 1')));
   for(const concurrency of [1,30,60]){
@@ -43,7 +54,12 @@ try {
     const reduction=100*(1-values[1].jsonResultBytes/values[0].jsonResultBytes);
     report.deliveries.push({concurrency,baseline:values[0],candidate:values[1],resultReductionPercent:Number(reduction.toFixed(2)),identicalResponses:true});
     console.log('EGRESS_DELIVERY_DIAGNOSTIC',JSON.stringify(report.deliveries.at(-1)));
-    assert.ok(reduction>=60,'Card database result reduction must be >=60% on the declared fixture: measured '+reduction.toFixed(2)+'%');
+    if(deliveryAlreadyOptimized){
+      assert.equal(values[1].jsonResultBytes,values[0].jsonResultBytes,'Identical delivery implementation must not increase database payload bytes');
+      if(nativeUrl)assert.equal(values[1].pgWireBytes,values[0].pgWireBytes,'Identical delivery implementation must not increase PostgreSQL wire bytes');
+    }else{
+      assert.ok(reduction>=60,'Card database result reduction must be >=60% against LEGACY implementation: measured '+reduction.toFixed(2)+'%');
+    }
   }
   const pollStats=[{times:[],calls:0,jsonResultBytes:0,wireBytes:0,metadataReads:0},{times:[],calls:0,jsonResultBytes:0,wireBytes:0,metadataReads:0}];
   for(let round=0;round<4;round++){
@@ -55,8 +71,13 @@ try {
     assert.deepEqual(outputs[1],outputs[0]);
   }
   const polls=pollStats.map(s=>({polls:s.times.length,queries:s.calls,metadataReads:s.metadataReads,jsonResultBytes:s.jsonResultBytes,pgWireBytes:nativeUrl?s.wireBytes:null,p50Ms:percentile(s.times,.5),p95Ms:percentile(s.times,.95)}));
-  assert.equal(polls[0].metadataReads,800);assert.equal(polls[1].metadataReads,4);
-  report.anota={ordersPerPoll:100,baseline:polls[0],candidate:polls[1],metadataReadReductionPercent:99.5,identicalResults:true};
+  if(anotaAlreadyOptimized){
+    assert.equal(polls[1].metadataReads,polls[0].metadataReads,'Identical Anota AI implementation must preserve metadata read count');
+    assert.equal(polls[1].jsonResultBytes,polls[0].jsonResultBytes,'Identical Anota AI implementation must preserve read payload bytes');
+  }else{
+    assert.equal(polls[0].metadataReads,800);assert.equal(polls[1].metadataReads,4);
+  }
+  report.anota={ordersPerPoll:100,baseline:polls[0],candidate:polls[1],metadataReadReductionPercent:100*(1-polls[1].metadataReads/polls[0].metadataReads),identicalResults:true};
   for(const clients of [1,30,60]){
     const variants=[];
     for(let v=0;v<2;v++){
