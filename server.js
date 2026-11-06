@@ -20,6 +20,7 @@ import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
+import { createDeliveryIncidentService } from "./lib/delivery-incidents.js";
 import { longeUnitAmount } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
@@ -148,6 +149,12 @@ const registrationLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Muitos cadastros a partir deste acesso. Tente novamente mais tarde." }
+});
+
+const deliveryIncidentLimiter=rateLimit({
+ windowMs:300000,limit:12,standardHeaders:"draft-8",legacyHeaders:false,
+ keyGenerator:req=>"incident:"+String(req.session?.user?.id||"unknown"),
+ message:{error:"Muitas tentativas. Aguarde ou chame o caixa.",code:"INCIDENT_RATE_LIMIT"}
 });
 
 const deliveryCodeLimiter = rateLimit({
@@ -1261,6 +1268,30 @@ CREATE TABLE IF NOT EXISTS route_matrix_quota_ledger (
 );
 CREATE INDEX IF NOT EXISTS route_matrix_quota_scope_time_idx
 ON route_matrix_quota_ledger(scope,attempted_at DESC);
+
+-- Problemas de entrega: nenhuma ocorrência representa entrega confirmada.
+CREATE TABLE IF NOT EXISTS dispatch_delivery_incidents (
+ id BIGSERIAL PRIMARY KEY,
+ dispatch_id BIGINT NOT NULL REFERENCES dispatches(id) ON DELETE CASCADE,
+ courier_id INTEGER NOT NULL REFERENCES users(id),
+ platform TEXT NOT NULL CHECK(platform IN ('ifood','anotaai')),
+ external_order_id TEXT NOT NULL,
+ order_number TEXT NOT NULL,
+ reason TEXT NOT NULL CHECK(reason IN ('CLIENT_NOT_FOUND','CODE_UNAVAILABLE')),
+ status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','CONTINUE_APPROVED','RESOLVED')),
+ reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ approved_at TIMESTAMPTZ,
+ approved_by INTEGER REFERENCES users(id),
+ approval_reason TEXT,
+ resolved_at TIMESTAMPTZ,
+ resolution_reason TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS delivery_incident_one_active_order_idx
+ ON dispatch_delivery_incidents(dispatch_id,platform,external_order_id)
+ WHERE status IN ('OPEN','CONTINUE_APPROVED');
+CREATE INDEX IF NOT EXISTS delivery_incident_status_reported_idx
+ ON dispatch_delivery_incidents(status,reported_at DESC);
 
 CREATE TABLE IF NOT EXISTS route_matrix_cache (
   from_key TEXT NOT NULL,
@@ -7125,6 +7156,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
   }
 
   if (row.confirmed_at) {
+    await markConfirmedIncident(row.dispatch_id,"anotaai",row.order_id);
     await queueAnotaAiDeliveryFinalization(row.order_id,row.dispatch_id);
     return res.json({
       ok: true,
@@ -7147,6 +7179,7 @@ app.post("/api/courier/anotaai/orders/:orderId/confirm-delivery", auth, courierO
   // Persist the physical delivery first. The durable worker performs FINALIZE
   // after READY succeeds, so a platform outage neither skips READY nor loses delivery.
   await queueAnotaAiDeliveryFinalization(row.order_id,row.dispatch_id);
+  await markConfirmedIncident(row.dispatch_id,"anotaai",row.order_id);
   setImmediate(() => runAnotaAiDispatchWorkerOnce().catch(error =>
     console.error("Anota AI delivery finalization:", anotaAiSafeError(error))));
 
@@ -7253,6 +7286,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
   const confirmationStatus = deliveryConfirmationLabel(row.confirmation_status, row.order_status);
 
   if (["CONCLUDED","DELIVERED"].includes(orderStatus) || confirmationStatus === "CONCLUDED") {
+    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
     return res.json({
       ok: true,
       verified: true,
@@ -7264,6 +7298,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
   }
 
   if (confirmationStatus === "VERIFIED") {
+    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
     return res.json({
       ok: true,
       verified: true,
@@ -7408,6 +7443,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
       order_id: row.order_id
     });
 
+    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
     await maybeAutoMarkDispatchReturning(row.dispatch_id, {
       actorUserId: req.session.user.id,
       source: "AUTO_IFOOD_VERIFIED"
@@ -11437,6 +11473,11 @@ const preDepartureService = createPreDepartureService({
   onAddressCorrected: ({ platform, externalOrderId, latitude, longitude }) => longeRule.applyOperationalLocation({ platform, externalOrderId, latitude, longitude })
 });
 await preDepartureService.recoverInterrupted();
+const deliveryIncidentService=createDeliveryIncidentService({pool,emitRealtime,audit:auditBestEffort,notify:createNotification});
+async function markConfirmedIncident(dispatchId,platform,orderId){
+ try{await deliveryIncidentService.resolveConfirmed({dispatchId,platform,orderId});}
+ catch(e){console.error("Delivery incident resolution:",e?.code||"database_error");}
+}
 
 const SERVICE_ERROR_FIELDS = ["blockers","current_status","composition_version","version","route_version","order_number","platform","pre_departure_id","missing","problems","holder_courier_id"];
 function sendServiceError(res, e) {
@@ -11497,6 +11538,25 @@ async function resolvePreDepartureLinks(orderNumbers, body) {
   if (links.some(x => !x)) return { error: { status: 409, body: { error: "Todos os pedidos precisam estar identificados no iFood ou no Anota AI.", code: "ORDER_PLATFORM_REQUIRED" } } };
   return { links };
 }
+
+// Apenas relatórios de problema. Nunca confirma entrega nem desbloqueia uma saída.
+app.post("/api/courier/dispatches/:id/incidents",auth,courierOnly,deliveryIncidentLimiter,serviceRoute(async(req,res)=>{
+ const result=await deliveryIncidentService.report({courierId:req.session.user.id,
+   dispatchId:routeId(req.params.id),platform:req.body?.platform,orderId:req.body?.order_id,reason:req.body?.reason});
+ res.status(result.created?201:200).json({incident:result.incident,created:result.created,
+   message:"Ocorrência registrada; entrega continua pendente.",server_now:new Date().toISOString()});
+}));
+app.get("/api/admin/delivery-incidents",auth,adminOnly,serviceRoute(async(req,res)=>{
+ res.json({incidents:await deliveryIncidentService.list({includeResolved:req.query?.history==="true",limit:req.query?.limit}),
+   server_now:new Date().toISOString()});
+}));
+app.post("/api/admin/delivery-incidents/:id/decision",auth,adminOnly,serviceRoute(async(req,res)=>{
+ const result=await deliveryIncidentService.decide({adminId:req.session.user.id,incidentId:routeId(req.params.id),
+   action:req.body?.action,reason:req.body?.reason});
+ res.json({incident:result.incident,changed:result.changed,
+   message:result.incident.status==="CONTINUE_APPROVED"?"Avanço autorizado; entrega continua pendente.":"Nova tentativa solicitada.",
+   server_now:new Date().toISOString()});
+}));
 
 app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req, res) => {
   const settings = await preDepartureService.readSettings();
@@ -11583,7 +11643,8 @@ app.post("/api/courier/routes/:dispatchId/ack", auth, courierOnly, serviceRoute(
 }));
 
 app.get("/api/admin/pre-departure/overview", auth, adminOnly, serviceRoute(async (req, res) => {
-  res.json({ ...(await preDepartureService.adminOverview()), server_now: new Date().toISOString() });
+  const [overview,incidents]=await Promise.all([preDepartureService.adminOverview(),deliveryIncidentService.list({limit:100})]);
+  res.json({ ...overview,delivery_incidents:incidents,server_now:new Date().toISOString() });
 }));
 
 app.put("/api/admin/pre-departure/settings", auth, adminOnly, serviceRoute(async (req, res) => {
