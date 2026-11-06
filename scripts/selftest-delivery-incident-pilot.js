@@ -107,6 +107,8 @@ yes(server.includes('code:"INCIDENT_FEATURE_DISABLED"'),"fail closed http error"
 yes(server.includes('app.put("/api/admin/delivery-incidents/pilot",auth,adminOnly'),"admin-only pilot endpoint");
 yes(server.includes("ALTER TABLE dispatch_delivery_incidents ENABLE ROW LEVEL SECURITY"),"incident RLS");
 yes(server.includes("REVOKE ALL ON TABLE dispatch_delivery_incidents FROM PUBLIC"),"public grants revoked");
+const preDepartureService=fs.readFileSync(path.join(root,"lib","pre-departure-service.js"),"utf8");
+yes(preDepartureService.includes('if (turningOff) updates.push(["delivery_incidents_enabled", "false"])'),"parent shutdown must disable incident pilot");
 const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"));
 yes(pkg.scripts.prestart.includes("apply-delivery-incident-pilot-ui.js"),"UI prestart enabled");
 const script=fs.readFileSync(path.join(root,"scripts","apply-delivery-incident-pilot-ui.js"),"utf8");
