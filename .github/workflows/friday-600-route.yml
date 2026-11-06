@@ -95,6 +95,8 @@ jobs:
           echo "::error::staging nao esta saudavel"
           tail -40 friday-staging-server.log
           exit 1
+      - name: Validate persistent quota under concurrent claims
+        run: node scripts/selftest-route-quota-pg.js
       - name: Simulate 600 orders and 36 couriers over HTTP
         run: node scripts/smoke-staging-friday600.js
       - name: Safe diagnostics on failure

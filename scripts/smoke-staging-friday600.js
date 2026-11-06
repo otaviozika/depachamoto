@@ -136,6 +136,11 @@ try{
     waveTimes.push(performance.now()-waveStart);
     if(failures.length)break; // nao mascarar bugs com novas tentativas de saida
   }
+  // Assert the new persistent quota ledger was used (safe sandbox-only high limits).
+  const slotCount=Number((await pool.query(
+    "SELECT count(*)::int AS c FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'"
+  )).rows[0].c);
+  assert.ok(slotCount>0 && slotCount<=300,"reserva global de cota deve registrar as chamadas Matrix");
   const totals=(await pool.query(
     "SELECT (SELECT count(*)::int FROM anotaai_orders WHERE order_id LIKE $1) AS orders, "+
     "(SELECT count(*)::int FROM anotaai_delivery_confirmations c JOIN anotaai_orders a ON a.order_id=c.anotaai_order_id WHERE a.order_id LIKE $1) AS confirmed, "+
@@ -145,7 +150,7 @@ try{
   const report={result:failures.length?"FAIL":"PASS",environment:"ephemeral PostgreSQL + local HTTP + fake ORS",
     synthetic_only:true,production_database_access:false,real_provider_requests:0,
     orders_requested:ORDERS,couriers:COURIERS,dispatches_expected:300,
-    counts:{...totals,completed_routes:routeTimes.length,full_roundtrips:fullTimes.length},
+    counts:{...totals,completed_routes:routeTimes.length,full_roundtrips:fullTimes.length,quota_reservations:slotCount},
     route_http_latency:metrics(routeTimes),full_predeparture_to_confirmation_latency:metrics(fullTimes),
     wave_elapsed:metrics(waveTimes),status_codes:statuses,
     failures:failures.slice(0,12),

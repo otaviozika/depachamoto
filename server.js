@@ -1252,6 +1252,16 @@ CREATE TABLE IF NOT EXISTS order_address_overrides (
   UNIQUE(platform,external_order_id,version)
 );
 
+-- Global ORS Matrix budget. No customer/order data or provider keys are stored.
+-- An advisory transaction lock guarantees cross-instance reservations.
+CREATE TABLE IF NOT EXISTS route_matrix_quota_ledger (
+  id BIGSERIAL PRIMARY KEY,
+  scope TEXT NOT NULL,
+  attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS route_matrix_quota_scope_time_idx
+ON route_matrix_quota_ledger(scope,attempted_at DESC);
+
 CREATE TABLE IF NOT EXISTS route_matrix_cache (
   from_key TEXT NOT NULL,
   to_key TEXT NOT NULL,
