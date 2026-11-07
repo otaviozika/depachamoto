@@ -27,6 +27,7 @@ const modes=[
   {name:"network_disconnect",marker:-23.63333,error:"ROUTES_SERVICE_FAILED"},
   {name:"partial_matrix",marker:-23.64444,error:"ROUTE_MATRIX_INCOMPLETE"},
   {name:"provider_timeout",marker:-23.65555,error:"ROUTES_SERVICE_FAILED"},
+  {name:"response_body_timeout",marker:-23.67777,error:"ROUTES_SERVICE_FAILED"},
   {name:"healthy_control",marker:-23.66666,error:null}
 ];
 const results=[],stats={};
@@ -111,6 +112,10 @@ async function exercise(item,index,adminCookie,adminId) {
   const t0=performance.now();
   pd=(await must("/api/courier/pre-departures/"+pd.id+"/route",cookie,"POST",{},200)).pre_departure;
   const routingMs=Math.round(performance.now()-t0);
+  if(item.name==="provider_timeout"||item.name==="response_body_timeout"){
+    assert.ok(routingMs>=7000 && routingMs<11000,
+      "ORS stalled request should fail in around 8s, not 20s: "+item.name+" "+routingMs+"ms");
+  }
   if(item.error) {
     assert.equal(pd.status,"BLOCKED","provider failure must block");
     assert.equal(pd.route_status,"NEEDS_ADMIN");
@@ -244,11 +249,11 @@ try {
     "SELECT count(*)::int n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'")).rows[0].n);
   assert.ok(reservations>=modes.length && reservations<=modes.length+burst.couriers,
     "Rate limiter records no more than the attempted Matrix calls");
-  assert.equal(results.filter(x=>x.blockedBeforeAdmin).length,5);
-  assert.equal(results.length,6);
+  assert.equal(results.filter(x=>x.blockedBeforeAdmin).length,6);
+  assert.equal(results.length,7);
   console.log("ROUTE_CHAOS_REPORT_START");
   console.log(JSON.stringify({result:"PASS",mode:"REAL_HTTP_POSTGRES16_MOCK_EXTERNAL_ORS",
-    scenarios:results.length,blockedThenManual:5,providerLiveCalls:0,
+    scenarios:results.length,blockedThenManual:6,providerLiveCalls:0,
     productionTouched:false,unexpectedConfirmations:0,quotaReservations:reservations,
     burst, statuses:stats,results},null,2));
   console.log("ROUTE_CHAOS_REPORT_END");
