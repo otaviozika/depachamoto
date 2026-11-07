@@ -163,23 +163,70 @@ async function runCase({name,driver,device}) {
     await fs.mkdir("mobile-test-results",{recursive:true});
     await page.screenshot({path:"mobile-test-results/"+name+".png",fullPage:true});
     await context.setOffline(true);
-    const offline=await page.evaluate(()=>{
+    const attemptedServerWrites=[];
+    page.on("request",req=>{
+      if(req.method()!=="GET"&&req.url().includes("/api/courier/dispatches/"))attemptedServerWrites.push(req.url());
+    });
+    const offline=await page.evaluate(async()=>{
       window.dispatchEvent(new Event("offline"));
+      renderCourierMyRoute();
+      openDeliveryIncident("ifood","synthetic-B");
+      await submitDeliveryIncident("CODE_UNAVAILABLE");
+      const modal=document.getElementById("deliveryIncidentModal");
       return {navigatorOnLine:navigator.onLine,
         stops:document.querySelectorAll("#courierMyRoute .route-stop").length,
-        links:document.querySelectorAll("#courierMyRoute .delivery-navigation a").length};
+        routeStaleWarning:document.getElementById("courierMyRoute").textContent.includes("última rota carregada"),
+        blockedIncidentText:document.getElementById("incidentSubmitMsg").textContent,
+        incidentModalStayedOpen:modal.style.display==="grid",
+        pendingStops:courierPreDeparture.route.stops.filter(x=>x.state==="PENDING").length};
     });
     assert.equal(offline.navigatorOnLine,false);
     assert.equal(offline.stops,2,"The current rendered route must not vanish on connection loss");
+    assert.equal(offline.routeStaleWarning,true,"Cached route needs visible stale-data warning");
+    assert.ok(offline.blockedIncidentText.includes("não foi enviada"),"Offline incident must not claim success");
+    assert.equal(offline.incidentModalStayedOpen,true,"Incident remains actionable after reconnect");
+    assert.equal(offline.pendingStops,2,"Offline cannot complete an order");
+    assert.deepEqual(attemptedServerWrites,[],"Never write incidents to server while offline");
+    log(name+"-offline-safe",{passed:true,routeVisible:true,staleWarning:true,
+      offlineIncidentBlocked:true,serverWrites:attemptedServerWrites.length});
     await context.setOffline(false);
     const online=await page.evaluate(()=>{
       window.dispatchEvent(new Event("online"));
-      return navigator.onLine;
+      renderCourierMyRoute();
+      return {online:navigator.onLine,staleWarning:document.getElementById("courierMyRoute").textContent.includes("última rota carregada")};
     });
-    assert.equal(online,true,"Browser must regain online status");
-    log(name+"-offline-recovery",{passed:true,offlineVisibleStops:offline.stops,onlineRestored:online});
+    assert.equal(online.online,true,"Browser must regain online status");
+    assert.equal(online.staleWarning,false,"Recovered connection must remove offline hint");
+    log(name+"-offline-recovery",{passed:true,offlineVisibleStops:offline.stops,onlineRestored:true});
+    const ambiguous=await page.evaluate(async()=>{
+      // Test a response lost after an uncertain POST, without any network call.
+      const originalFetch=window.fetch;
+      const originalAlert=window.alert;
+      let intercepted=0, successAlerts=0;
+      window.fetch=(input,opts)=>{
+        if(String(input).includes("/api/courier/dispatches/")&&opts?.method==="POST"){
+          intercepted++;return Promise.reject(new TypeError("Simulated lost response"));
+        }
+        return originalFetch(input,opts);
+      };
+      window.alert=text=>{if(String(text).includes("Ocorrência registrada"))successAlerts++;};
+      try{
+        await submitDeliveryIncident("CODE_UNAVAILABLE");
+        return {intercepted,successAlerts,
+          message:document.getElementById("incidentSubmitMsg").textContent,
+          modalOpen:document.getElementById("deliveryIncidentModal").style.display==="grid",
+          pendingStops:courierPreDeparture.route.stops.filter(x=>x.state==="PENDING").length};
+      }finally{window.fetch=originalFetch;window.alert=originalAlert;}
+    });
+    assert.equal(ambiguous.intercepted,1,"Uncertain POST was safely intercepted in-browser");
+    assert.equal(ambiguous.successAlerts,0,"Unknown result must not announce success");
+    assert.equal(ambiguous.modalOpen,true,"Incident must remain visible after uncertain response");
+    assert.ok(ambiguous.message.includes("pode ter sido recebida"),"Warn about ambiguous server outcome");
+    assert.equal(ambiguous.pendingStops,2);
+    assert.deepEqual(attemptedServerWrites,[],"No incident POST may reach real staging server");
+    log(name+"-ambiguous-incident",{passed:true,serverWrites:0,uncertainResultWarning:true});
     assert.deepEqual(errors,[],"Unhandled page errors in mobile browser");
-    reports.push({device:name,status:"PASS",checks:5,screen:name+".png",
+    reports.push({device:name,status:"PASS",checks:7,screen:name+".png",
       viewportWidth:fixture.width,renderedStops:fixture.stops});
   } finally {
     await context.close();
