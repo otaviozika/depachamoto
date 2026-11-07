@@ -178,30 +178,52 @@ async function seed(){
   report.counts.seededOrders=inserted.rowCount;
 }
 async function httpSessions(){
-  // Real HTTP authentication and 40 parallel courier reads: not a mocked server.
+  // Real HTTP authentication and 40 parallel courier reads, with all requests awaited
+  // before any cleanup. Never assume the staging feature flags are disabled.
   const users=Array.from(indexByUser.values());
   const cookies=new Map();
   for(let i=0;i<users.length;i+=8){
-    await Promise.all(users.slice(i,i+8).map(async u=>{
+    const responses=await Promise.allSettled(users.slice(i,i+8).map(async u=>{
       const a=await req("/api/login",{method:"POST",body:JSON.stringify({username:u.username,password})});
       asExpected(a,200,"courier-login");
       assert.ok(a.cookie.startsWith("connect.sid="),"Missing session cookie");
       cookies.set(u.id,a.cookie);
     }));
+    const failures=responses.filter(x=>x.status==="rejected");
+    assert.equal(failures.length,0,"Login batch has "+failures.length+" failures");
   }
-  // GET simultaneous, POST should reject because predeparture flag is OFF for actual staging users.
-  await Promise.all(users.map(async u=>{
+  report.http.authenticatedCouriers=cookies.size;
+  const responses=await Promise.allSettled(users.map(async u=>{
     const cookie=cookies.get(u.id);
     const o=await req("/api/courier/pre-departure",{headers:{cookie}});
     asExpected(o,200,"courier-read");
-    assert.equal(o.body.enabled?.pre_departure,false,"Feature flags unexpectedly enabled");
-    const rej=await req("/api/courier/pre-departures",{
-      method:"POST",headers:{cookie},body:JSON.stringify({order_numbers:["#99999999"],order_count:1})});
-    asExpected(rej,409,"fail-closed-disabled");
-    assert.equal(rej.body.code,"FEATURE_DISABLED");
+    assert.equal(o.body.enabled?.pre_departure,report.settingsBefore.pre_departure_enabled==="true",
+      "Staging feature state mismatch");
+    return {id:u.id,enabled:o.body.enabled?.pre_departure};
   }));
-  report.http.authenticatedCouriers=cookies.size;
-  report.http.disabledFeatureRejections=N;
+  const failed=responses.map((x,i)=>({i,x})).filter(o=>o.x.status==="rejected");
+  report.http.concurrentReadFailures=failed.length;
+  report.http.concurrentReadSuccesses=responses.length-failed.length;
+  if(failed.length){
+    report.http.failureDetails=failed.slice(0,6).map(o=>({index:o.i,
+      reason:String(o.x.reason?.message||"error").slice(0,150)}));
+    throw new Error("Concurrent authenticated read failures: "+failed.length+"/"+N);
+  }
+  // No POST needed for the enabled feature: do not change actual staging operation.
+  // If disabled, assert it fails closed before any user/order mutation.
+  if(report.settingsBefore.pre_departure_enabled!=="true"){
+    const rejections=await Promise.allSettled(users.map(async u=>{
+      const x=await req("/api/courier/pre-departures",{
+        method:"POST",headers:{cookie:cookies.get(u.id)},
+        body:JSON.stringify({order_numbers:["#99999999"],order_count:1})});
+      asExpected(x,409,"fail-closed-disabled");
+      assert.equal(x.body.code,"FEATURE_DISABLED");
+    }));
+    assert.equal(rejections.filter(x=>x.status==="rejected").length,0,
+      "Fail-closed HTTP check failed");
+    report.http.disabledFeatureRejections=N;
+  } else report.http.disabledFeatureRejections=0;
+  report.http.authenticatedReads=N;
 }
 const service=()=>createPreDepartureService({pool,describeOrder,env,
   routesClientFactory:()=>{throw new Error("ERROR: external Matrix calls forbidden in capacity test");},
