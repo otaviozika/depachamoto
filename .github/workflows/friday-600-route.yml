@@ -97,6 +97,8 @@ jobs:
           exit 1
       - name: Validate persistent quota under concurrent claims
         run: node scripts/check-route-quota-pg.js
+      - name: Model 600-order Matrix quota including rolling 24h boundary
+        run: node scripts/simulate-friday-route-capacity.mjs
       - name: Simulate 600 orders and 36 couriers over HTTP
         run: node scripts/smoke-staging-friday600.js
       - name: Safe diagnostics on failure
