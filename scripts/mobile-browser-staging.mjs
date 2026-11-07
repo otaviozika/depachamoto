@@ -190,14 +190,44 @@ async function runCase({name,driver,device}) {
     log(name+"-offline-safe",{passed:true,routeVisible:true,staleWarning:true,
       offlineIncidentBlocked:true,serverWrites:attemptedServerWrites.length});
     await context.setOffline(false);
-    const online=await page.evaluate(()=>{
+    const online=await page.evaluate(async()=>{
       window.dispatchEvent(new Event("online"));
       renderCourierMyRoute();
-      return {online:navigator.onLine,staleWarning:document.getElementById("courierMyRoute").textContent.includes("última rota carregada")};
+      const hint=()=>document.getElementById("courierMyRoute").textContent.includes("última rota carregada");
+      const beforeRefresh=hint();
+      const originalFetch=window.fetch,originalMe=me;
+      me={id:999999,role:"courier"};
+      let failedRefresh=false,afterSuccess=false,intercepted=0;
+      try{
+        window.fetch=(input,opts)=>{
+          if(String(input)==="/api/courier/pre-departure"){
+            intercepted++;return Promise.reject(new TypeError("staging server temporarily unreachable"));
+          }
+          return originalFetch(input,opts);
+        };
+        await loadCourierPreDeparture();
+        failedRefresh=hint();
+        window.fetch=(input,opts)=>{
+          if(String(input)==="/api/courier/pre-departure"){
+            intercepted++;
+            return Promise.resolve(new Response(JSON.stringify(courierPreDeparture),{
+              status:200,headers:{"content-type":"application/json"}
+            }));
+          }
+          return originalFetch(input,opts);
+        };
+        await loadCourierPreDeparture();
+        afterSuccess=!hint();
+      }finally{window.fetch=originalFetch;me=originalMe;}
+      return {online:navigator.onLine,beforeRefresh,failedRefresh,afterSuccess,intercepted};
     });
     assert.equal(online.online,true,"Browser must regain online status");
-    assert.equal(online.staleWarning,false,"Recovered connection must remove offline hint");
-    log(name+"-offline-recovery",{passed:true,offlineVisibleStops:offline.stops,onlineRestored:true});
+    assert.equal(online.beforeRefresh,true,"Browser online alone must NOT clear stale route");
+    assert.equal(online.failedRefresh,true,"Failed server refresh must preserve stale warning");
+    assert.equal(online.afterSuccess,true,"Only successful server refresh may clear hint");
+    assert.equal(online.intercepted,2,"Both server refresh outcomes must be mocked in-browser");
+    log(name+"-offline-recovery",{passed:true,offlineVisibleStops:offline.stops,
+      onlineRestored:true,serverFailureStillStale:true,serverSuccessClearsWarning:true});
     const ambiguous=await page.evaluate(async()=>{
       // Test a response lost after an uncertain POST, without any network call.
       const originalFetch=window.fetch;
