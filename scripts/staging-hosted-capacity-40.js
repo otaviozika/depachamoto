@@ -310,6 +310,23 @@ async function cleanup(){
       ? Number((await pool.query("SELECT count(*)::int AS n FROM pre_departures WHERE courier_id=ANY($1::int[])",[created.users])).rows[0].n):0;
     assert.equal(outcomes.remainingOrders,0);
     assert.equal(outcomes.remainingDrafts,0);
+    // Synthetic audit records only. Avoid leaving 40 fake couriers in the admin list.
+    outcomes.deletedAccounts=0;
+    if(created.users.length){
+      await pool.query("DELETE FROM audit_logs WHERE user_id=ANY($1::int[])",[created.users]);
+      await pool.query("DELETE FROM user_presence WHERE user_id=ANY($1::int[])",[created.users]);
+      try{
+        const removed=await pool.query("DELETE FROM users WHERE id=ANY($1::int[]) AND username LIKE $2",
+          [created.users,PREFIX+"-%"]);
+        outcomes.deletedAccounts=removed.rowCount;
+      }catch(e){
+        // The only safe fallback is already applied: synthetic users stay disabled.
+        outcomes.accountRemovalDeferred=String(e.code||"constraint");
+      }
+    }
+    outcomes.remainingActiveAccounts=created.users.length?
+      Number((await pool.query("SELECT count(*)::int AS n FROM users WHERE id=ANY($1::int[]) AND active=true",[created.users])).rows[0].n):0;
+    assert.equal(outcomes.remainingActiveAccounts,0);
     report.cleanup={status:"PASS",...outcomes};
     console.log("STAGING_CAPACITY_CLEANUP_OK "+JSON.stringify(outcomes));
   }catch(e){
@@ -337,7 +354,7 @@ async function execute(){
     report.stats=Object.fromEntries(Object.entries(stats).map(([k,v])=>[
       k,{calls:v.duration.length,status:v.status,p50_ms:quantile(v.duration,.5),
       p95_ms:quantile(v.duration,.95),p99_ms:quantile(v.duration,.99),max_ms:quantile(v.duration,1)}]));
-    report.process={peak_rss_mib:round(sampler.peakRss/1048576),
+    report.load_generator={peak_rss_mib:round(sampler.peakRss/1048576),
       peak_heap_mib:round(sampler.peakHeap/1048576),
       peak_pool_connections:sampler.peakPoolTotal,peak_pool_waiting:sampler.peakPoolWaiting,
       event_loop_delay_p95_ms:round(loop.percentile(95)/1e6),
