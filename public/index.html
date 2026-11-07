@@ -2231,6 +2231,8 @@ let courierAttendancePresent=false,courierShiftEnded=false;
 // Pré-saída (conferência de sacolas): estado carregado em loadCourierPreDeparture.
 const PRE_DEPARTURE_OPEN=['DRAFT','AWAITING_CHECK','PARTIALLY_CHECKED','CHECKED','ROUTE_READY','BLOCKED'];
 let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},incident_feature:{enabled:false,pilot_only:true},pre_departure:null,route:null};
+// Cached routes remain visible when disconnected; only a successful server refresh marks them fresh.
+let courierRouteFresh=true;
 let preDepartureBusy=false;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
@@ -2505,14 +2507,16 @@ async function flushOfflineQueue(){
 window.addEventListener('online',()=>{
   updateConnectionState();
   flushOfflineQueue();
-  // Refresh the authoritative route; never auto-submit an incident/ack after reconnect.
+  // Online network indication is not proof that the server is reachable.
   if(me?.role==='courier'&&courierPreDeparture?.route?.dispatch_status==='ON_ROAD'){
+    courierRouteFresh=false;
+    renderCourierMyRoute();
     loadCourierPreDeparture().catch(()=>{});
   }
-  if(me?.role==='courier')renderCourierMyRoute();
 });
 window.addEventListener('offline',()=>{
   updateConnectionState();
+  courierRouteFresh=false;
   if(me?.role==='courier')renderCourierMyRoute();
 });
 
@@ -4269,7 +4273,15 @@ async function loadCourierDeliveries(){
 // pelo mesmo POST /api/courier/depart, que recebe só o id da pré-saída.
 async function loadCourierPreDeparture(){
   if(!me||me.role!=='courier')return courierPreDeparture;
-  try{courierPreDeparture=await api('/api/courier/pre-departure')}catch(err){return courierPreDeparture}
+  try{
+    courierPreDeparture=await api('/api/courier/pre-departure');
+    courierRouteFresh=true;
+  }catch(err){
+    // Do not hide stale-route banner simply because navigator.onLine became true.
+    courierRouteFresh=false;
+    renderCourierMyRoute();
+    return courierPreDeparture;
+  }
   renderPreDeparture();
   renderCourierMyRoute();
   return courierPreDeparture;
@@ -4513,7 +4525,7 @@ function renderCourierMyRoute(){
   const deferred=r.stops.filter(s=>s.state==='PENDING'&&s.is_deferred);
   const incidentHint=deferred.length?'<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes, mesmo após autorização do caixa.</div>':'';
   const pendingHint=r.counts.pending>0&&!r.stops.some(s=>s.is_next)?'<div class="incident-alert">Nenhuma próxima parada liberada. Aguarde orientação do caixa.</div>':'';
-  const offlineHint=!navigator.onLine?'<div class="incident-alert">Sem conexão: esta é a última rota carregada e pode estar desatualizada. Não registre ocorrências ou confirme entregas sem resposta do servidor. Ao reconectar, a rota será atualizada.</div>':'';
+  const offlineHint=(!navigator.onLine||!courierRouteFresh)?'<div class="incident-alert">Rota não atualizada: esta é a última rota carregada e pode estar desatualizada. Não registre ocorrências ou confirme entregas sem resposta do servidor. Reconecte e confirme a versão da rota com o caixa.</div>':'';
   const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
   el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
     <div class="my-route-meta">${r.route_status==='ADMIN'?'Sequência definida pelo admin.':'Siga a sequência calculada.'} Confirme cada entrega no card do pedido, em Entregas e confirmações.</div>
