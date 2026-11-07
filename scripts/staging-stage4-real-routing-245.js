@@ -27,11 +27,13 @@ const pool = new pg.Pool({
   connectionTimeoutMillis: 12000
 });
 const tag = "s4-" + randomBytes(5).toString("hex");
+const jitter=Number.parseInt(randomBytes(2).toString("hex"),16)/65535*0.00037;
 const created = {users: [], orders: [], preDepartures: []};
 const report = {result:"PENDING", mode:"STAGING_SERVICE_REAL_ORS", cases:[], realMatrixExpected:3,
   productionTouched:false, customerDataUsed:false, externalPlatformMutations:false,
   appFlagsChanged:false, directDispatchesCreated:0};
 let error = null;
+let callsBefore = null;
 
 // Wrap ONLY this test's query view: route_planner=true for test methods, without
 // changing any app_settings entry visible to real staging users.
@@ -69,7 +71,10 @@ const pinOffsets = [
   [-0.0014,-0.0007],[0.0001,-0.0019],[0.0021,0.0013],
   [-0.0022,0.0008]
 ];
-function assertRoute(v,n) {
+async function assertRoute(v,n) {
+  const persisted = await pool.query("SELECT route FROM pre_departures WHERE id=$1",[v.id]);
+  const raw = persisted.rows[0]?.route;
+  assert.ok(raw, "Persisted route record missing");
   assert.equal(v.status,"ROUTE_READY","Route not ready: "+String(v.route_error?.code || v.status));
   assert.equal(v.can_dispatch,true,"Dispatch eligibility not established");
   assert.equal(v.route?.provider,"openrouteservice","Real ORS provider not selected");
@@ -78,13 +83,14 @@ function assertRoute(v,n) {
   const permutations = [0,1,2,6,24,120][n];
   assert.equal(v.route?.evaluated,permutations,"Not all permutations were evaluated");
   assert.ok(Number(v.route?.duration_minutes)>0,"Missing ETA");
-  assert.ok(Number(v.route?.fastest_duration_minutes)>0,"Missing fastest ETA");
-  const extra = Number(v.route.duration_minutes)-Number(v.route.fastest_duration_minutes);
-  const allowed = Math.min(Number(v.route.fastest_duration_minutes)*0.10,3);
+  assert.ok(Number(raw.fastest_duration_minutes)>0,"Missing fastest ETA");
+  const extra = Number(raw.duration_minutes)-Number(raw.fastest_duration_minutes);
+  const allowed = Math.min(Number(raw.fastest_duration_minutes)*0.10,3);
   assert.ok(extra<=allowed+0.21,"Suggested route violates 10%/3 min limit");
   assert.equal(new Set(v.route.stops.map(x=>x.external_order_id)).size,n,"Duplicate stop");
-  assert.ok(v.route.stops.every(x=>Number.isFinite(Number(x.latitude)) && Number.isFinite(Number(x.longitude))),"Missing navigation pin");
+  assert.ok(raw.stops.every(x=>Number.isFinite(Number(x.latitude)) && Number.isFinite(Number(x.longitude))),"Missing navigation pin");
   assert.ok(v.orders.every(x=>x.checked && x.navigation?.latitude && x.navigation?.longitude),"Unchecked bag or absent navigation");
+  return raw;
 }
 async function seedCase(n, group, origin) {
   const hash=await bcrypt.hash(randomBytes(28).toString("base64url"),8);
@@ -96,8 +102,8 @@ async function seedCase(n, group, origin) {
     const k = (group * 10 + i) % pinOffsets.length;
     const d=pinOffsets[k];
     // Unique synthetic coordinates avoid cache replays and customer locations.
-    const point={latitude:origin.latitude+d[0]+group*0.000013+i*0.000009,
-      longitude:origin.longitude+d[1]+group*0.000011-i*0.000007};
+    const point={latitude:origin.latitude+d[0]+group*0.000013+i*0.000009+jitter,
+      longitude:origin.longitude+d[1]+group*0.000011-i*0.000007-jitter};
     const orderId=tag+"-anota-"+group+"-"+i;
     const display=String(88000000+Math.floor(Math.random()*9000000));
     const orderNumber="#"+display;
@@ -124,6 +130,7 @@ async function checkBags(courierId,pd) {
 }
 try {
   const identity=await pool.query("SELECT current_database() AS name");
+  callsBefore=Number((await pool.query("SELECT count(*)::int AS n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'")).rows[0].n);
   assert.equal(identity.rows[0]?.name,DB_NAME);
   const flags=await pool.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key = ANY($1::text[])",
     [["pre_departure_enabled","route_planner_enabled","address_correction_enabled","delivery_incidents_enabled"]]);
@@ -141,7 +148,7 @@ try {
       e=>e.code==="PRE_DEPARTURE_CHECK_PENDING","Early route calculation must be blocked");
     const checked=await checkBags(courierId,initial);
     const calculated=await service.computeRoute(checked.id,{courierId});
-    assertRoute(calculated,n);
+    const rawRoute=await assertRoute(calculated,n);
     const prepared=await service.prepareDispatch({courierId,id:calculated.id,compositionVersion:calculated.composition_version});
     assert.equal(prepared.order_numbers.length,n,"Prepared dispatch has wrong number of orders");
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM dispatches WHERE courier_id=$1",[courierId])).rows[0].n,0,
@@ -150,8 +157,8 @@ try {
     report.cases.push({orders:n,permutations:calculated.route.evaluated,
       source:calculated.route.source,provider:calculated.route.provider,
       duration_minutes:calculated.route.duration_minutes,
-      fastest_minutes:calculated.route.fastest_duration_minutes,
-      matrix_elements:calculated.route.matrix_elements,
+      fastest_minutes:rawRoute.fastest_duration_minutes,
+      matrix_elements:rawRoute.matrix_elements,
       planned:true,bag_checks:n,early_departure_blocked:true,
       dispatch_prepared:true,dispatch_created:false,ms:Date.now()-started});
   }
@@ -175,6 +182,9 @@ try {
   await failClient.cancel({actorUserId:courierId,courierId,id:ack.id,reason:"End of synthetic fallback"});
   report.fallback={simulated_error:"429",blocked_without_provider:true,manual_override_audited:true,
     courier_ack_required:true,dispatched:false};
+  const callsAfter=Number((await pool.query("SELECT count(*)::int AS n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'")).rows[0].n);
+  report.realMatrixObserved=callsAfter-callsBefore;
+  assert.ok(report.realMatrixObserved>=3,"Expected three real ORS Matrix budget reservations");
   report.result="PASS";
 } catch (e) {
   error=e;
