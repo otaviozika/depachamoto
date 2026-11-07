@@ -165,6 +165,73 @@ async function exercise(item,index,adminCookie,adminId) {
     acknowledged:Boolean(item.error),noFalseDeliveries:true,
     afterSyntheticConfirm:"RELEASED"};
 }
+async function runSimultaneousOutage(adminCookie,adminId) {
+  // All couriers receive synthetic ORS 429 during the same route-computation wave.
+  // Real HTTP and DB reservations; provider API itself is mocked.
+  const B=36,fixtures=[];
+  for(let i=0;i<B;i++)fixtures.push(await createFixture(i+6,-23.61111,adminId));
+  for(const x of fixtures) {
+    const nums=x.orders.map(o=>"#"+o.display);
+    const selections=nums.map(order_number=>({order_number,platform:"anotaai"}));
+    let pd=(await must("/api/courier/pre-departures",x.cookie,"POST",
+      {order_numbers:nums,order_count:2,platform_selections:selections},201)).pre_departure;
+    for(const order of pd.orders)pd=(await must(
+      "/api/courier/pre-departures/"+pd.id+"/orders/"+order.id+"/check",
+      x.cookie,"POST",{composition_version:pd.composition_version,checked:true},200)).pre_departure;
+    x.pd=pd;
+  }
+  const start=performance.now();
+  const routes=await Promise.all(fixtures.map(x=>
+    must("/api/courier/pre-departures/"+x.pd.id+"/route",x.cookie,"POST",{},200)
+  ));
+  const wallMs=Math.round(performance.now()-start);
+  const reasonCounts={};
+  for(let i=0;i<B;i++){
+    const pd=routes[i].pre_departure;
+    assert.equal(pd.status,"BLOCKED","simultaneous outage never sends courier away");
+    assert.equal(pd.route_status,"NEEDS_ADMIN");
+    assert.equal(pd.route,null);
+    assert.equal(pd.can_dispatch,false);
+    assert.ok(["ROUTES_RATE_LIMITED","ROUTES_RATE_LIMITED_LOCAL"].includes(pd.route_error?.code),pd.route_error?.code);
+    reasonCounts[pd.route_error.code]=(reasonCounts[pd.route_error.code]||0)+1;
+    fixtures[i].pd=pd;
+  }
+  const ids=fixtures.map(x=>x.courierId);
+  const before=await pool.query("SELECT count(*)::int n FROM dispatches WHERE courier_id=ANY($1::int[])",[ids]);
+  assert.equal(Number(before.rows[0].n),0,"36 blocked routes must not create dispatches");
+  const confirmedBefore=await pool.query(
+    "SELECT count(*)::int n FROM anotaai_delivery_confirmations WHERE anotaai_order_id=ANY($1::text[])",
+    [fixtures.flatMap(x=>x.orders.map(o=>o.id))]);
+  assert.equal(Number(confirmedBefore.rows[0].n),0,"No forged deliveries under mass outage");
+  const latencies=[];
+  for(const x of fixtures){
+    const t=performance.now();
+    let pd=(await must("/api/admin/pre-departures/"+x.pd.id+"/sequence",adminCookie,"POST",
+      {reason:"Autorizacao manual do caixa sob pane simultanea em homologacao"},200)).pre_departure;
+    assert.equal(pd.route_status,"ADMIN");
+    assert.equal(pd.ack_required,true);
+    pd=(await must("/api/courier/pre-departures/"+pd.id+"/ack",x.cookie,"POST",
+      {version:pd.version},200)).pre_departure;
+    assert.equal(pd.can_dispatch,true);
+    const d=await must("/api/courier/depart",x.cookie,"POST",
+      {pre_departure_id:pd.id,composition_version:pd.composition_version},201);
+    assert.ok(Number(d.dispatch.id)>0);
+    latencies.push(Math.round(performance.now()-t));
+    for(const order of x.orders){
+      const completed=await must("/api/courier/anotaai/orders/"+order.id+"/confirm-delivery",
+        x.cookie,"POST",{},200);
+      assert.equal(completed.confirmed,true);
+    }
+    const state=(await pool.query("SELECT status FROM dispatches WHERE id=$1",[d.dispatch.id])).rows[0];
+    assert.equal(state.status,"RELEASED");
+  }
+  const percentile=(vals,p)=>[...vals].sort((a,b)=>a-b)[Math.max(0,Math.ceil(vals.length*p)-1)];
+  return {couriers:B,orders:B*2,result:"PASS",mockProvider429:B,
+    blockedBeforeOverride:B,manuallyRecovered:B,releasedAfterSyntheticConfirm:B,
+    unexpectedConfirmations:0,peakRouteWaveMs:wallMs,
+    adminRecoveryPerCourierP95Ms:percentile(latencies,.95),
+    routeErrors:reasonCounts};
+}
 try {
   const {auth,adminId}=await prepare();
   for(const [i,item] of modes.entries()){
@@ -172,16 +239,18 @@ try {
     results.push(x);
     console.log("CHAOS_CASE_PASS "+JSON.stringify(x));
   }
+  const burst=await runSimultaneousOutage(auth,adminId);
   const reservations=Number((await pool.query(
     "SELECT count(*)::int n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'")).rows[0].n);
-  assert.equal(reservations,modes.length,"failed provider calls must consume reservations");
+  assert.ok(reservations>=modes.length && reservations<=modes.length+burst.couriers,
+    "Rate limiter records no more than the attempted Matrix calls");
   assert.equal(results.filter(x=>x.blockedBeforeAdmin).length,5);
   assert.equal(results.length,6);
   console.log("ROUTE_CHAOS_REPORT_START");
   console.log(JSON.stringify({result:"PASS",mode:"REAL_HTTP_POSTGRES16_MOCK_EXTERNAL_ORS",
     scenarios:results.length,blockedThenManual:5,providerLiveCalls:0,
     productionTouched:false,unexpectedConfirmations:0,quotaReservations:reservations,
-    statuses:stats,results},null,2));
+    burst, statuses:stats,results},null,2));
   console.log("ROUTE_CHAOS_REPORT_END");
 } finally {
   await pool.end().catch(()=>{});
