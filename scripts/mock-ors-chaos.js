@@ -38,6 +38,18 @@ globalThis.fetch=async(url,options={})=>{
     return new Response(JSON.stringify({durations:d,distances:d.map(row=>row.map(v=>v===null?null:v*6))}),
       {status:200,headers:{"content-type":"application/json"}});
   }
+  if(has(-23.67777)){
+    // Headers arrive immediately; body hangs until the request deadline.
+    // This must be handled as ROUTES_SERVICE_FAILED, not an unhandled HTTP 500.
+    const stream=new ReadableStream({
+      start(controller) {
+        const signal=options.signal;
+        if(signal?.aborted)controller.error(new Error("Synthetic body timeout"));
+        else signal?.addEventListener("abort",()=>controller.error(new Error("Synthetic body timeout")),{once:true});
+      }
+    });
+    return new Response(stream,{status:200,headers:{"content-type":"application/json"}});
+  }
   if(has(-23.65555)){
     // Simulate 20s provider timeout, honor the actual AbortSignal.timeout().
     await new Promise((resolve,reject)=>{
