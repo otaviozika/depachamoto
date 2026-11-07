@@ -13058,7 +13058,21 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 3000);
-server.listen(port, () => console.log(`DespacheFull ${VERSION} rodando na porta ${port}`));
+server.listen(port, () => {
+  console.log(`DespacheFull ${VERSION} rodando na porta ${port}`);
+  // Only the explicitly provisioned staging database can run authenticated synthetic tests.
+  // No test endpoint, no production access, and no external provider writes.
+  if (APP_ENV === "staging" && STAGING_SAFE_MODE && process.env.STAGING_HOSTED_E2E_RUN === "yes") {
+    setImmediate(async () => {
+      try {
+        const { runHostedAuthSmoke } = await import("./scripts/staging-hosted-auth-e2e.js");
+        await runHostedAuthSmoke({ pool, port });
+      } catch (error) {
+        console.error("STAGING_HOSTED_AUTH_E2E_FAILED", String(error?.code || error?.message || "unknown").slice(0, 200));
+      }
+    });
+  }
+});
 
 let shuttingDown = false;
 async function gracefulShutdown(signal) {
