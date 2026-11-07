@@ -25,8 +25,11 @@ assert.equal(testClient.provider,"openrouteservice");
 assert.equal((await testClient.travelMatrix(points)).seconds[0][1],10);
 
 const stallFetch=async(url,{signal})=>new Promise((_resolve,reject)=>{
-  if(signal.aborted)return reject(new Error("Abort confirmed"));
-  signal.addEventListener("abort",()=>reject(new Error("Abort confirmed")),{once:true});
+  // Node AbortSignal.timeout uses an unref'ed timer. Hold this mock transport
+  // open like a real network socket so the test does not exit with unsettled await.
+  const guard=setTimeout(()=>reject(new Error("Mock failed to abort")),2000);
+  if(signal.aborted){clearTimeout(guard);return reject(new Error("Abort confirmed"));}
+  signal.addEventListener("abort",()=>{clearTimeout(guard);reject(new Error("Abort confirmed"));},{once:true});
 });
 const short=createOpenRouteServiceClient({apiKey:key,timeoutMs:350,matrixTimeoutMs:100,fetchFn:stallFetch});
 const t1=performance.now();
@@ -38,7 +41,8 @@ assert.ok(matrixMs>=65 && matrixMs<330,"Matrix deadline drift "+matrixMs);
 const headersBody=createOpenRouteServiceClient({apiKey:key,timeoutMs:350,matrixTimeoutMs:110,
   fetchFn:async(_url,{signal})=>{
     const stream=new ReadableStream({start(controller){
-      signal.addEventListener("abort",()=>controller.error(new Error("Unfinished body")),{once:true});
+      const guard=setTimeout(()=>controller.error(new Error("Mock body failed to abort")),2000);
+      signal.addEventListener("abort",()=>{clearTimeout(guard);controller.error(new Error("Unfinished body"));},{once:true});
     }});
     return new Response(stream,{status:200,headers:{"content-type":"application/json"}});
   }
