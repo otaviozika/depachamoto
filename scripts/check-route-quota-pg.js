@@ -33,7 +33,22 @@ try{
   assert.equal(simulated.filter(x=>x.reason==="DAILY").length,55);
   const nextDay=new Date("2026-11-07T12:00:00Z");
   const reset=await reserveRouteMatrixBudget(pool,{scope,perMinute:38,perDay:450,at:nextDay});
-  assert.equal(reset.ok,true,"UTC quota day resets");
+  assert.equal(reset.ok,true,"24h-old claims no longer consume rolling quota");
+  // Midnight is NOT a quota reset. The ORS provider anchors its 24h window
+  // to the first call, unlike a midnight-UTC calendar budget.
+  const midnightScope="SYNTHETIC_MIDNIGHT";
+  const beforeMidnight=new Date("2026-11-06T23:58:30Z");
+  const midnightClaim=await Promise.all(Array.from({length:3},()=>reserveRouteMatrixBudget(pool,{
+    scope:midnightScope,perMinute:38,perDay:3,at:beforeMidnight
+  })));
+  assert.equal(midnightClaim.filter(x=>x.ok).length,3);
+  const afterMidnight=new Date("2026-11-07T00:01:00Z");
+  const crossing=await reserveRouteMatrixBudget(pool,{scope:midnightScope,perMinute:38,perDay:3,at:afterMidnight});
+  assert.equal(crossing.ok,false,"UTC midnight must NOT reset the 24h budget");
+  assert.equal(crossing.reason,"DAILY");
+  const after24h=new Date("2026-11-07T23:58:31Z");
+  const resumed24h=await reserveRouteMatrixBudget(pool,{scope:midnightScope,perMinute:38,perDay:3,at:after24h});
+  assert.equal(resumed24h.ok,true,"rolling 24h must release old reservations");
   let providerCalls=0;
   const shortScope="SYNTHETIC_FAILSAFE";
   const failOnce=await withRouteMatrixBudget(pool,async()=>{providerCalls++;throw Object.assign(new Error("fake 503"),{code:"ROUTES_SERVICE_FAILED"})},{scope:shortScope,perMinute:1,perDay:2,maxQueueWaitMs:0,at:now}).catch(e=>e);
@@ -43,7 +58,7 @@ try{
   assert.equal(next.code,"ROUTES_RATE_LIMITED_LOCAL");
   assert.equal(providerCalls,1,"failed provider calls must keep reservation");
   const report={result:"PASS",concurrent_first:36,concurrent_second_allowed:2,
-    concurrent_second_throttled:10,utc_reset:true,sliding_window:true,
+    concurrent_second_throttled:10,midnight_reset_blocked:true,rolling_24h_reset:true,sliding_window:true,
     daily_budget_rejected:55,failed_provider_call_counted:true,production_database_access:false};
   console.log("ORS_GLOBAL_QUOTA_TEST_START");
   console.log(JSON.stringify(report,null,2));
