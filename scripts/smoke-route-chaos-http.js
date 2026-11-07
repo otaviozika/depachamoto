@@ -174,7 +174,7 @@ async function runSimultaneousOutage(adminCookie,adminId) {
   // All couriers receive synthetic ORS 429 during the same route-computation wave.
   // Real HTTP and DB reservations; provider API itself is mocked.
   const B=36,fixtures=[];
-  for(let i=0;i<B;i++)fixtures.push(await createFixture(i+6,-23.61111,adminId));
+  for(let i=0;i<B;i++)fixtures.push(await createFixture(i+modes.length,-23.61111,adminId));
   for(const x of fixtures) {
     const nums=x.orders.map(o=>"#"+o.display);
     const selections=nums.map(order_number=>({order_number,platform:"anotaai"}));
