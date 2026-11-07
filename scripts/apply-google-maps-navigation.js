@@ -145,9 +145,11 @@ function courierDeliveryNavigationButtons(x){
 
 const oldActions = '<div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>';
 const newActions = '<div class="delivery-actions">${courierDeliveryNavigationButtons(x)}${btn}</div>';
+// A nova "Minha Rota" pode usar a navegação alinhada ao pino com bloqueio de Ciente.
+const approvedRouteActions = 'courierDeliveryNavigationButtons(routeNavigation)';
 if (html.includes(oldActions)) {
   html = html.replace(oldActions, newActions);
-} else if (!html.includes(newActions)) {
+} else if (!html.includes(newActions) && !(html.includes(approvedRouteActions) && html.includes('function courierDeliveryNavigationButtons(x){'))) {
   throw new Error('Bloco de acoes da entrega nao encontrado para adicionar Google Maps.');
 }
 

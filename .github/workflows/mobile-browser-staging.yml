@@ -1,0 +1,64 @@
+name: Mobile staging browser and real ORS smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/mobile-browser-staging.mjs
+      - scripts/benchmark-ors-historical.js
+      - lib/route-providers.js
+      - .github/workflows/mobile-browser-staging.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-emulated:
+    name: iOS WebKit and Android Chromium (staging GET only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install checked-in dependencies and temporary Playwright
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Install two headless browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Emulate route/navigation/incidents/offline on public staging UI
+        run: node scripts/mobile-browser-staging.mjs
+      - name: Save synthetic-only screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-staging-synthetic-screens
+          path: mobile-test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  real-provider:
+    name: openrouteservice synthetic-only matrix (1 request)
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+      HISTORICAL_BENCHMARK_CONFIRM: SMOKE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm ci --omit=dev
+      - name: Call real ORS only if repo secret exists
+        run: |
+          if [ -z "$OPENROUTESERVICE_API_KEY" ]; then
+            echo "ORS_REAL_NOT_EXECUTED: repository secret OPENROUTESERVICE_API_KEY is not configured."
+            echo "No claim of real provider validation is permitted."
+            exit 0
+          fi
+          node scripts/benchmark-ors-historical.js --provider-smoke
