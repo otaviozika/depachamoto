@@ -243,6 +243,19 @@ export async function runHostedAuthSmoke({pool,port}) {
     try{
       if(users.length)await pool.query("UPDATE users SET active=FALSE WHERE id=ANY($1::int[])",[users.map(u=>u.id)]);
     }catch(e){console.error("STAGING_E2E_USER_DISABLE_ERROR "+String(e?.code||"db_error"));}
+    // Delete synthetic dispatches after tests; all related route/incident records cascade.
+    // The usernames stay deactivated as audit evidence, with no reusable credentials.
+    try {
+      if(dispatchIds.length){
+        await pool.query("DELETE FROM dispatches WHERE id=ANY($1::bigint[])",[dispatchIds]);
+      }
+      if(orderIds.length){
+        await pool.query("DELETE FROM anotaai_orders WHERE order_id=ANY($1::text[])",[orderIds]);
+        await pool.query("DELETE FROM ifood_orders WHERE order_id=ANY($1::text[])",[orderIds]);
+      }
+    } catch(e) {
+      console.error("STAGING_E2E_FIXTURE_CLEANUP_ERROR "+String(e?.code||"db_error"));
+    }
     try{
       if(changedPreDeparture){
         if(previousPreDeparture===null) await pool.query("DELETE FROM app_settings WHERE setting_key='pre_departure_enabled'");
