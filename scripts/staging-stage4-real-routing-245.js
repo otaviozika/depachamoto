@@ -179,7 +179,7 @@ try {
 } catch (e) {
   error=e;
   console.error("STAGING_STAGE4_ROUTE_FAIL "+JSON.stringify({
-    cases:report.cases,reason:String(e?.code||e?.message||"unknown").slice(0,220)}));
+    cases:report.cases,reason:String(e?.message||e?.code||"unknown").slice(0,300),error_code:String(e?.code||"UNKNOWN"),stack:String(e?.stack||"").split("\n").slice(0,4).join(" | ").slice(0,500)}));
 } finally {
   // Remove only fixtures belonging to this unique test run. Never touch real accounts.
   try {
