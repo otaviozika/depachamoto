@@ -37,9 +37,20 @@ async function runCase({name,driver,device}) {
       heading.style.cssText="font-size:18px;line-height:1.3;margin:10px 4px 20px;";
       wrapper.append(heading);
       wrapper.append(el);
-      document.body.append(wrapper);
+      // Keep the REAL #courierApp ancestor, otherwise the production CSS selectors
+      // do not apply and visual screenshots are misleading.
+      const app=document.getElementById("courierApp");
+      if(!app)throw new Error("courierApp wrapper missing");
+      app.remove();
+      app.classList.remove("hidden");
+      app.style.display="block";
+      app.append(wrapper);
+      document.body.append(app);
+      for(const node of [...app.children]){
+        if(node!==wrapper)node.style.display="none";
+      }
       for(const node of [...document.body.children]){
-        if(node!==wrapper && node.tagName!=="SCRIPT") node.style.display="none";
+        if(node!==app && node.tagName!=="SCRIPT")node.style.display="none";
       }
       document.body.style.cssText="margin:0;padding:0;";
       const nav={latitude:-23.625,longitude:-46.556,prefer_coordinates:true,address:"Rua Sintética, 123, São Caetano do Sul"};
@@ -87,7 +98,19 @@ async function runCase({name,driver,device}) {
     assert.equal(google.searchParams.get("destination"),"-23.625,-46.556");
     assert.equal(google.searchParams.get("travelmode"),"driving");
     assert.ok(links.every(x=>x.target==="_blank"&&x.rel.includes("noopener")));
-    log(name+"-navigation",{passed:true,links:links.length,source:"browser-memory fake coordinates; no external link opened"});
+    await page.waitForFunction(()=>[...document.querySelectorAll("#courierMyRoute .delivery-navigation img")].every(
+      img=>img.complete&&img.naturalWidth>0),null,{timeout:12000});
+    const navLayout=await page.evaluate(()=>({
+      widths:[...document.querySelectorAll("#courierMyRoute .delivery-navigation a")].map(a=>({
+        client:a.clientWidth,scroll:a.scrollWidth,right:a.getBoundingClientRect().right,
+        display:getComputedStyle(a).display,whiteSpace:getComputedStyle(a).whiteSpace})),
+      viewport:innerWidth,ancestor:document.querySelector("#courierApp #courierMyRoute")!==null
+    }));
+    assert.equal(navLayout.ancestor,true,"The actual courier CSS must apply");
+    assert.ok(navLayout.widths.every(x=>x.scroll<=x.client+3 && x.right<=navLayout.viewport+3),
+      "Navigation text/button is clipped on mobile: "+JSON.stringify(navLayout.widths));
+    log(name+"-navigation",{passed:true,links:links.length,source:"browser-memory fake coordinates; no external link opened",
+      buttonWidths:navLayout.widths.map(x=>({client:x.client,scroll:x.scroll}))});
 
     // Opening an incident modal must be platform-aware and never confirm an order.
     const modal=await page.evaluate(()=>{
