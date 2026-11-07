@@ -2502,8 +2502,19 @@ async function flushOfflineQueue(){
     renderOfflineQueueStatus();
   }
 }
-window.addEventListener('online',()=>{updateConnectionState();flushOfflineQueue()});
-window.addEventListener('offline',updateConnectionState);
+window.addEventListener('online',()=>{
+  updateConnectionState();
+  flushOfflineQueue();
+  // Refresh the authoritative route; never auto-submit an incident/ack after reconnect.
+  if(me?.role==='courier'&&courierPreDeparture?.route?.dispatch_status==='ON_ROAD'){
+    loadCourierPreDeparture().catch(()=>{});
+  }
+  if(me?.role==='courier')renderCourierMyRoute();
+});
+window.addEventListener('offline',()=>{
+  updateConnectionState();
+  if(me?.role==='courier')renderCourierMyRoute();
+});
 
 
 function parsePastedOrders(text){
@@ -4296,6 +4307,10 @@ function openDeliveryIncident(platform,orderId){
 async function submitDeliveryIncident(reason){
  if(incidentBusy||!incidentContext||!Object.hasOwn(INCIDENT_LABELS,reason))return;
  const c=incidentContext;if(reason==='CODE_UNAVAILABLE'&&c.platform!=='ifood')return;
+ if(!navigator.onLine){
+   $('incidentSubmitMsg').textContent='Sem internet. A ocorrência não foi enviada por este aparelho. Reconecte e confira o pedido; não confirme a entrega sem contato com o caixa.';
+   return;
+ }
  incidentBusy=true;const buttons=$('deliveryIncidentModal').querySelectorAll('.incident-option');
  buttons.forEach(b=>b.disabled=true);
  try{
@@ -4306,7 +4321,9 @@ async function submitDeliveryIncident(reason){
    await loadCourierPreDeparture();await loadCourierDeliveries();
    alert('Ocorrência registrada. A entrega continua pendente. Aguarde orientação do caixa.');
  }catch(e){
-   $('incidentSubmitMsg').textContent=e.message||'Falha ao registrar.';
+   $('incidentSubmitMsg').textContent=e.code==='NETWORK_ERROR'
+     ? 'Conexão interrompida durante o envio. A ocorrência pode ter sido recebida pelo servidor. Reconecte, atualize a rota e consulte o caixa antes de tentar novamente.'
+     : (e.message||'Falha ao registrar.');
    incidentBusy=false;buttons.forEach(b=>b.disabled=false);
    if(['INCIDENT_DISPATCH_CLOSED','INCIDENT_ORDER_FINISHED','INCIDENT_ORDER_NOT_ASSIGNED'].includes(e.code))await loadCourierPreDeparture();
  }
@@ -4496,10 +4513,11 @@ function renderCourierMyRoute(){
   const deferred=r.stops.filter(s=>s.state==='PENDING'&&s.is_deferred);
   const incidentHint=deferred.length?'<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes, mesmo após autorização do caixa.</div>':'';
   const pendingHint=r.counts.pending>0&&!r.stops.some(s=>s.is_next)?'<div class="incident-alert">Nenhuma próxima parada liberada. Aguarde orientação do caixa.</div>':'';
+  const offlineHint=!navigator.onLine?'<div class="incident-alert">Sem conexão: esta é a última rota carregada e pode estar desatualizada. Não registre ocorrências ou confirme entregas sem resposta do servidor. Ao reconectar, a rota será atualizada.</div>':'';
   const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
   el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
     <div class="my-route-meta">${r.route_status==='ADMIN'?'Sequência definida pelo admin.':'Siga a sequência calculada.'} Confirme cada entrega no card do pedido, em Entregas e confirmações.</div>
-    ${ack}${incidentHint}<div class="route-stops">${stops}</div>${pendingHint}${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
+    ${ack}${offlineHint}${incidentHint}<div class="route-stops">${stops}</div>${pendingHint}${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
 }
 async function ackCourierRoute(dispatchId,version){
   try{
