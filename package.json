@@ -8,7 +8,7 @@
   },
   "scripts": {
     "prestart": "node scripts/apply-password-toggle.js && node scripts/apply-password-recovery-backend.js && node scripts/apply-password-recovery-frontend.js && node scripts/apply-google-maps-navigation.js && node scripts/apply-customer-name-card.js && node scripts/apply-payment-clean-sheet.js && node scripts/apply-payment-longe-backend.js && node scripts/apply-payment-longe.js && node scripts/apply-late-shift-dispatch.js && node scripts/apply-bandwidth-cache-version.js && node scripts/sync-login-inline-style.js && node scripts/apply-delivery-incident-pilot-ui.js",
-    "start": "node -e \"const e=process.env;if(e.APP_ENV!=='staging'||!['true','1','yes','on'].includes(String(e.STAGING_SAFE_MODE||'').toLowerCase()))process.exit(77)\" && HISTORICAL_BENCHMARK_CONFIRM=SMOKE_ONLY node scripts/benchmark-ors-historical.js --provider-smoke; node server.js",
+    "start": "node server.js",
     "dev": "node --watch server.js",
     "loadtest:health": "node scripts/loadtest-health.js",
     "selftest:brutal": "node scripts/selftest-brutal.js",
