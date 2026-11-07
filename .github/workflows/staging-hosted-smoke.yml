@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - scripts/smoke-staging-hosted-readonly.mjs
+      - scripts/staging-hosted-auth-e2e.js
+      - server.js
       - .github/workflows/staging-hosted-smoke.yml
   workflow_dispatch:
 
@@ -22,5 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Syntax-check staging-only authenticated E2E
+        run: node --check scripts/staging-hosted-auth-e2e.js && node --check server.js
       - name: Validate isolated staging health and access control
         run: node scripts/smoke-staging-hosted-readonly.mjs
