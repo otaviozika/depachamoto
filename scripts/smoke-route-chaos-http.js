@@ -45,8 +45,8 @@ async function must(path,cookie,method,body,code) {
     " code "+String(x.data?.code||x.data?.error||"").slice(0,95));
   return x.data;
 }
-async function login(username) {
-  const x=await request("/api/login","","POST",{username,password});
+async function login(username,secret=password) {
+  const x=await request("/api/login","","POST",{username,password:secret});
   assert.equal(x.status,200,"test login");
   assert.ok(x.cookie.startsWith("connect.sid="),"session");
   return x.cookie;
@@ -59,7 +59,7 @@ async function prepare() {
   assert.equal(health.externalMutationsAllowed,false);
   const admin=await pool.query("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1");
   assert.ok(admin.rows.length,"test admin required");
-  const auth=await login(process.env.ADMIN_USERNAME);
+  const auth=await login(process.env.ADMIN_USERNAME,process.env.ADMIN_PASSWORD);
   const params=[
     ["pre_departure_enabled","true"],["route_planner_enabled","true"],
     ["address_correction_enabled","false"],
