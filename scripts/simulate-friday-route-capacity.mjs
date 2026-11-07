@@ -58,7 +58,7 @@ const shortlyAfter=quotaSim([...Array.from({length:38},()=>0),60000-1]);
 assert.equal(shortlyAfter.minuteBlocked,1,"60-second sliding window must block until expiration");
 const afterMinute=quotaSim([...Array.from({length:38},()=>0),60001]);
 assert.equal(afterMinute.accepted,39);
-const crossingMidnight=quotaSim([...spreadCalls(perDay).map(t=>t+23*3600*1000),24*3600*1000+1]);
+const crossingMidnight=quotaSim([...spreadCalls(perDay).map(t=>t+18*3600*1000),24*3600*1000+1]);
 assert.equal(crossingMidnight.dailyBlocked,1,"Rolling 24h quota must not reset at midnight");
 const after24hours=quotaSim([0,24*3600*1000+1]);
 assert.equal(after24hours.accepted,2);
