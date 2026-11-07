@@ -155,6 +155,10 @@ try {
       planned:true,bag_checks:n,early_departure_blocked:true,
       dispatch_prepared:true,dispatch_created:false,ms:Date.now()-started});
   }
+  const adminHash=await bcrypt.hash(randomBytes(28).toString("base64url"),8);
+  const adminUser=await pool.query("INSERT INTO users(name,username,password_hash,role,approval_status,active,must_change_password) VALUES($1,$2,$3,'admin','APPROVED',true,false) RETURNING id",
+    ["HOMOLOGACAO ETAPA 4 ADMIN",tag+"-admin",adminHash]);
+  const adminId=Number(adminUser.rows[0].id);created.users.push(adminId);
   const {courierId,pd:initial}=await seedCase(2,11,origin);
   const checked=await checkBags(courierId,initial);
   const blocked=await failClient.computeRoute(checked.id,{courierId});
@@ -162,7 +166,7 @@ try {
   assert.equal(blocked.route_status,"NEEDS_ADMIN");
   assert.equal(blocked.route_error?.code,"ROUTES_RATE_LIMITED");
   assert.equal(blocked.can_dispatch,false);
-  const manual=await failClient.adminSequence({adminId:courierId,id:blocked.id,reason:"Synthetic provider unavailable; admin sequence"});
+  const manual=await failClient.adminSequence({adminId,id:blocked.id,reason:"Synthetic provider unavailable; admin sequence"});
   assert.equal(manual.route.source,"ADMIN_SEQUENCE");
   assert.equal(manual.ack_required,true);
   const ack=await failClient.acknowledge({courierId,id:manual.id,version:manual.version});
@@ -172,7 +176,6 @@ try {
   report.fallback={simulated_error:"429",blocked_without_provider:true,manual_override_audited:true,
     courier_ack_required:true,dispatched:false};
   report.result="PASS";
-  console.log("STAGING_STAGE4_ROUTE_PASS "+JSON.stringify(report));
 } catch (e) {
   error=e;
   console.error("STAGING_STAGE4_ROUTE_FAIL "+JSON.stringify({
@@ -196,4 +199,5 @@ try {
   }
   await pool.end().catch(()=>{});
 }
-if(error)process.exitCode=1;
+if(error){process.exitCode=1;}
+else console.log("STAGING_STAGE4_ROUTE_PASS "+JSON.stringify(report));
