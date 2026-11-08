@@ -230,3 +230,12 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - Staging deploy dep-dboff8bm8hqs738e6n8g ficou live com o ajuste principal. Primeira CI apresentou erros de teste sem navigator em Node e smoke rodado antes da atualização do staging; a segunda rodada foi corrigida.
 - **Reteste físico pendente**: atualizar o staging no Android, tocar Waze em pedido sintético, confirmar abertura nativa do aplicativo, destino correspondente ao Google Maps e retorno sem concluir entrega. Ainda não considerar a abertura nativa aprovada.
 - Não houve alteração ou deploy na produção OLD MAN, nem confirmação de pedidos sintéticos.
+
+## Etapa 10 — Reteste Android Waze nativo: PASS relatado pelo usuário
+
+- Após deploy da correção em staging (`dep-dbofhd49v7es73f4c5dg`, live em 2026-11-08T22:34:02Z), foi solicitado ao testador abrir novamente Waze a partir do pedido fictício #88110811 no Android físico.
+- O usuário respondeu **"Agora deu certo"**. Registro **PASS manual da abertura do aplicativo Waze instalado**, após falha anterior de página `waze.com` sugerindo download.
+- Essa confirmação não traz captura do pino final, coordenadas nem identificação exata da parada; registrar como **navegação nativa aprovada, precisão geográfica ainda não comprovada**. Não extrapolar para todos os navegadores Android.
+- Oito workflows GitHub Actions passaram no commit de staging `d07ecd81260a57db9a88ed28bdef69d32da1e856` (segurança, regressões, mobile emulado, ORS smoke, egress, gate, simulação sintética de sexta-feira e smoke hospedado). Teste físico complementa, não substitui, essas verificações.
+- Próximo teste físico: retornar do Waze para Chrome, fechar e reabrir Chrome, atualizar Rota e conferir que #88110811 e #88110812 continuam `PENDENTE DE CONFIRMAÇÃO`, sem alteração/confirmacão automática.
+- Produção permaneceu no SHA `fe04d8806d53e58024a9c2b4d1cb1b01d12b1388`, sem deploy ou alterações.
