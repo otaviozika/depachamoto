@@ -296,3 +296,12 @@ Fotografias do Android físico enviadas pelo testador em 08/11/2026 por volta de
 - A tela após saída não mostra `Problema na entrega`, condizente com o piloto previamente **desligado**. O teste S02 de `CLIENT_NOT_FOUND` ainda **não foi executado**; o próximo passo é habilitar o piloto exclusivamente para `motoboy teste iphone` no painel de staging, atualizar Android e verificar botão de ocorrência **somente** para a primeira parada.
 - Observação de UX: a tela da rota ativa ainda diz `Siga a sequência calculada` mesmo com cálculo automático desligado; rótulo potencialmente genérico/impreciso, sem indicação de erro funcional de ordenação. Revisar separadamente, sem mudar regras durante teste físico.
 - Não houve confirmação de entrega real; todos os dados são fictícios e produção permanece intacta.
+
+## Etapa 10 — Android S02: botão de incidente visível para motoboy piloto
+
+- Fotografia de Android físico em **08/11/2026 às 20:12**, tela `Minha Rota` no staging: `0 de 2 entregue(s)`, pedido sintético Anota AI **#88110831** marcado `PRÓXIMA`, **#88110832** marcado `PENDENTE`.
+- Botão amarelo `Problema na entrega` ficou visível **em ambos os cards** após o usuário habilitar o piloto para `motoboy teste iphone`. Botões Waze/Google Maps visíveis somente para a parada atual.
+- **PASS visual da habilitação do piloto no Android e preservação do estado pendente**, após o teste de confirmação de saída Android com dois pedidos. Isso não comprova ainda registro de ocorrência nem decisão administrativa do S02.
+- Inspeção de código: `incidentActionHtml` exibe a ação para qualquer parada PENDING da rota quando o piloto está ativo; `deliveryIncidentService.report` verifica vínculo, status e pendência, mas **não impõe que a parada seja a primeira na sequência**. O backend não autoriza automaticamente avançar nem confirmar entrega; avanço exige decisão do caixa.
+- Ponto de UX/regra a revisar: segundo pedido PENDENTE tem ação de ocorrência disponível antes de ser a próxima parada. Não clicar no segundo pedido neste teste; confirmar se a disponibilidade para uma parada futura é intencional antes de alterar a lógica.
+- Próxima ação S02: registrar `CLIENT_NOT_FOUND` **somente** na próxima parada #88110831; depois conferir alerta administrativo, sem aprovar ainda.
