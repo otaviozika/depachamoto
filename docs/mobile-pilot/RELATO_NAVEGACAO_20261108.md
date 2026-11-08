@@ -254,3 +254,11 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - O relato não descreve qual mensagem exata foi exibida nem comprova que um POST chegou ao servidor ou foi abortado durante a transmissão. Portanto **S10 reenvio idempotente e falha de rede durante POST permanecem não testados fisicamente**.
 - Os pedidos fictícios #88110811 e #88110812 não devem ser confirmados de verdade; integridade de dados e ausência de duplicidade em falha intermediária exigem ensaio próprio no staging.
 - Próximo teste de baixo risco no Android: tentativa de leitura de endpoint administrativo sob login de motoboy, que deverá responder acesso restrito (GET, sem escrita).
+
+## Etapa 10 — Android: API administrativa negada a motoboy (relato manual)
+
+- Usuário autenticado com conta de teste de motoboy no Android foi orientado a abrir `/api/admin/delivery-incidents` no Chrome e relatou **"Acesso restrito"**.
+- **PASS manual** do controle negativo de leitura administrativa: a API não apresentou a lista de ocorrências ao motoboy. A rota contém `auth,adminOnly` em `server.js` e normalmente devolve HTTP 403 com `Acesso restrito ao administrador.`.
+- O relato não informa cabeçalhos HTTP nem captura de tela desta tentativa; não alegar medição de status 403, mas sim correspondência da mensagem exibida.
+- A mesma proteção já havia sido validada em iPhone e o acesso autorizado do administrador havia sido comprovado com JSON `incidents`.
+- Próximo teste Android de menor risco: logout no Chrome e tentativa de abrir `/api/courier/pre-departure` sem autenticação, esperando `SESSION_EXPIRED` e sem dados de pedidos; isso não substitui expiração de sessão por tempo.
