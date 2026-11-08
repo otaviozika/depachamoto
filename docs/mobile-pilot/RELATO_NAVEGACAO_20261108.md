@@ -40,3 +40,15 @@ Captura fornecida pelo testador na conversa (08/11/2026, hora exibida no aparelh
 - A interface mostrou atribuição `openrouteservice.org / HeiGIT / OpenStreetMap` e endereços rotulados como coordenadas de teste.
 - **Resultado limitado:** UI de pré-saída e cálculo automático visualmente aprovados. A captura **não** demonstra precisão dos pinos Waze/Maps ou abertura dos aplicativos após a saída, nem confirma uma entrega.
 - **Próximo passo:** clicar `CONFIRMAR SAÍDA` somente para estes pedidos fictícios no staging e então, em `Minha Rota`, testar Waze/Maps na próxima parada, sem marcar entrega.
+
+## Etapa 8 — Navegação após confirmar saída (evidência enviada pelo testador)
+
+Capturas fornecidas na conversa em 08/11/2026, iPhone / Safari com dois pedidos fictícios. **Escopo visual; ainda não comprova coincidência geográfica do pino**:
+- A tela de pré-saída mostra `#88110811` (1ª parada, ETA 1 min) e `#88110812` (2ª parada, ETA 3 min), total ORS 3 min, sacolas 2/2.
+- Após confirmar a saída, a tela `Minha Rota` mostra **0 de 2 entregue(s)**, primeira parada `#88110811` como `PRÓXIMA`, segunda `#88110812` como `PENDENTE`.
+- Ambos os botões **Waze** e **Google Maps** estão visíveis no card da próxima parada. O card da segunda não apresenta atalhos de navegação, respeitando a sequência.
+- Terceira captura confirma **Waze aberto em navegação**, indicando 13 min e 5,4 km. O tempo do Waze não pode ser comparado diretamente ao ORS porque o ORS estima a rota desde a origem administrativa da loja e o Waze pode partir da posição atual do aparelho; ainda pode haver diferença de trânsito e perfil `driving-car`.
+- Não foi fornecida captura do **Google Maps aberto para esta saída**, e a imagem do Waze não fornece confirmação verificável de lat/lon exatas do destino. Portanto **não marcar coincidência de pinos como PASS**.
+- A parte superior da tela pós-saída mostra um botão `Solicitar liberação ao admin`, porém o restante do respectivo card não aparece na captura; seu significado/status não pode ser concluído só por este trecho.
+
+**Próximo teste:** usar o botão Google Maps do pedido `#88110811`, verificar se abre o mesmo pino de destino do Waze, retornar sem confirmar nenhuma entrega e registrar se o pedido `#88110812` continua pendente. Não deslocar-se fisicamente a coordenadas artificiais.
