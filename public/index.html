@@ -4057,7 +4057,7 @@ function buildWazeUrl(destination){
   // the app is installed. Prefer the official app-to-app scheme on Android.
   // Keep iOS/universal link unchanged, and preserve the same destination pin.
   const query=params.toString();
-  return /Android/i.test(navigator.userAgent||'')
+  return /Android/i.test(typeof navigator==='undefined'?'':(navigator.userAgent||''))
     ? `waze://?${query}`
     : `https://waze.com/ul?${query}`;
 }
