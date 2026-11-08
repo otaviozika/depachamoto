@@ -90,3 +90,15 @@ Em 08/11/2026 às **16:32**, captura enviada pelo usuário da tela **Minha Rota*
 - `#88110812`: `PRÓXIMA`, Waze e Google Maps disponíveis;
 - O botão `Problema na entrega` previamente presente no `#88110812` desapareceu na captura.
 **PASS** para comportamento visual de desativação de novas ocorrências e preservação do estado do incidente/rota após refresh informado. Esta captura isoladamente **não prova** valor persistido da feature flag, auditoria SQL ou impossibilidade de enviar um POST antigo; confirmar servidor no gate final. Produção não foi alterada para este teste.
+
+## Etapa 8 — Bloqueio de nova saída com incidentes pendentes (evidência visual)
+
+Captura fornecida pelo testador em 08/11/2026 às **16:34** (relógio iPhone, staging). **PASS no bloqueio de interface**, com ressalva de que o teste visual não substitui uma tentativa negativa de POST autorizada no backend:
+- Saída de teste em andamento desde **15:52:57**, com pedidos fictícios **#88110811** e **#88110812**.
+- Painel indica **ENTREGAS PENDENTES**, **0 de 2 pedidos resolvidos** e tempo transcorrido **00:41:01**.
+- Alerta explícito **"Nova saída bloqueada"** e texto exigindo confirmação dos **2 pedidos pendentes** ou liberação administrativa; botão `Solicitar liberação ao admin` está disponível, mas **não foi acionado**.
+- Seção `Minha rota` indica **0 de 2 entregue(s)** e preserva aviso de que **#88110811** continua pendente mesmo após a autorização do caixa para prosseguir.
+- A autorização de `CLIENT_NOT_FOUND` para continuar a rota não foi confundida com autorização para iniciar outra saída. **PASS visual**.
+- Ainda **não** há prova direta nesta captura de tentativa de criar segunda saída rejeitada no servidor; registrar cenário de API no gate técnico final. O teste é exclusivamente em staging, sem entregas reais.
+
+**Próximos cuidados:** encerrar testes sintéticos sem marcar entregas como reais, manter produção NO-GO, desligar flags experimentais no staging após as últimas provas e realizar 30 destinos / 14 casos de segurança em aparelhos físicos antes de qualquer pedido de promoção.
