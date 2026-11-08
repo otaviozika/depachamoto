@@ -188,3 +188,13 @@ Captura fornecida pelo testador no iPhone em 08/11/2026 às **19:03** (horário 
 - Campo `dispatch_status: RELEASED` e `resolved_at:null`. A ocorrência permanece rastreável e **não está resolvida**; o fato de a saída ter sido liberada não implica confirmação da entrega.
 - **PASS manual da leitura por administrador**. Juntamente com a resposta anterior `Acesso restrito ao administrador` ao motoboy, constitui controle positivo/negativo do GET da API.
 - Não houve alteração de produção nem tentativa de confirmar pedidos fictícios como entregues. Não afirmar que a ocorrência está resolvida.
+
+## Etapa 9 — Verificação visual da configuração segura no painel admin (19:08)
+
+Captura em iPhone às **19:08** de 08/11/2026, painel administrativo `Operação > Conferência de sacolas e rotas`, hostname de staging:
+- `Conferência de sacolas`: **LIGADA**.
+- `Sequência automática`: **DESLIGADA**; botão exibido `Ligar`.
+- `Correção de endereço`: **DESLIGADA**; botão exibido `Ligar`.
+- Provedor mostrado `openrouteservice`, saída da loja identificada como confirmada pelo administrador.
+- **Piloto de problemas na entrega não aparece no recorte**: não atestar estado por esta imagem; previamente foi relatado desligado e o botão no motoboy sumiu. Necessário verificar indicador explícito de flag no painel ou teste de API no encerramento da rodada.
+- Evidência visual do rollback parcial da rota automática, sem alterações de produção. Nenhuma mudança foi feita a partir desta consulta.
