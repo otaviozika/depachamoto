@@ -68,3 +68,16 @@ Em 08/11/2026 às **16:15** (relógio do iPhone), o testador compartilhou duas c
 Em 08/11/2026, após instrução para conferir retorno do Google Maps, o usuário respondeu **"Tudo certo"**. Considerado **PASS no relato manual** para: estado pós-retorno `0 de 2 entregue(s)`, `#88110811` como próxima parada e `#88110812` pendente, sem confirmação automática. Isso **não valida a identidade exata dos pinos de destino** nem substitui as evidências de 30 destinos / 14 cenários físicos.
 
 Próximo teste previsto: incidente `CLIENT_NOT_FOUND` do `#88110811`; é necessário habilitar temporariamente e **só** para o motoboy de homologação o piloto de problemas na entrega em `Operação > Conferência de sacolas e rotas > Controle do piloto — problemas na entrega`. A etapa deve confirmar que, até decisão administrativa, nenhum pedido é confirmado/liberado. Depois da autorização `APPROVE_CONTINUE`, exigir `Ciente` e verificar `#88110812` como próxima, preservando `#88110811` pendente. **A flag estava desligada na última auditoria; não presumir ativação.** Desligar o piloto após teste, sem mexer na produção.
+
+## Etapa 8 — Comprovação visual de avanço após autorização de cliente não localizado
+
+Captura fornecida na conversa em **08/11/2026 às 16:29**, iPhone, staging. **Resultado visual manual: PASS** para alteração de próxima parada após autorização administrativa:
+
+- Banner geral: `Pedido(s) #88110811 seguem pendentes, mesmo após autorização do caixa.`
+- Card `#88110811` exibe `PENDENTE` e `✓ Caixa autorizou continuar. Este pedido continua pendente.`.
+- Card `#88110812` exibe `PRÓXIMA`, botão `Problema na entrega` e os botões nativos `Ir para o Waze` e `Ir no Google Maps`.
+- Não aparecem botões Waze/Maps na primeira parada adiada, conforme regra de prioridade da próxima autorizada.
+- A parte superior do indicador de contagem de entregas está cortada nessa captura; não atribuir a esta imagem, isoladamente, confirmação visual completa de `0 de 2`. O usuário havia informado anteriormente que nenhuma das duas entregas foi confirmada.
+- Evidência de tela não demonstra trilha SQL/auditoria completa, nem valida precisão milimétrica do pino ou testes físicos em Android.
+
+**Próxima ação recomendada:** desativar exclusivamente o `Controle do piloto — problemas na entrega` no painel admin de staging e confirmar que a ocorrência existente permanece rastreável e que novas ocorrências não podem ser abertas. Não desativar a `Sequência automática` antes de concluir os demais testes se houver um roteiro de homologação planejado; não alterar produção. Não confirmar as entregas fictícias.
