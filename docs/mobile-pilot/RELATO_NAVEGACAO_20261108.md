@@ -52,3 +52,13 @@ Capturas fornecidas na conversa em 08/11/2026, iPhone / Safari com dois pedidos 
 - A parte superior da tela pós-saída mostra um botão `Solicitar liberação ao admin`, porém o restante do respectivo card não aparece na captura; seu significado/status não pode ser concluído só por este trecho.
 
 **Próximo teste:** usar o botão Google Maps do pedido `#88110811`, verificar se abre o mesmo pino de destino do Waze, retornar sem confirmar nenhuma entrega e registrar se o pedido `#88110812` continua pendente. Não deslocar-se fisicamente a coordenadas artificiais.
+
+## Etapa 8 — Google Maps após a saída: duas alternativas visíveis
+
+Em 08/11/2026 às **16:15** (relógio do iPhone), o testador compartilhou duas capturas do **Google Maps** abertas a partir do teste de navegação. Evidência visual:
+- Uma alternativa exibiu **12 min / 4,8 km / chegada 16:27**; outra, **15 min / 5,3 km / chegada 16:30**.
+- Ambas as capturas mostram o destino aproximado na mesma região da Rua Alegre, em São Caetano do Sul, com diferentes trajetos de aproximação.
+- Evidência anterior do **Waze** no mesmo piloto: **13 min / 5,4 km** às **15:53**, em horário diferente.
+- **PASS (somente abertura do app nativo Google Maps e apresentação de rota)**. Não é prova de correspondência **exata** lat/lon dos dois apps, nem de pin geográfico no número exato do endereço, porque as telas não mostram coordenadas verificáveis nem a identidade da parada.
+- Não interpretar tempo de **3 min** do ORS como falha: cálculo desde a origem da loja com `driving-car` e sem tráfego ao vivo não equivale a navegação a partir da localização atual do telefone. **A discrepância deve ser investigada com mesma origem/destino antes de validar ETA**.
+- A situação pós-retorno ao DespacheFull após o Google Maps (0/2, sem duplicação, ordem mantida) **ainda requer confirmação presencial**. Continuam pendentes 30 destinos / 14 cenários físicos; produção segue NO-GO.
