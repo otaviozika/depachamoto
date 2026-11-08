@@ -262,3 +262,11 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - O relato não informa cabeçalhos HTTP nem captura de tela desta tentativa; não alegar medição de status 403, mas sim correspondência da mensagem exibida.
 - A mesma proteção já havia sido validada em iPhone e o acesso autorizado do administrador havia sido comprovado com JSON `incidents`.
 - Próximo teste Android de menor risco: logout no Chrome e tentativa de abrir `/api/courier/pre-departure` sem autenticação, esperando `SESSION_EXPIRED` e sem dados de pedidos; isso não substitui expiração de sessão por tempo.
+
+## Etapa 10 — Android S12: configuração de funcionalidades lida diretamente da API
+
+- Fotografia do Android às **19:47** em 08/11/2026, no host de staging, mostra o JSON de `GET /api/courier/pre-departure` após autenticação de motoboy de teste.
+- A leitura visual do JSON apresenta `enabled.pre_departure: true`, `enabled.route_planner: false` e `incident_feature.enabled: false`. **PASS físico/manual** para estado de flags retornado pelo backend ao cliente Android.
+- A tela também mostra informações de horário de resposta do servidor. Não foi observado acionamento de rotas ou confirmação de pedidos neste teste.
+- Este cenário certifica configuração desabilitada na leitura, **não** prova isoladamente que um POST de incidente é negado após a flag desligar. O teste S12 completo de rollback e seus efeitos em Android continua dependente dos critérios do checklist.
+- Próximo teste de baixo risco: logout Android, abrir `GET /api/courier/pre-departure` deslogado, esperar erro `SESSION_EXPIRED` sem exposição de pedidos.
