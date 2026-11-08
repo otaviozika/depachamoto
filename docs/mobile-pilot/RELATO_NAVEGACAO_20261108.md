@@ -30,3 +30,13 @@ Produção e integrações externas não podem ser alteradas. Não realizar conf
 - Verificação de contexto: oito workflows GitHub Actions do commit anterior de registro `1e49dd40a722738dcaf91ad8f9dabd7cabf515c2` apresentaram `success`; staging LIVE `06c63bd3f725ea6d8bdd7f18350ad01e2635652c`; produção permaneceu em `fe04d8806d53e58024a9c2b4d1cb1b01d12b1388`.
 
 **Próximo gate:** examinar o controle de feature flags no staging, rotas com ORS habilitado, 14 cenários de segurança e evidência geográfica dos 30 destinos antes de considerar qualquer piloto de produção. Sem merge ou deploy em produção.
+
+## Etapa 8 — captura visual da rota ORS antes da saída (iPhone)
+
+Captura fornecida pelo testador na conversa (08/11/2026, hora exibida no aparelho: 15:50). **Conferência visual, não medição independente de API ou precisão geográfica**:
+- Usuário: motoboy de testes do iPhone; dois pedidos sintéticos Anota AI `#88110811`, `#88110812`.
+- `Sacolas conferidas: 2/2`; texto `Sequência calculada pelas vias entre 2 possibilidades (sem trânsito ao vivo)`.
+- Primeira parada `#88110811`, `PRÓXIMA`, previsão `1 min`; segunda `#88110812`, `PENDENTE`, previsão `3 min`; total previsto `3 min`.
+- A interface mostrou atribuição `openrouteservice.org / HeiGIT / OpenStreetMap` e endereços rotulados como coordenadas de teste.
+- **Resultado limitado:** UI de pré-saída e cálculo automático visualmente aprovados. A captura **não** demonstra precisão dos pinos Waze/Maps ou abertura dos aplicativos após a saída, nem confirma uma entrega.
+- **Próximo passo:** clicar `CONFIRMAR SAÍDA` somente para estes pedidos fictícios no staging e então, em `Minha Rota`, testar Waze/Maps na próxima parada, sem marcar entrega.
