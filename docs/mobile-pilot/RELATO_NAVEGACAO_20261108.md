@@ -156,3 +156,7 @@ Evidências de 08/11/2026 fornecidas pelo usuário, capturas do iPhone:
 - Às **18:47**, com o Wi-Fi restabelecido, segunda captura mostra ambos os pedidos Anota AI `#88110811` e `#88110812` ainda como `PENDENTE DE CONFIRMAÇÃO`, inclusive opção `Confirmar entrega` disponível — sem entrega artificial registrada.
 - **PASS manual do S09** (sem sucesso falso offline e pedidos mantidos pendentes após reconexão). A captura não revela qual dos dois botões foi pressionado; não atribuir a ação exclusivamente ao #88110812. Também não fornece status HTTP, logs do backend ou prova de fila interna; o comportamento visual é o dado observado.
 - Próximos cenários S07/S08/S10 de reenvio e offline **durante POST/reconexão** ainda são distintos e permanecem pendentes; não tratar a captura do S09 como aprovação desses testes.
+
+## Etapa 9 — S05, cancelamento da confirmação Anota AI (relato manual)
+
+Em 08/11/2026, depois de ser orientado a abrir `Confirmar entrega` no pedido fictício `#88110812` e tocar em **Cancelar**, o testador informou: **"Continuam pendentes"** (ambos os pedidos `#88110811` e `#88110812`). **PASS parcial/manual** quanto a não finalização após cancelar o diálogo. Não há captura da caixa de confirmação nem log de rede dessa ação: o texto do modal e ausência de ação `Sem código` especificamente na tela S05 precisam de evidência própria se exigidos. Confirmar a entrega verdadeira **não** é autorizado neste teste com dados fictícios.
