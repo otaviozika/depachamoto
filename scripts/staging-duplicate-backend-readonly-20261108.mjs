@@ -3,8 +3,9 @@
  * Invokes the SAME createPreDepartureService.create() business guard as the
  * authenticated API, without a browser or external provider call.
  *
- * PostgreSQL session is set default_transaction_read_only=on so even if the
- * guard regresses, the script CANNOT create a pre-departure or dispatch.
+ * PostgreSQL row locks (SELECT ... FOR UPDATE) are required by this guard.
+ * The query firewall below allows SELECT/BEGIN/ROLLBACK and DENIES all writes
+ * and COMMIT. If the guard regresses, test fails without creating anything.
  * Run one time via temporary staging-only npm start and restore immediately.
  */
 import assert from "node:assert/strict";
@@ -24,13 +25,12 @@ assert.ok(url.hostname.includes(HOST_PART),"Wrong isolated database instance");
 const pool=new pg.Pool({
   connectionString:env.DATABASE_URL,
   ssl:env.NODE_ENV==="production"?{rejectUnauthorized:false}:false,
-  options:"-c default_transaction_read_only=on",
-  max:2,connectionTimeoutMillis:7000,statement_timeout:9000
+   max:2,connectionTimeoutMillis:7000,statement_timeout:9000
 });
 try {
   const flags=await pool.query("SELECT current_database() AS db, current_setting('default_transaction_read_only') AS ro");
   assert.equal(flags.rows[0].db,EXPECTED_DB);
-  assert.equal(flags.rows[0].ro,"on","Read-only session required");
+  assert.equal(flags.rows[0].ro,"off","Unexpected implicit read-only transaction");
   const rows=(await pool.query(`
     SELECT o.order_id,o.display_id,l.dispatch_id,d.courier_id,d.status AS dispatch_status,
            d.return_source,
@@ -63,7 +63,28 @@ try {
     "SELECT COUNT(*)::int AS n FROM pre_departures WHERE courier_id=$1",
     [courierId])).rows[0].n);
   const before=await count();
-  const service=createPreDepartureService({pool,describeOrder:async()=>{throw new Error("not needed");},
+  const firewallPool={
+    connect:async()=>{
+      const client=await pool.connect();
+      let released=false;
+      return {
+        query:async(sql,...params)=>{
+          const command=String(sql||"").trim();
+          if(!/^(SELECT|BEGIN|ROLLBACK)\b/i.test(command) || /;\s*\S/.test(command)) {
+            throw Object.assign(new Error("READ_ONLY_TEST_QUERY_FIREWALL_BLOCKED"),{code:"TEST_MUTATION_DENIED",sqlCommand:command.slice(0,20)});
+          }
+          return client.query(sql,...params);
+        },
+        release:()=>{if(!released){released=true;client.release();}}
+      };
+    },
+    query:async(sql,...params)=>{
+      const command=String(sql||"").trim();
+      if(!/^SELECT\b/i.test(command)||/;\s*\S/.test(command))throw new Error("READ_ONLY_TEST_QUERY_FIREWALL_BLOCKED");
+      return pool.query(sql,...params);
+    }
+  };
+  const service=createPreDepartureService({pool:firewallPool,describeOrder:async()=>{throw new Error("not needed");},
     audit:async()=>{throw new Error("Unexpected audit write");},
     emitRealtime:()=>{throw new Error("Unexpected realtime mutation");},env});
   const checks=[];
@@ -95,7 +116,7 @@ try {
     assert.equal(ver.active_locks,1);
   }
   console.log("STAGING_BACKEND_DUPLICATE_READONLY_PASS "+JSON.stringify({
-    db:EXPECTED_DB,dbReadOnly:true,
+    db:EXPECTED_DB,queryFirewallReadOnly:true,
     validationLayer:"createPreDepartureService.create()",
     checks,linksRetained:true,activeOrderLocksRetained:true,
     confirmationsCreated:0,preDeparturesCreated:0,
