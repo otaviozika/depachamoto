@@ -239,3 +239,10 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - Oito workflows GitHub Actions passaram no commit de staging `d07ecd81260a57db9a88ed28bdef69d32da1e856` (segurança, regressões, mobile emulado, ORS smoke, egress, gate, simulação sintética de sexta-feira e smoke hospedado). Teste físico complementa, não substitui, essas verificações.
 - Próximo teste físico: retornar do Waze para Chrome, fechar e reabrir Chrome, atualizar Rota e conferir que #88110811 e #88110812 continuam `PENDENTE DE CONFIRMAÇÃO`, sem alteração/confirmacão automática.
 - Produção permaneceu no SHA `fe04d8806d53e58024a9c2b4d1cb1b01d12b1388`, sem deploy ou alterações.
+
+## Etapa 10 — Android: retorno do Waze e reabertura do Chrome (relato)
+
+- Após o teste de handoff nativo do Waze em Android, o testador foi instruído a voltar ao DespacheFull, fechar/reabrir o Chrome e atualizar `Rota > Entregas e confirmações`.
+- O usuário respondeu **"Pendentes"** à pergunta sobre os pedidos sintéticos `#88110811` e `#88110812`. Registrar **PASS manual** para persistência visual do estado pendente após retorno e reabertura do Chrome.
+- O relato não oferece métricas de tempo, rede, telemetria nem imagem da tela; não extrapolar para operação offline, reconexão ou reenvio de POST. Também não comprova as coordenadas exatas do pino.
+- Próxima etapa Android: perda de conexão controlada na página do pedido e confirmação de erro sem registrar entrega falsa, seguida de reconexão e leitura do estado. Sem pedidos reais, alterações em produção ou confirmação online.
