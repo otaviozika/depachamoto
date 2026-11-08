@@ -4022,6 +4022,8 @@ function courierDeliveryBadge(x){
   if(s==='PROCESSING')return '<span class="badge yellow">CONFIRMANDO</span>';
   if(s==='DISPATCH_FAILED')return '<span class="badge red">ERRO NO DESPACHO</span>';
   if(s==='CANCELLED')return '<span class="badge red">CANCELADO</span>';
+  // Anota AI has no iFood dispatch/code workflow; do not mislabel pending delivery.
+  if(String(x?.platform||'').toLowerCase()==='anotaai')return '<span class="badge orange">PENDENTE DE CONFIRMAÇÃO</span>';
   return '<span class="badge gray">AGUARDANDO iFOOD</span>';
 }
 
