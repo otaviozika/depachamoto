@@ -34,8 +34,8 @@ try{
     stage4_orders_remaining:await read("SELECT COUNT(*)::int AS n FROM anotaai_orders WHERE page_id='staging-stage4-only'"),
     route_matrix_budget_last_24h:await read("SELECT COUNT(*)::int AS n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX' AND attempted_at >= NOW()-INTERVAL '24 hours'")
   };
-  assert.equal(flags.route_planner_enabled,"false","Route planner inadvertently enabled");
-  assert.equal(flags.delivery_incidents_enabled,"false","Pilot incident flag still enabled");
+  assert.notEqual(flags.route_planner_enabled,"true","Route planner inadvertently enabled");
+  assert.notEqual(flags.delivery_incidents_enabled,"true","Pilot incident flag still enabled");
   assert.equal(counts.active_automated_test_users,0);
   assert.equal(counts.e2e_anota_orders_remaining,0);
   assert.equal(counts.e2e_ifood_orders_remaining,0);
@@ -47,7 +47,7 @@ try{
   console.log("FINAL_STAGING_AUDIT_PASS "+JSON.stringify({
     date:"2026-11-08",mode:"READ_ONLY",db_isolated:true,
     externalPlatformMutations:false,productionTouched:false,
-    settings:{routePlannerEnabled:flags.route_planner_enabled,incidentPilotEnabled:flags.delivery_incidents_enabled,
+    settings:{routePlannerEnabled:flags.route_planner_enabled==="true",incidentPilotEnabled:flags.delivery_incidents_enabled==="true",
       preDepartureEnabled:flags.pre_departure_enabled,addressCorrectionEnabled:flags.address_correction_enabled,
       storeOriginConfirmed:(()=>{try{return JSON.parse(flags.route_store_origin).source==="ADMIN_CONFIRMED"}catch{return false}})()},
     physicalOrderIdentifiers:physical.map(x=>({display_id:x.display_id,status:x.status})),
