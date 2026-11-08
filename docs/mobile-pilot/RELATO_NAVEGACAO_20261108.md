@@ -246,3 +246,11 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - O usuário respondeu **"Pendentes"** à pergunta sobre os pedidos sintéticos `#88110811` e `#88110812`. Registrar **PASS manual** para persistência visual do estado pendente após retorno e reabertura do Chrome.
 - O relato não oferece métricas de tempo, rede, telemetria nem imagem da tela; não extrapolar para operação offline, reconexão ou reenvio de POST. Também não comprova as coordenadas exatas do pino.
 - Próxima etapa Android: perda de conexão controlada na página do pedido e confirmação de erro sem registrar entrega falsa, seguida de reconexão e leitura do estado. Sem pedidos reais, alterações em produção ou confirmação online.
+
+## Etapa 10 — Android físico sem internet, recuperação de pendências
+
+- O usuário relatou: **"Não deixou por estar sem internet, após ligar continua pendente"** após ser orientado a testar a confirmação da entrega Anota AI fictícia no Android em modo avião e depois restabelecer a internet.
+- **PASS manual** para bloqueio de confirmação enquanto offline e preservação da pendência após reconexão. Não foi relatada confirmação falsa.
+- O relato não descreve qual mensagem exata foi exibida nem comprova que um POST chegou ao servidor ou foi abortado durante a transmissão. Portanto **S10 reenvio idempotente e falha de rede durante POST permanecem não testados fisicamente**.
+- Os pedidos fictícios #88110811 e #88110812 não devem ser confirmados de verdade; integridade de dados e ausência de duplicidade em falha intermediária exigem ensaio próprio no staging.
+- Próximo teste de baixo risco no Android: tentativa de leitura de endpoint administrativo sob login de motoboy, que deverá responder acesso restrito (GET, sem escrita).
