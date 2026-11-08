@@ -217,3 +217,16 @@ Fotografia enviada pelo testador em **08/11/2026 às 19:16** (relógio do aparel
 - O rótulo do pedido Anota AI permaneceu correto no Android após correção anterior.
 - Nenhuma entrega fictícia confirmada; não foi ativado ORS no staging durante esta verificação. Produção não alterada.
 - **Próximo teste:** Android abrir Waze e Google Maps a partir do pedido #88110811, observar pino final, voltar ao Chrome, verificar pendências; depois fechar/reabrir Chrome para confirmar persistência.
+
+## Etapa 10 — Android real: Waze redirecionava para site em vez do aplicativo
+
+Fotografias fornecidas pelo usuário no Android em 08/11/2026:
+- Às 19:19 o Google Maps abriu uma rota no aparelho (2 min / 800 m); a foto não comprova o número/pino exato.
+- Às 19:22 o botão do Waze abriu waze.com com a mensagem "Ainda não tem o Waze? Faça o download", apesar de o usuário afirmar que o Waze já está instalado.
+- **FALHA física** de abertura do aplicativo Waze na versão anterior. Não considerar o Android aprovado nesse item.
+- Investigação: buildWazeUrl em public/index.html gerava https://waze.com/ul? com target=_blank. Alguns navegadores Android abriram o site, não o aplicativo.
+- Correção no branch staging: em Android usar waze://?ll=... ou waze://?q=... com navigate=yes, vehicle_type=motorcycle e utm_source=despachefull, diretamente no mesmo contexto de toque (sem target=_blank). Safari iOS mantém HTTPS e Google Maps permanece inalterado. Referência oficial: https://developers.google.com/waze/deeplinks.
+- Fix UI commit 6be16c72c3f7e09d7697089e4a9f8a19eba21a9a; browser regression commit 0f560a1e9ab28f96a248acfe2d89beeb25a1836b; Android/iOS static test commit 9153aef77780c7e8522c3ed20ead88438de7504c; complemento de robustez para test harnesses commit a95b62b8e907cc289dc8f93dda8ff19add86358a.
+- Staging deploy dep-dboff8bm8hqs738e6n8g ficou live com o ajuste principal. Primeira CI apresentou erros de teste sem navigator em Node e smoke rodado antes da atualização do staging; a segunda rodada foi corrigida.
+- **Reteste físico pendente**: atualizar o staging no Android, tocar Waze em pedido sintético, confirmar abertura nativa do aplicativo, destino correspondente ao Google Maps e retorno sem concluir entrega. Ainda não considerar a abertura nativa aprovada.
+- Não houve alteração ou deploy na produção OLD MAN, nem confirmação de pedidos sintéticos.
