@@ -284,3 +284,15 @@ Após sair da conta de motoboy no Android e abrir `GET /api/courier/pre-departur
 - O `package.json` foi temporariamente ajustado para executar o seed no startup do staging e **restaurado imediatamente** para `node server.js` no commit `16f18049af6e78e98efdf2eb8170d1d49694c17d`. Staging deploy normal `dep-dbog18ijnfac73epk22g` ficou `live` em 2026-11-08T23:07:52Z, log `node server.js` e servidor 3.7.0 saudável.
 - A produção permanece `live` no commit `fe04d8806d53e58024a9c2b4d1cb1b01d12b1388`; não houve merge, deploy de produção ou contratação.
 - **Ainda pendente:** motoboy no Android validar `[88110831,88110832]` no formulário de 2 pedidos antes de conferir sacolas ou iniciar saída. Não ligar o piloto de incidentes nem ORS até essa conferência passar.
+
+## Etapa 10 — Android S02: preparação de nova saída efetivamente executada
+
+Fotografias do Android físico enviadas pelo testador em 08/11/2026 por volta de **20:08–20:09**, exclusivamente no staging:
+- Na tela `Nova saída`, ambos os pedidos **#88110831 e #88110832** foram reconhecidos como `Anota AI selecionado · READY`; botão `Conferir sacolas` disponível.
+- Na tela de `Pré-saída`, os dois pedidos sintéticos com cliente `CLIENTE DE TESTE - NAO ENTREGAR` apareceram com checkboxes desmarcados `0/2` e aviso para conferir as duas sacolas.
+- Posteriormente a tela exibiu **2/2 sacolas conferidas**, sequência na ordem digitada (`cálculo automático desligado`), pedido #88110831 primeiro e #88110832 segundo, botão `CONFIRMAR SAÍDA` disponível.
+- Outra foto mostrou `Minha rota: 0 de 2 entregue(s)` depois da saída, com a primeira parada #88110831 marcada `PRÓXIMA`, a segunda #88110832 `PENDENTE`, e navegação Waze / Google Maps para a primeira. Isso constitui **PASS visual da criação de saída sintética em Android**, **não** de entrega efetiva.
+- A foto também mostra `Solicitar liberação ao admin` acima de `Minha Rota`, mas sem contexto suficiente para atribuir um pedido específico a uma pendência anterior. Não atribuir falha.
+- A tela após saída não mostra `Problema na entrega`, condizente com o piloto previamente **desligado**. O teste S02 de `CLIENT_NOT_FOUND` ainda **não foi executado**; o próximo passo é habilitar o piloto exclusivamente para `motoboy teste iphone` no painel de staging, atualizar Android e verificar botão de ocorrência **somente** para a primeira parada.
+- Observação de UX: a tela da rota ativa ainda diz `Siga a sequência calculada` mesmo com cálculo automático desligado; rótulo potencialmente genérico/impreciso, sem indicação de erro funcional de ordenação. Revisar separadamente, sem mudar regras durante teste físico.
+- Não houve confirmação de entrega real; todos os dados são fictícios e produção permanece intacta.
