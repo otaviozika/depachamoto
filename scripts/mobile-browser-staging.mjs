@@ -86,18 +86,31 @@ async function runCase({name,driver,device}) {
     const links=await page.locator("#courierMyRoute .delivery-navigation a").evaluateAll(els=>
       els.map(e=>({href:e.href,target:e.target,rel:e.rel,text:e.textContent.trim()})));
     assert.equal(links.length,2,"Only next stop can expose Waze and Maps");
-    const waze=new URL(links.find(x=>x.text.includes("Waze"))?.href||"");
-    assert.ok(waze.hostname.endsWith("waze.com"),"Waze host");
+    const wazeLink=links.find(x=>x.text.includes("Waze"));
+    const waze=new URL(wazeLink?.href||"");
+    const android=name.startsWith("android-");
+    if(android) {
+      assert.equal(waze.protocol,"waze:","Android must use the installed Waze app scheme");
+      assert.equal(waze.hostname,"","Direct scheme must not open waze.com");
+      assert.equal(wazeLink?.target,"","Native app link should stay in same browser tab");
+    } else {
+      assert.equal(waze.protocol,"https:","Preserve the working iPhone Waze flow");
+      assert.ok(waze.hostname.endsWith("waze.com"),"iOS Waze universal link");
+      assert.equal(wazeLink?.target,"_blank");
+      assert.ok(wazeLink?.rel.includes("noopener"));
+    }
     assert.equal(waze.searchParams.get("ll"),"-23.625,-46.556");
     assert.equal(waze.searchParams.get("navigate"),"yes");
     assert.equal(waze.searchParams.get("vehicle_type"),"motorcycle");
-    const google=new URL(links.find(x=>x.text.includes("Google Maps"))?.href||"");
+    const mapsLink=links.find(x=>x.text.includes("Google Maps"));
+    const google=new URL(mapsLink?.href||"");
     assert.equal(google.hostname,"www.google.com");
     assert.equal(google.pathname,"/maps/dir/");
     assert.equal(google.searchParams.get("api"),"1");
     assert.equal(google.searchParams.get("destination"),"-23.625,-46.556");
     assert.equal(google.searchParams.get("travelmode"),"driving");
-    assert.ok(links.every(x=>x.target==="_blank"&&x.rel.includes("noopener")));
+    assert.equal(mapsLink?.target,"_blank");
+    assert.ok(mapsLink?.rel.includes("noopener"));
     await page.waitForFunction(()=>[...document.querySelectorAll("#courierMyRoute .delivery-navigation img")].every(
       img=>img.complete&&img.naturalWidth>0),null,{timeout:12000});
     const navLayout=await page.evaluate(()=>({
