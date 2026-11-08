@@ -270,3 +270,7 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 - A tela também mostra informações de horário de resposta do servidor. Não foi observado acionamento de rotas ou confirmação de pedidos neste teste.
 - Este cenário certifica configuração desabilitada na leitura, **não** prova isoladamente que um POST de incidente é negado após a flag desligar. O teste S12 completo de rollback e seus efeitos em Android continua dependente dos critérios do checklist.
 - Próximo teste de baixo risco: logout Android, abrir `GET /api/courier/pre-departure` deslogado, esperar erro `SESSION_EXPIRED` sem exposição de pedidos.
+
+## Etapa 10 — Android: acesso a rota negado após logout
+
+Após sair da conta de motoboy no Android e abrir `GET /api/courier/pre-departure` sem sessão autenticada, testador confirmou **"Apareceu isso aí"**, em referência ao JSON `error: Não autenticado.` e `code: SESSION_EXPIRED` mostrado no passo anterior. **PASS manual** para controle de sessão encerrada; o endpoint protegido não exibiu detalhes de entregas. A resposta observada foi relatada, sem verificação independente de cabeçalhos HTTP. Não classificar como prova de expiração automática por inatividade. A produção segue sem mudanças.
