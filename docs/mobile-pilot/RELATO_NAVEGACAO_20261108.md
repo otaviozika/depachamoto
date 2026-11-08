@@ -274,3 +274,13 @@ Fotografias fornecidas pelo usuário no Android em 08/11/2026:
 ## Etapa 10 — Android: acesso a rota negado após logout
 
 Após sair da conta de motoboy no Android e abrir `GET /api/courier/pre-departure` sem sessão autenticada, testador confirmou **"Apareceu isso aí"**, em referência ao JSON `error: Não autenticado.` e `code: SESSION_EXPIRED` mostrado no passo anterior. **PASS manual** para controle de sessão encerrada; o endpoint protegido não exibiu detalhes de entregas. A resposta observada foi relatada, sem verificação independente de cabeçalhos HTTP. Não classificar como prova de expiração automática por inatividade. A produção segue sem mudanças.
+
+## Etapa 10 — Android S02: tentativa inicial de usar pedidos já existentes; par sintético novo preparado
+
+- Foto do Android às **20:04** em 08/11/2026, tela `Início > Nova saída` configurada para 2 pedidos. Primeiro campo da foto exibe aparentemente `#88110801`, com aviso vermelho de que esse Anota AI já foi vinculado a uma saída do `motoboy teste iphone`. **Proteção contra duplicidade observada na UI**, não erro novo.
+- O segundo campo aparentemente contém `#881108802` (um 8 extra em relação ao número anteriormente sugerido `#88110802`), com mensagem de pedido não encontrado em iFood ou Anota AI. A leitura é baseada na fotografia e pode estar sujeita à resolução; não atribuir falha backend.
+- Em vez de manipular os pedidos anteriores, criado script isolado `scripts/staging-seed-android-s02-20261108.mjs`, derivado do seed sintético já usado. Estritamente limitado a APP_ENV=staging, STAGING_SAFE_MODE=true, banco `despachefull_incidentes_homologacao` no host isolado, pre_departure ligado, roteirização global desligada, origem da loja confirmada, números exclusivos, cliente e endereço explícitos de teste, sem chamadas externas.
+- Log confirmado `STAGING_ANDROID_S02_2_SEED_RESULT` com `status:PASS`, pedidos `[88110831,88110832]`, `inserted:2`, `reused:0`, plataforma `anotaai`, `routePlannerEnabled:false`, `productionTouched:false`, `externalProviderCalls:0`, `customerDataUsed:false`.
+- O `package.json` foi temporariamente ajustado para executar o seed no startup do staging e **restaurado imediatamente** para `node server.js` no commit `16f18049af6e78e98efdf2eb8170d1d49694c17d`. Staging deploy normal `dep-dbog18ijnfac73epk22g` ficou `live` em 2026-11-08T23:07:52Z, log `node server.js` e servidor 3.7.0 saudável.
+- A produção permanece `live` no commit `fe04d8806d53e58024a9c2b4d1cb1b01d12b1388`; não houve merge, deploy de produção ou contratação.
+- **Ainda pendente:** motoboy no Android validar `[88110831,88110832]` no formulário de 2 pedidos antes de conferir sacolas ou iniciar saída. Não ligar o piloto de incidentes nem ORS até essa conferência passar.
