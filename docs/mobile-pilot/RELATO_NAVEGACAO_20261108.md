@@ -62,3 +62,9 @@ Em 08/11/2026 às **16:15** (relógio do iPhone), o testador compartilhou duas c
 - **PASS (somente abertura do app nativo Google Maps e apresentação de rota)**. Não é prova de correspondência **exata** lat/lon dos dois apps, nem de pin geográfico no número exato do endereço, porque as telas não mostram coordenadas verificáveis nem a identidade da parada.
 - Não interpretar tempo de **3 min** do ORS como falha: cálculo desde a origem da loja com `driving-car` e sem tráfego ao vivo não equivale a navegação a partir da localização atual do telefone. **A discrepância deve ser investigada com mesma origem/destino antes de validar ETA**.
 - A situação pós-retorno ao DespacheFull após o Google Maps (0/2, sem duplicação, ordem mantida) **ainda requer confirmação presencial**. Continuam pendentes 30 destinos / 14 cenários físicos; produção segue NO-GO.
+
+## Etapa 8 — Retorno após Google Maps confirmado pelo testador
+
+Em 08/11/2026, após instrução para conferir retorno do Google Maps, o usuário respondeu **"Tudo certo"**. Considerado **PASS no relato manual** para: estado pós-retorno `0 de 2 entregue(s)`, `#88110811` como próxima parada e `#88110812` pendente, sem confirmação automática. Isso **não valida a identidade exata dos pinos de destino** nem substitui as evidências de 30 destinos / 14 cenários físicos.
+
+Próximo teste previsto: incidente `CLIENT_NOT_FOUND` do `#88110811`; é necessário habilitar temporariamente e **só** para o motoboy de homologação o piloto de problemas na entrega em `Operação > Conferência de sacolas e rotas > Controle do piloto — problemas na entrega`. A etapa deve confirmar que, até decisão administrativa, nenhum pedido é confirmado/liberado. Depois da autorização `APPROVE_CONTINUE`, exigir `Ciente` e verificar `#88110812` como próxima, preservando `#88110811` pendente. **A flag estava desligada na última auditoria; não presumir ativação.** Desligar o piloto após teste, sem mexer na produção.
