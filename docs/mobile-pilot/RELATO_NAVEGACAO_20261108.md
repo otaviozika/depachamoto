@@ -102,3 +102,15 @@ Captura fornecida pelo testador em 08/11/2026 às **16:34** (relógio iPhone, st
 - Ainda **não** há prova direta nesta captura de tentativa de criar segunda saída rejeitada no servidor; registrar cenário de API no gate técnico final. O teste é exclusivamente em staging, sem entregas reais.
 
 **Próximos cuidados:** encerrar testes sintéticos sem marcar entregas como reais, manter produção NO-GO, desligar flags experimentais no staging após as últimas provas e realizar 30 destinos / 14 casos de segurança em aparelhos físicos antes de qualquer pedido de promoção.
+
+## Etapa 8 — Liberação excepcional da saída e correção do selo Anota AI
+
+Capturas fornecidas pelo testador em **08/11/2026 às 16:39** (iPhone / staging). Evidências visuais:
+- Card `Minha operação` mostra **"Nova saída autorizada"** e `Liberado pelo administrador. Entregas anteriores pendentes continuam disponíveis para confirmação.` com tempo desde liberação `0h 00min`.
+- Na aba `Entregas e confirmações` permanecem os pedidos sintéticos `#88110811` e `#88110812` pendentes; há botão `Confirmar entrega` no pedido `#88110811`, mas **não foi acionado**.
+- Resultado **PASS visual** da liberação administrativa com preservação do pedido pendente e da elegibilidade para confirmação posterior; ainda falta comprovação via consulta de auditoria/lock persistente e teste de tentativa duplicada de despacho.
+- **Defeito descoberto:** card de `#88110811` exibia plataforma `Anota AI` e badge `AGUARDANDO iFOOD`. Revisão do código identificou que `getCourierAnotaAiDeliveries()` retorna `state: WAITING_CONFIRMATION`, mas `courierDeliveryBadge()` tinha fallback iFood genérico.
+- **Correção isolada de interface** em `public/index.html`, commit `408eed835af0057e2610530dd304a6fc223ffb97`: para `platform: anotaai` com estado pendente, mostrar `PENDENTE DE CONFIRMAÇÃO`; sem alteração de confirmação, despacho, API, banco ou fluxo iFood.
+- **Testes locais de função PASS (5 casos):** AnotaAI WAITING_CONFIRMATION, CONCLUDED, CANCELLED; iFood WAITING_DISPATCH, WAITING_CODE. Pipeline de segurança, staging release, selftests, caos de rotas, smoke mobile, teste sintético de sexta-feira 600 e smoke hosted passaram nesse commit na última consulta; Egress isolado ainda estava em andamento.
+- **Deploy staging Render** `dep-dbod151srm7s73bkbucg` ficou `live` em 2026-11-08T19:42:56Z, executando `node server.js`. Produção não foi promovida.
+- **Pendente teste físico pós-deploy:** atualizar `Entregas e confirmações` no iPhone e verificar que AnotaAI mostra `PENDENTE DE CONFIRMAÇÃO` com os dois pedidos ainda não entregues.
