@@ -173,3 +173,9 @@ Em 08/11/2026, após ser orientado a sair da conta de motoboy de staging, voltar
 Após logout e tentativa de retornar sem sessão, o testador abriu a URL `/api/courier/pre-departure` no Safari, ainda deslogado, e relatou **"Apareceu isso aí"** em referência ao JSON de exemplo `{"error":"Não autenticado.","code":"SESSION_EXPIRED"}` mostrado no passo anterior. **PASS manual da negativa de acesso à rota de dados do motoboy sem sessão**, compatível com `auth` no `server.js`, que responde HTTP 401 + `SESSION_EXPIRED` e não consulta dados da rota. O código HTTP não foi medido por ferramenta de rede na captura; não alegar verificação direta do cabeçalho.
 
 Próximo teste físico de privilégio: após autenticar **somente como motoboy de teste**, abrir `/api/admin/delivery-incidents` e exigir resposta `{"error":"Acesso restrito ao administrador."}` (HTTP 403 da função `adminOnly`); nenhuma lista de incidentes pode ser exibida. A expiração natural por timeout de sessão permanece pendente.
+
+## Etapa 9 — GET administrativo negado a motoboy real no iPhone
+
+Em 08/11/2026, após login no staging como `motoboy teste iphone`, testador abriu no Safari `/api/admin/delivery-incidents` e respondeu **"Isso mesmo"** à verificação que esperava `{"error":"Acesso restrito ao administrador."}`. **PASS manual** para bloqueio de leitura de incidentes administrativos por uma conta de motoboy. O código implementa `auth,adminOnly` na rota, cuja resposta configurada é HTTP **403**; não houve captura de cabeçalhos HTTP neste teste, portanto 403 é o esperado no código e não uma medição de rede específica.
+- O teste confirma acesso negado ao GET. Ele não substitui o teste de permissão de POST de decisão administrativa já coberto pelos testes automatizados.
+- Persistem testes físicos em Android, verificação dos 30 destinos e cenários de conectividade/permissões não demonstrados no aparelho.
