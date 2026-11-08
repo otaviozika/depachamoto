@@ -207,3 +207,13 @@ Captura de iPhone em **08/11/2026 às 19:10** da seção administrativa `Control
 - Associada à captura anterior das **19:08** com `Conferência de sacolas: LIGADA` e `Sequência automática: DESLIGADA`, comprova visualmente configuração experimental restrita depois do piloto iPhone.
 - **PASS visual do desligamento e persistência histórica**. Este não é o teste completo S12 em Android físico nem prova uma requisição POST de incidente negada no backend sob flag OFF, que já foi coberta pelos testes hospedados autenticados e deve ser conferida quando necessário.
 - O registro ainda não está resolvido; `Continuar autorizado` não equivale a entrega confirmada.
+
+## Etapa 10 — Android físico: renderização da lista de pendências
+
+Fotografia enviada pelo testador em **08/11/2026 às 19:16** (relógio do aparelho Android). Evidência visual:
+- Tela `Rota > Pendentes de confirmação` renderizada em celular Android físico, com os dois pedidos sintéticos Anota AI `#88110811` e `#88110812`, ambos com selo **PENDENTE DE CONFIRMAÇÃO**.
+- Primeiro card inclui nome de cliente fictício `CLIENTE DE TESTE - NAO ENTREGAR`, endereço de teste, Waze, Google Maps e botão de confirmação, sem aparente corte dos controles principais.
+- Demonstra que os pedidos previamente utilizados no teste iPhone continuam disponíveis numa sessão Android. **PASS visual de carregamento e estado pendente**; fotografia não comprova que o Chrome foi fechado/reaberto nem que os apps Waze/Maps nativos abriram/retornaram corretamente neste aparelho.
+- O rótulo do pedido Anota AI permaneceu correto no Android após correção anterior.
+- Nenhuma entrega fictícia confirmada; não foi ativado ORS no staging durante esta verificação. Produção não alterada.
+- **Próximo teste:** Android abrir Waze e Google Maps a partir do pedido #88110811, observar pino final, voltar ao Chrome, verificar pendências; depois fechar/reabrir Chrome para confirmar persistência.
