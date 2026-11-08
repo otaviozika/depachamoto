@@ -179,3 +179,12 @@ Próximo teste físico de privilégio: após autenticar **somente como motoboy d
 Em 08/11/2026, após login no staging como `motoboy teste iphone`, testador abriu no Safari `/api/admin/delivery-incidents` e respondeu **"Isso mesmo"** à verificação que esperava `{"error":"Acesso restrito ao administrador."}`. **PASS manual** para bloqueio de leitura de incidentes administrativos por uma conta de motoboy. O código implementa `auth,adminOnly` na rota, cuja resposta configurada é HTTP **403**; não houve captura de cabeçalhos HTTP neste teste, portanto 403 é o esperado no código e não uma medição de rede específica.
 - O teste confirma acesso negado ao GET. Ele não substitui o teste de permissão de POST de decisão administrativa já coberto pelos testes automatizados.
 - Persistem testes físicos em Android, verificação dos 30 destinos e cenários de conectividade/permissões não demonstrados no aparelho.
+
+## Etapa 9 — Consulta de incidentes pelo administrador autorizada em iPhone físico
+
+Captura fornecida pelo testador no iPhone em 08/11/2026 às **19:03** (horário exibido). Safari no hostname de staging exibiu JSON de `GET /api/admin/delivery-incidents`, após login como administrador:
+- Resposta tem propriedade `incidents` com ocorrência sintética **#88110811**, plataforma `anotaai`, motivo `CLIENT_NOT_FOUND`.
+- Status `CONTINUE_APPROVED`, campos `approved_at` e `approved_by` preenchidos, `approval_reason` relacionado à continuação da rota de teste.
+- Campo `dispatch_status: RELEASED` e `resolved_at:null`. A ocorrência permanece rastreável e **não está resolvida**; o fato de a saída ter sido liberada não implica confirmação da entrega.
+- **PASS manual da leitura por administrador**. Juntamente com a resposta anterior `Acesso restrito ao administrador` ao motoboy, constitui controle positivo/negativo do GET da API.
+- Não houve alteração de produção nem tentativa de confirmar pedidos fictícios como entregues. Não afirmar que a ocorrência está resolvida.
