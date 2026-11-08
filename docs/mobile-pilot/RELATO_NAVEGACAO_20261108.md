@@ -198,3 +198,12 @@ Captura em iPhone às **19:08** de 08/11/2026, painel administrativo `Operação
 - Provedor mostrado `openrouteservice`, saída da loja identificada como confirmada pelo administrador.
 - **Piloto de problemas na entrega não aparece no recorte**: não atestar estado por esta imagem; previamente foi relatado desligado e o botão no motoboy sumiu. Necessário verificar indicador explícito de flag no painel ou teste de API no encerramento da rodada.
 - Evidência visual do rollback parcial da rota automática, sem alterações de produção. Nenhuma mudança foi feita a partir desta consulta.
+
+## Etapa 9 — S12 prévia visual: piloto de incidentes explicitamente desligado no painel
+
+Captura de iPhone em **08/11/2026 às 19:10** da seção administrativa `Controle do piloto — problemas na entrega`:
+- Indicador explícito `Situação: DESLIGADO`, ainda com `motoboy teste iphone` selecionado.
+- A seção `Problemas nas entregas (1)` continua mostrando o pedido fictício `#88110811` (`Anota AI`), causa `Cliente não localizado`, estado `Continuar autorizado`. A ocorrência **permanece visível** após desligar o piloto.
+- Associada à captura anterior das **19:08** com `Conferência de sacolas: LIGADA` e `Sequência automática: DESLIGADA`, comprova visualmente configuração experimental restrita depois do piloto iPhone.
+- **PASS visual do desligamento e persistência histórica**. Este não é o teste completo S12 em Android físico nem prova uma requisição POST de incidente negada no backend sob flag OFF, que já foi coberta pelos testes hospedados autenticados e deve ser conferida quando necessário.
+- O registro ainda não está resolvido; `Continuar autorizado` não equivale a entrega confirmada.
