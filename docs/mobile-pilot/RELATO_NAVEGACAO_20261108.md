@@ -114,3 +114,9 @@ Capturas fornecidas pelo testador em **08/11/2026 às 16:39** (iPhone / staging)
 - **Testes locais de função PASS (5 casos):** AnotaAI WAITING_CONFIRMATION, CONCLUDED, CANCELLED; iFood WAITING_DISPATCH, WAITING_CODE. Pipeline de segurança, staging release, selftests, caos de rotas, smoke mobile, teste sintético de sexta-feira 600 e smoke hosted passaram nesse commit na última consulta; Egress isolado ainda estava em andamento.
 - **Deploy staging Render** `dep-dbod151srm7s73bkbucg` ficou `live` em 2026-11-08T19:42:56Z, executando `node server.js`. Produção não foi promovida.
 - **Pendente teste físico pós-deploy:** atualizar `Entregas e confirmações` no iPhone e verificar que AnotaAI mostra `PENDENTE DE CONFIRMAÇÃO` com os dois pedidos ainda não entregues.
+
+## Etapa 8 — Correção do status Anota AI confirmada em iPhone
+
+Após atualização do staging no commit `408eed835af0057e2610530dd304a6fc223ffb97`, testador confirmou em conversa **"Agora está pendente de confirmação"**. **PASS manual** para troca do rótulo antes incorreto `AGUARDANDO iFOOD` por `PENDENTE DE CONFIRMAÇÃO` em pedido Anota AI. O relato não confirma auditoria no servidor; os testes de segurança e criação duplicada permanecem distintos.
+
+Próximo teste recomendado: tentar criar **pré-saída** nova contendo apenas o pedido sintético `#88110811` com plataforma Anota AI, depois de liberação excepcional anterior; espera-se **409 ORDER_ALREADY_ACTIVE** por vínculo existente do pedido à primeira saída, antes de qualquer confirmação de sacola ou despacho. **Não confirmar/duplicar a saída caso o backend aceite a pré-saída**. O turno simulado foi configurado com expiração em 16:40 de 08/11; se teste após esse horário, estender apenas no staging com duração finita, ou testar dentro do horário oficial de operação, para não mascarar a checagem de duplicidade com erro de turno.
