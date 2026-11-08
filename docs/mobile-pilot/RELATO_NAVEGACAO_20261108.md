@@ -147,3 +147,12 @@ Captura do usuário em 08/11/2026 às 16:49 (iPhone, staging) ao tentar informar
 - O script foi temporariamente chamado em `npm start` no deploy `dep-dbod82jrjlhs73b3r260`, então o `package.json` foi restaurado para **`node server.js`** no commit `582bc1f1b578dfdba995776d6c1e6a484053986f`.
 - **Restauração hospedada confirmada:** deploy staging `dep-dbod8iec6qcc73db3fsg` está **live** desde 2026-11-08T19:58:39Z; log mostra `node server.js`, servidor versão 3.7.0 e serviço ativo. Nenhum deploy de produção foi acionado.
 - **Escopo pendente:** testes físicos completos em Android, verificações de lat/lon de 30 destinos, 14 cenários de segurança, controle real de cota ORS em pico e rollback final de `route_planner_enabled` no staging antes do NO-GO de produção ser revisado.
+
+## Etapa 9 / S09 — Confirmação offline no iPhone, perda e recuperação de conexão
+
+Evidências de 08/11/2026 fornecidas pelo usuário, capturas do iPhone:
+- Às **18:46** (relógio iPhone), ícone de **Modo Avião** ativo, modal do DespacheFull: `Não foi possível conectar ao DespacheFull. Verifique a internet e tente novamente.`; o app **não** apresentou sucesso falso na tentativa de confirmação de entrega Anota AI, em ambiente staging.
+- A tela sob o modal ainda apresenta dois pedidos Anota AI sintéticos `#88110811` e `#88110812` com o selo `PENDENTE DE CONFIRMAÇÃO`.
+- Às **18:47**, com o Wi-Fi restabelecido, segunda captura mostra ambos os pedidos Anota AI `#88110811` e `#88110812` ainda como `PENDENTE DE CONFIRMAÇÃO`, inclusive opção `Confirmar entrega` disponível — sem entrega artificial registrada.
+- **PASS manual do S09** (sem sucesso falso offline e pedidos mantidos pendentes após reconexão). A captura não revela qual dos dois botões foi pressionado; não atribuir a ação exclusivamente ao #88110812. Também não fornece status HTTP, logs do backend ou prova de fila interna; o comportamento visual é o dado observado.
+- Próximos cenários S07/S08/S10 de reenvio e offline **durante POST/reconexão** ainda são distintos e permanecem pendentes; não tratar a captura do S09 como aprovação desses testes.
