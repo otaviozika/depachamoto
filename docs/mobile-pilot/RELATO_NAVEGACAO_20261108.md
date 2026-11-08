@@ -81,3 +81,12 @@ Captura fornecida na conversa em **08/11/2026 às 16:29**, iPhone, staging. **Re
 - Evidência de tela não demonstra trilha SQL/auditoria completa, nem valida precisão milimétrica do pino ou testes físicos em Android.
 
 **Próxima ação recomendada:** desativar exclusivamente o `Controle do piloto — problemas na entrega` no painel admin de staging e confirmar que a ocorrência existente permanece rastreável e que novas ocorrências não podem ser abertas. Não desativar a `Sequência automática` antes de concluir os demais testes se houver um roteiro de homologação planejado; não alterar produção. Não confirmar as entregas fictícias.
+
+## Etapa 8 — Desativação do piloto após incidente: comprovante visual
+
+Em 08/11/2026 às **16:32**, captura enviada pelo usuário da tela **Minha Rota**, em iPhone no staging, depois de orientado a desativar `Controle do piloto — problemas na entrega` na conta administrativa:
+- `0 de 2 entregue(s)` no contador;
+- `#88110811`: `PENDENTE`, mensagem `Caixa autorizou continuar. Este pedido continua pendente.`, além do aviso global de que o pedido continua pendente após a autorização;
+- `#88110812`: `PRÓXIMA`, Waze e Google Maps disponíveis;
+- O botão `Problema na entrega` previamente presente no `#88110812` desapareceu na captura.
+**PASS** para comportamento visual de desativação de novas ocorrências e preservação do estado do incidente/rota após refresh informado. Esta captura isoladamente **não prova** valor persistido da feature flag, auditoria SQL ou impossibilidade de enviar um POST antigo; confirmar servidor no gate final. Produção não foi alterada para este teste.
