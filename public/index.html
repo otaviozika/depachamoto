@@ -4053,7 +4053,13 @@ function buildWazeUrl(destination){
   params.set('navigate','yes');
   params.set('vehicle_type','motorcycle');
   params.set('utm_source','despachefull');
-  return `https://waze.com/ul?${params.toString()}`;
+  // Android browsers can keep HTTPS Waze Universal Links in a web tab even when
+  // the app is installed. Prefer the official app-to-app scheme on Android.
+  // Keep iOS/universal link unchanged, and preserve the same destination pin.
+  const query=params.toString();
+  return /Android/i.test(navigator.userAgent||'')
+    ? `waze://?${query}`
+    : `https://waze.com/ul?${query}`;
 }
 
 
@@ -4151,7 +4157,10 @@ async function copyCourierAddress(button){
 function courierDeliveryWazeButton(x){
   const url=buildWazeUrl(x?.navigation);
   if(!url)return '';
-  return `<a class="btn waze" href="${escapeHtml(url)}" target="_blank" rel="noopener"><span class="waze-mark"><img src="/waze-icon.png" alt="" loading="lazy"></span> Ir para o Waze</a>`;
+  // Custom schemes must be launched by the user's own tap in the same tab;
+  // target=_blank can turn an Android app handoff into a browser/download page.
+  const linkTarget=url.startsWith('waze://')?'':' target="_blank" rel="noopener"';
+  return `<a class="btn waze" href="${escapeHtml(url)}"${linkTarget}><span class="waze-mark"><img src="/waze-icon.png" alt="" loading="lazy"></span> Ir para o Waze</a>`;
 }
 
 function moneyBRL(value){
