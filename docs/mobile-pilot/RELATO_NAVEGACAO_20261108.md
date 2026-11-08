@@ -160,3 +160,10 @@ Evidências de 08/11/2026 fornecidas pelo usuário, capturas do iPhone:
 ## Etapa 9 — S05, cancelamento da confirmação Anota AI (relato manual)
 
 Em 08/11/2026, depois de ser orientado a abrir `Confirmar entrega` no pedido fictício `#88110812` e tocar em **Cancelar**, o testador informou: **"Continuam pendentes"** (ambos os pedidos `#88110811` e `#88110812`). **PASS parcial/manual** quanto a não finalização após cancelar o diálogo. Não há captura da caixa de confirmação nem log de rede dessa ação: o texto do modal e ausência de ação `Sem código` especificamente na tela S05 precisam de evidência própria se exigidos. Confirmar a entrega verdadeira **não** é autorizado neste teste com dados fictícios.
+
+## Etapa 9 — S11: logout seguro no iPhone (parcial)
+
+Em 08/11/2026, após ser orientado a sair da conta de motoboy de staging, voltar pelo Safari e atualizar, o usuário confirmou: **"Está certo, exige login e senha"**.
+- **PASS manual do logout e do bloqueio de acesso via UI**; a antiga sessão não reabriu na navegação normal.
+- **Não comprova ainda expiração automática por inatividade**, que permanece pendente; também não comprova, isoladamente, ausência de acesso a API com cookie invalidado. A próxima verificação será tentar acessar a URL protegida `/api/courier/pre-departure` sem autenticação, esperando HTTP 401 e nenhum dado de pedidos.
+- Nenhuma alteração em produção.
