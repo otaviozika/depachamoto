@@ -167,3 +167,9 @@ Em 08/11/2026, após ser orientado a sair da conta de motoboy de staging, voltar
 - **PASS manual do logout e do bloqueio de acesso via UI**; a antiga sessão não reabriu na navegação normal.
 - **Não comprova ainda expiração automática por inatividade**, que permanece pendente; também não comprova, isoladamente, ausência de acesso a API com cookie invalidado. A próxima verificação será tentar acessar a URL protegida `/api/courier/pre-departure` sem autenticação, esperando HTTP 401 e nenhum dado de pedidos.
 - Nenhuma alteração em produção.
+
+## Etapa 9 — S11: API protegida após logout (evidência relatada)
+
+Após logout e tentativa de retornar sem sessão, o testador abriu a URL `/api/courier/pre-departure` no Safari, ainda deslogado, e relatou **"Apareceu isso aí"** em referência ao JSON de exemplo `{"error":"Não autenticado.","code":"SESSION_EXPIRED"}` mostrado no passo anterior. **PASS manual da negativa de acesso à rota de dados do motoboy sem sessão**, compatível com `auth` no `server.js`, que responde HTTP 401 + `SESSION_EXPIRED` e não consulta dados da rota. O código HTTP não foi medido por ferramenta de rede na captura; não alegar verificação direta do cabeçalho.
+
+Próximo teste físico de privilégio: após autenticar **somente como motoboy de teste**, abrir `/api/admin/delivery-incidents` e exigir resposta `{"error":"Acesso restrito ao administrador."}` (HTTP 403 da função `adminOnly`); nenhuma lista de incidentes pode ser exibida. A expiração natural por timeout de sessão permanece pendente.
