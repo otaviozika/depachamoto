@@ -126,3 +126,14 @@ Próximo teste recomendado: tentar criar **pré-saída** nova contendo apenas o 
 Relato do testador após inserir `#88110811` novamente em nova saída no iPhone: **"Fala que já está vinculado a outro motoboy"**. Resultado **PASS funcional parcial**: a interface recusou o pedido previamente vinculado; não houve evidência de nova saída nem confirmação falsa. Não houve print do texto exato nem acesso ao código HTTP de resposta; **não afirmar 409 observado**, embora a validação `ANOTAAI_ORDER_ALREADY_LINKED` em `resolveCourierOrderPlatforms` retorne 409 no código.
 
 Inspeção estática: `inspectAnotaAiOrdersForDeparture` rejeita `linked_dispatch_id` com código `ANOTAAI_ORDER_ALREADY_LINKED`, usando nome do motoboy vinculado; `resolvePreDepartureLinks` transmite erro como 409. O texto "outro motoboy" foi relato resumido; sem texto exato, não concluir que identifica erroneamente o próprio motoboy. **Próximo teste:** nova pré-saída com pedidos sintéticos disponíveis, preservando os antigos pendentes e sem marcar como entregues.
+
+## Etapa 8 — Reutilização do pedido antigo bloqueada após liberação administrativa
+
+Captura do usuário em 08/11/2026 às 16:49 (iPhone, staging) ao tentar informar o pedido sintético `#88110811` numa **Nova saída** após liberação administrativa da anterior:
+- Validação inline em vermelho: `Esse pedido Anota AI já foi vinculado a uma saída de motoboy teste iphone.`
+- Botão `Valide os pedidos` está desabilitado.
+- O texto nomeia o **mesmo** motoboy, não outro usuário. A vinculação existente foi preservada.
+- O código do backend em `server.js` em `/api/courier/orders/lookup` utiliza a inspeção de plataformas e retorna `valid:false` para `ANOTAAI_ORDER_ALREADY_LINKED`. `lib/pre-departure-service.js` `assertOrdersFree` também verifica o vínculo e tem defesa `409 ORDER_ALREADY_ACTIVE`.
+- **PASS: bloqueio de pré-validação/consulta de disponibilidade** antes de criar pré-saída ou nova saída. **Ainda NÃO comprova envio de POST malicioso à API nem o código HTTP 409 observado no aparelho**; essa prova requer teste API separado, com autenticação em staging, sem criar uma duplicata.
+- No topo da captura, o contador mostra `4 pedidos` como volume do dia. Não é evidência de quatro pedidos nesta saída ou de duplicação; não atribuir falha sem reconciliação dos registros de despacho.
+- A liberação excepcional não apagou a associação do pedido antigo. Não houve confirmação de entrega como parte deste teste.
