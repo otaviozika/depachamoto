@@ -12,6 +12,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import { createPerformanceDiagnostics } from "./lib/performance-diagnostics.js";
+import { coalesceSessionTouches } from "./lib/session-touch-coalescer.js";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
@@ -92,12 +93,19 @@ app.use((req, res, next) => {
 });
 
 
+const sessionStore = new PgSession({
+  pool,
+  tableName: "user_sessions",
+  createTableIfMissing: true
+});
+// Only a controlled and isolated staging run may experiment with reduced
+// session-TTL write frequency. Production and default staging stay unchanged.
+if (APP_ENV === "staging" && STAGING_SAFE_MODE &&
+    process.env.PERF_SESSION_TOUCH_THROTTLE === "true") {
+  coalesceSessionTouches(sessionStore, { intervalMs: 30_000 });
+}
 const sessionMiddleware = session({
-  store: new PgSession({
-    pool,
-    tableName: "user_sessions",
-    createTableIfMissing: true
-  }),
+  store: sessionStore,
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
