@@ -25,7 +25,8 @@ const query = async (sql, args = []) => {
   const result = await db.query(sql, args);
   return { ...result, rowCount: result.rows.length || result.affectedRows || 0 };
 };
-const pool = { query, connect: async () => {
+let poolQueryCount = 0;
+const pool = { query: (...args) => { poolQueryCount++; return query(...args); }, connect: async () => {
   const previous = tail; let release;
   tail = new Promise(r => { release = r; }); await previous;
   return { query, release };
@@ -83,6 +84,7 @@ const context = vm.createContext({
   readIncidentPilotSettings, incidentEnabledForCourier,
   emitRealtime: (e, p) => emitted.push([e, p]), auditBestEffort: async (...a) => { audits.push(a); },
   logOperationalConflict: async () => {}, touchPresence: async () => {},
+  perfDiagnostics: { span: async (_req, _phase, task) => task(), transaction: () => {} },
   currentUser: async id => ({ id, must_change_password: false }),
   getCurrentOperationalShift: () => ({ operational_date: today, shift_code: "LUNCH", shift_label: "Almoço" }),
   // Depois do prestart (apply-late-shift-dispatch) a saída e a pré-saída usam dispatchShiftAt.
@@ -240,6 +242,14 @@ async function scenario(id, name, fn) {
 }
 
 await setFlags({ pre_departure: true, route_planner: true, address_correction: true });
+
+const queriesBeforeIdleRead = poolQueryCount;
+const idleState = await getState(40);
+assert.equal(poolQueryCount - queriesBeforeIdleRead, 1, "Idle pre-departure overview must use one database query");
+assert.equal(idleState.enabled.pre_departure, true);
+assert.equal(idleState.incident_feature.enabled, false);
+assert.equal(idleState.pre_departure, null);
+assert.equal(idleState.route, null);
 
 // Conferência ----------------------------------------------------------------
 for (const n of [1, 2, 3, 4, 5]) {

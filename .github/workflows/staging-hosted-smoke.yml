@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - scripts/smoke-staging-hosted-readonly.mjs
+      - scripts/smoke-stage8-hosted-readonly.mjs
       - scripts/staging-hosted-auth-e2e.js
       - server.js
       - .github/workflows/staging-hosted-smoke.yml
@@ -17,7 +18,7 @@ permissions:
 jobs:
   hosted-staging-readonly:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - name: Install Node 22
@@ -28,3 +29,7 @@ jobs:
         run: node --check scripts/staging-hosted-auth-e2e.js && node --check server.js
       - name: Validate isolated staging health and access control
         run: node scripts/smoke-staging-hosted-readonly.mjs
+      - name: Validate separate Stage 8 Render Free host with bounded read-only 40-client ramp
+        run: |
+          node --check scripts/smoke-stage8-hosted-readonly.mjs
+          node scripts/smoke-stage8-hosted-readonly.mjs

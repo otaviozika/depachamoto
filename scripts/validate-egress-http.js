@@ -51,7 +51,11 @@ for(const [index,root] of [baseline,candidate].entries()){
     await db.query("SELECT setval(pg_get_serial_sequence('users','id'),(SELECT MAX(id) FROM users))");
     const cookies=[];
     for(let id=2;id<32;id++){
-      const r=await fetch(url+'/api/login',{method:'POST',headers:{'content-type':'application/json','x-load-test-key':env.LOAD_TEST_KEY},body:JSON.stringify({username:'egress_'+id,password:'Courier-Test-Only-987654'})});assert.equal(r.status,200);cookies.push(r.headers.get('set-cookie').split(';')[0]);
+      const r=await fetch(url+'/api/login',{method:'POST',headers:{'content-type':'application/json','x-load-test-key':env.LOAD_TEST_KEY},body:JSON.stringify({username:'egress_'+id,password:'Courier-Test-Only-987654'})});
+      assert.equal(r.status,200);
+      // The session middleware can send headers before PostgreSQL finishes saving the session.
+      await r.json();
+      cookies.push(r.headers.get('set-cookie').split(';')[0]);
     }
     const endpoints=['/api/courier/ifood/deliveries','/api/courier/anotaai/deliveries','/api/courier/dashboard'];
     const cases=[];
@@ -65,7 +69,10 @@ for(const [index,root] of [baseline,candidate].entries()){
     const cards=await(await fetch(url+endpoints[0],{headers:{cookie:cookies[0]}})).json();delete cards.server_now;snapshots.push(cards);
     const unauthenticated=await socketSession(url,'');assert.equal(unauthenticated.authenticated,false);
     sessions.push(...await Promise.all(cookies.map(cookie=>socketSession(url,cookie))));assert.equal(sessions.every(s=>s.authenticated),true);
-    const login=await fetch(url+'/api/login',{method:'POST',headers:{'content-type':'application/json','x-load-test-key':env.LOAD_TEST_KEY},body:JSON.stringify({username:env.ADMIN_USERNAME,password:env.ADMIN_PASSWORD})});assert.equal(login.status,200);const adminCookie=login.headers.get('set-cookie').split(';')[0];
+    const login=await fetch(url+'/api/login',{method:'POST',headers:{'content-type':'application/json','x-load-test-key':env.LOAD_TEST_KEY},body:JSON.stringify({username:env.ADMIN_USERNAME,password:env.ADMIN_PASSWORD})});
+    assert.equal(login.status,200);
+    await login.json();
+    const adminCookie=login.headers.get('set-cookie').split(';')[0];
     for(const session of sessions)session.events.length=0;
     const item=(await db.query("SELECT o.id FROM dispatch_orders o JOIN dispatches d ON d.id=o.dispatch_id WHERE d.dispatch_code='egress-0'")).rows[0];
     const transfer=await fetch(url+'/api/admin/dispatch-orders/'+item.id+'/transfer',{method:'POST',headers:{'content-type':'application/json',cookie:adminCookie},body:JSON.stringify({target_courier_id:3,reason:'Transferência sintética de validação'})});assert.equal(transfer.status,200,await transfer.text());
