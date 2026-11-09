@@ -124,8 +124,7 @@ export async function runStage8FortyAuthenticated({pool,port}) {
     for(let j=0;j<sizes.length;j++){
       const count=sizes[j],data=[];
       for(let k=0;k<count;k++){
-        const unique=run.replace(/[^a-z0-9]/g,"").slice(-6);
-        const display=String(81000000+100*j+counter);
+        const display=String(84000000+100*j+counter);
         const orderId=run+"-order-"+counter++;
         const payload={deliveryAddress:{streetName:"Rua Sintetica",streetNumber:String(200+k),
           neighborhood:"Barcelona",city:"Sao Caetano do Sul",state:"SP",
@@ -170,7 +169,7 @@ export async function runStage8FortyAuthenticated({pool,port}) {
     await must("/api/me",{cookie:relogin.cookie},200);
     const aborter=new AbortController();
     aborter.abort();
-    await assert.rejects(fetch(healthBase+"/api/me",{headers:{cookie:users[2].cookie},signal:aborter.signal}),/AbortError/);
+    await assert.rejects(fetch(healthBase+"/api/me",{headers:{cookie:users[2].cookie},signal:aborter.signal}),{ name:"AbortError" });
     await must("/api/me",{cookie:users[2].cookie},200);
     await must("/api/logout",{cookie:users[0].cookie,method:"POST",body:{}},200);
     await must("/api/me",{cookie:users[0].cookie},401);
