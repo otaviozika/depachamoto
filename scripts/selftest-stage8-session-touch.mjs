@@ -59,6 +59,25 @@ test("coalesces in-flight concurrent touches and preserves callback completion",
   assert.equal(stats.writes,1);
 });
 
+test("revocation during in-flight touch never caches stale lease",async()=>{
+  let callback=null,calls=0,t=10;
+  const store={
+    touch(_sid,_session,cb){calls++;callback=cb;},
+    set(_sid,_session,cb){queueMicrotask(()=>cb?.());},
+    destroy(_sid,cb){queueMicrotask(()=>cb?.());}
+  };
+  const {stats}=coalesceSessionTouches(store,{now:()=>t,intervalMs:30_000});
+  const stale=touch(store,"reuse");
+  assert.equal(calls,1);
+  await destroy(store,"reuse");
+  callback();
+  await stale;
+  const fresh=touch(store,"reuse");
+  assert.equal(calls,2,"a revoked session cannot reuse a previous touch memo");
+  callback();await fresh;
+  assert.equal(stats.writes,2);
+});
+
 test("touch failure does not cache success and retries later",async()=>{
   let failures=1;
   const store={
