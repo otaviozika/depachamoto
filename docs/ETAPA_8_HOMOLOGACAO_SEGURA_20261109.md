@@ -22,3 +22,14 @@
 2. Diferença de latência repetida, não uma única execução.
 3. Ensaios hospedados em isolamento com 600 pedidos/40 motoboys e validação de sessões.
 4. Testes mobile e rollback com liberação expressa do responsável.
+
+
+## Homologação hospedada independente — 09/11/2026
+- Render Free **despachefull-etapa8-isolado**, ID \`srv-dbomhrlg1s2s73fm6c50\`, região Oregon, branch \`perf/etapa-8-instrumentacao-20261109\`, deploy automático desligado, última versão de código \`194ff8a\` antes da execução de novos testes.
+- Supabase Free projeto **DespacheFull Etapa 8 Homologacao Isolada**, ID \`yubiztqoaunkbexrfwhq\`, região São Paulo (sa-east-1), banco separado do projeto de produção.
+- Deploy \`dep-dbon64bl550s73a9sg00\` confirmado **live** após correção do \`DATABASE_URL\`; servidor inicializou na porta 10000 e criou 49 tabelas em \`public\`, sem copiar dados reais.
+- O guard \`scripts/start-stage8-isolated.mjs\` exige \`APP_ENV=staging\`, \`STAGING_SAFE_MODE=true\`, \`STAGE8_ISOLATED=true\`, pooler Supabase port 5432 e usuário com sufixo do projeto isolado.
+- As credenciais permanecem em variáveis de ambiente, nunca em repositório ou relatório.
+- Teste externo \`scripts/smoke-stage8-hosted-readonly.mjs\`: chamadas GET somente, identidade do ambiente por /api/health, controle de acesso anônimo e ondas graduais de 5, 15, 30, 40 clientes; sem contas novas e sem despacho.
+- O serviço Free pode apresentar cold starts; verificar resultado real do teste externo, incluindo falhas e p95, antes de afirmar que suporta 40 motoboys reais.
+- Mantidos intactos o serviço Render de produção \`srv-d9uc9ffavr4c73a3uf70\` e o Staging do piloto \`srv-dau3se6gekts73crnv6g\`.
