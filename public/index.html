@@ -6159,7 +6159,7 @@ function renderPreDepartureScope(st){
     const presence=[u.present_today?'Em plantão':'',u.is_online?'Online':'Offline'].filter(Boolean).join(' · ');
     return `<div class="pd-admin-item pd-admin-item-head"><b>${escapeHtml(u.name)}</b><span class="small muted">${presence}</span>
       <span class="badge ${exempt?'gray':'green'}">${exempt?'Dispensado hoje':enabled?'Obrigatória':'Aguardando ativação'}</span>
-      <button type="button" class="btn outline" onclick="setPreDepartureExemption(this,${id},${!exempt})">${exempt?'Voltar a exigir':'Dispensar hoje'}</button></div>`;
+      <button type="button" class="btn outline" data-id="${id}" data-exempt="${!exempt}" onclick="setPreDepartureExemption(this,Number(this.dataset.id),this.dataset.exempt==='true')">${exempt?'Voltar a exigir':'Dispensar hoje'}</button></div>`;
   }).join(''):'';
   return `<div class="pd-flag"><b>${general?'Todos no plantão':pilot?'Piloto · '+escapeHtml(pilot.name):'Escopo configurado'}</b>
     <p class="small muted">A conferência passa a valer na próxima saída de quem estiver no plantão, inclusive para quem entrar depois. As dispensas valem pelo dia operacional.</p>
