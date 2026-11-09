@@ -66,7 +66,7 @@ test("transaction metrics do not include order IDs, addresses, or credentials", 
 test("Stage 8 hosted synthetic 40-courier suite refuses any unapproved runtime", async () => {
   await assert.rejects(
     runStage8FortyAuthenticated({ pool:null, port:0 }),
-    /AssertionError/,
+    { name:"AssertionError" },
     "A missing dedicated Stage8 safe-mode flag must fail before any SQL or HTTP action"
   );
 });
