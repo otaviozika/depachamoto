@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createPreDepartureService, canTransition, PRE_DEPARTURE_OPEN_STATES } from "../lib/pre-departure-service.js";
-import { readIncidentPilotSettings, incidentEnabledForCourier } from "../lib/delivery-incident-pilot.js";
+import { readIncidentPilotSettings, incidentEnabledForCourier, saveIncidentPilotSettings } from "../lib/delivery-incident-pilot.js";
 import { factorial, permutations, planRoute, ROUTE_PLANNER_DEFAULTS } from "../lib/route-planner.js";
 import { destinationPoint, haversineMeters, LONGE_STORE } from "../lib/longe-zone.js";
 import { SCENARIOS, syntheticMatrix } from "./simulate-route-planner.js";
@@ -80,7 +80,7 @@ const context = vm.createContext({
   app: { get: register("GET"), post: register("POST"), put: register("PUT"), delete: register("DELETE") },
   auth, courierOnly, adminOnly, asyncRoute: fn => fn,
   deliveryIncidentLimiter: (_req,_res,next)=>next(),
-  readIncidentPilotSettings, incidentEnabledForCourier,
+  readIncidentPilotSettings, incidentEnabledForCourier, saveIncidentPilotSettings,
   emitRealtime: (e, p) => emitted.push([e, p]), auditBestEffort: async (...a) => { audits.push(a); },
   logOperationalConflict: async () => {}, touchPresence: async () => {},
   currentUser: async id => ({ id, must_change_password: false }),
@@ -886,6 +886,55 @@ await scenario("S6", "Conferência e ocorrências restritas ao motoboy seleciona
   const created = await createPd(41, [pilotOrder]);
   assert.equal(created.status, 201, JSON.stringify(created.body));
   return "o piloto confere a sacola, enquanto o motoboy fora do piloto continua saindo pelo fluxo legado";
+});
+
+await scenario("S7", "Ativação para o plantão com dispensa por dia operacional", async () => {
+  const settings = (scope, flags) => call("PUT /api/admin/pre-departure/settings", {
+    user: admin, body: { scope, flags, reason: "Teste do escopo do plantão" }
+  });
+  const exemptionPath = "PUT /api/admin/pre-departure/couriers/:id/exemption";
+  const exempt = (id, value) => call(exemptionPath, {
+    user: admin, params: { id: String(id) }, body: { exempt: value, reason: "Dispensa de teste" }
+  });
+  assert.ok(registry[exemptionPath].includes(adminOnly));
+  assert.equal((await exempt(42, true)).body.code, "PRE_DEPARTURE_ALL_SCOPE_REQUIRED");
+  assert.equal((await settings("all", { pre_departure: true })).body.settings.scope, "all");
+  const incidents = await call("PUT /api/admin/delivery-incidents/pilot", {
+    user: admin, body: { enabled: true, reason: "Ocorrências no plantão de teste" }
+  });
+  assert.equal(incidents.status, 200);
+  for (let id = 2; id <= 17; id++) {
+    const state = await getState(id);
+    assert.equal(state.enabled.pre_departure, true);
+    assert.equal(state.incident_feature.enabled, true);
+  }
+  const order = await ifood(3902, at(60, 1400));
+  const body = { order_numbers: [order.number], order_count: 1, platform_selections: selections([order]) };
+  assert.equal((await call("POST /api/courier/depart", { user: courier(39), body })).body.code, "PRE_DEPARTURE_REQUIRED");
+  const created = await createPd(39, [order]);
+  assert.equal(created.status, 201);
+  assert.equal((await exempt(1, true)).status, 404);
+  assert.equal((await exempt(39, true)).body.exemption.changed, true);
+  assert.equal((await exempt(39, true)).body.exemption.changed, false);
+  assert.equal((await service.adminOverview()).courier_scope.exempt_courier_ids.includes(39), true);
+  const current = await getState(39);
+  assert.equal(current.pre_departure.id, created.body.pre_departure.id);
+  assert.equal(current.incident_feature.enabled, false);
+  assert.equal((await getState(40)).enabled.pre_departure, true);
+  await service.cancel({ actorUserId: 39, courierId: 39, id: current.pre_departure.id });
+  assert.equal((await createPd(39, [order])).body.code, "FEATURE_DISABLED");
+  assert.equal((await call("POST /api/courier/depart", { user: courier(39), body })).status, 201);
+  assert.equal((await exempt(39, false)).body.exemption.changed, true);
+  assert.equal((await getState(39)).enabled.pre_departure, true);
+  assert.equal((await exempt(39, true)).body.exemption.changed, true);
+  clock += 24 * 60 * 60 * 1000;
+  try { assert.equal((await getState(39)).enabled.pre_departure, true); }
+  finally { clock -= 24 * 60 * 60 * 1000; }
+  assert.ok(audits.some(a => a[1] === "PRE_DEPARTURE_COURIER_EXEMPTION_CHANGED"));
+  assert.equal((await settings("configured")).body.settings.scope, "configured");
+  assert.equal((await getState(41)).enabled.pre_departure, true);
+  assert.equal((await getState(42)).enabled.pre_departure, false);
+  return "16 motoboys abrangidos, dispensa individual, pré-saída aberta preservada, saída direta autorizada, expiração diária e retorno ao piloto";
 });
 
 const failed = results.filter(r => r.result === "FAIL");

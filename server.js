@@ -5121,7 +5121,8 @@ async function createDispatchTransaction({
   append = false,
   recovery = false,
   preDepartureId = null,
-  preDepartureCompositionVersion = undefined
+  preDepartureCompositionVersion = undefined,
+  enforcePreDeparture = false
 }) {
   const operationalSla = await getOperationalSlaSettings();
   const routeSlaMinutes = operationalRouteSlaMinutes(orders.length, operationalSla);
@@ -5148,6 +5149,13 @@ async function createDispatchTransaction({
     // O advisory lock serializa saídas do mesmo motoboy inclusive entre
     // múltiplas instâncias do Render, evitando duas saídas simultâneas.
     await client.query("SELECT pg_advisory_xact_lock($1::int)", [courierId]);
+
+    if (enforcePreDeparture && !preDepartureId) {
+      await preDepartureService.lockSettingsForDeparture(client);
+      if ((await preDepartureService.readCourierSettings(courierId, client)).pre_departure) {
+        throw directDepartureRequiresCheck();
+      }
+    }
 
     const activeDispatch = await client.query(`
       SELECT id,dispatch_code,departed_at,operational_date,shift_code,operational_stage,returning_at
@@ -8190,11 +8198,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     req.body.offline_queued = false;
     req.body.estimated_departed_at = null;
   } else if ((await preDepartureService.readCourierSettings(req.session.user.id)).pre_departure) {
-    return res.status(409).json({
-      error: "Antes de sair, confira as sacolas: digite os pedidos e toque em Conferir sacolas.",
-      code: "PRE_DEPARTURE_REQUIRED",
-      server_now: new Date().toISOString()
-    });
+    return sendServiceError(res, directDepartureRequiresCheck());
   }
   validateDepartureCount(req.body);
   await touchPresence(req.session.user.id, "COURIER_WEB");
@@ -8426,10 +8430,11 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
       ifoodLinks,
       anotaAiLinks,
       preDepartureId,
-      preDepartureCompositionVersion: preDeparture?.composition_version
+      preDepartureCompositionVersion: preDeparture?.composition_version,
+      enforcePreDeparture: true
     });
   } catch (e) {
-    if (preDepartureId && String(e.code || "").match(/^(PRE_DEPARTURE_|ROUTE_STALE|ACK_REQUIRED|ORDER_RESERVED)/)) {
+    if (e.code === "PRE_DEPARTURE_REQUIRED" || (preDepartureId && String(e.code || "").match(/^(PRE_DEPARTURE_|ROUTE_STALE|ACK_REQUIRED|ORDER_RESERVED)/))) {
       return sendServiceError(res, e);
     }
     if (e.code === "PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE") {
@@ -11496,6 +11501,11 @@ function sendServiceError(res, e) {
   const extra = Object.fromEntries(SERVICE_ERROR_FIELDS.filter(k => e[k] !== undefined).map(k => [k, e[k]]));
   return res.status(e.status).json({ error: e.message, code: e.code || null, ...extra, server_now: new Date().toISOString() });
 }
+function directDepartureRequiresCheck() {
+  return Object.assign(new Error("Antes de sair, confira as sacolas: digite os pedidos e toque em Conferir sacolas."), {
+    status: 409, code: "PRE_DEPARTURE_REQUIRED"
+  });
+}
 function routeId(value) {
   const id = Number(value);
   if (!Number.isInteger(id) || id < 1) throw Object.assign(new Error("Identificador inválido."), { status: 400, code: "INVALID_ID" });
@@ -11551,9 +11561,15 @@ async function resolvePreDepartureLinks(orderNumbers, body) {
 }
 
 // Apenas relatórios de problema. Nunca confirma entrega nem desbloqueia uma saída.
+function courierIncidentEnabled(settings, pilot, courierId) {
+  return settings.required && incidentEnabledForCourier(pilot, courierId, { allCouriers: settings.scope === "all" });
+}
 app.post("/api/courier/dispatches/:id/incidents",auth,courierOnly,deliveryIncidentLimiter,serviceRoute(async(req,res)=>{
- const pilot=await readIncidentPilotSettings(pool);
- if(!preDepartureService.allowsCourier(req.session.user.id) || !incidentEnabledForCourier(pilot,req.session.user.id)){
+ const courierId=req.session.user.id;
+ const [settings,pilot]=await Promise.all([
+   preDepartureService.readCourierSettings(courierId,pool,{honorOpen:false}),readIncidentPilotSettings(pool)
+ ]);
+ if(!courierIncidentEnabled(settings,pilot,courierId)){
    return res.status(409).json({error:"Ocorrências ainda não habilitadas para este motoboy.",code:"INCIDENT_FEATURE_DISABLED"});
  }
  const result=await deliveryIncidentService.report({courierId:req.session.user.id,
@@ -11562,12 +11578,10 @@ app.post("/api/courier/dispatches/:id/incidents",auth,courierOnly,deliveryIncide
    message:"Ocorrência registrada; entrega continua pendente.",server_now:new Date().toISOString()});
 }));
 app.put("/api/admin/delivery-incidents/pilot",auth,adminOnly,serviceRoute(async(req,res)=>{
- if(req.body?.enabled===true && !preDepartureService.allowsCourier(req.body?.courier_id)){
-   return res.status(409).json({error:"Escolha o motoboy autorizado para o piloto de conferência.",code:"INCIDENT_PILOT_OUTSIDE_PRE_DEPARTURE_SCOPE"});
- }
  const settings=await saveIncidentPilotSettings({
    pool,adminId:req.session.user.id,enabled:req.body?.enabled,
    courierId:req.body?.courier_id,reason:req.body?.reason,
+   matchesConfiguredPilot:preDepartureService.matchesConfiguredPilot,
    audit:auditBestEffort,emitRealtime
  });
  res.json({settings,server_now:new Date().toISOString()});
@@ -11593,7 +11607,7 @@ app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req
   ]);
   res.json({
     enabled: { pre_departure: settings.pre_departure, route_planner: settings.route_planner },
-    incident_feature: { enabled: settings.pre_departure && incidentEnabledForCourier(incidentPilot,req.session.user.id), pilot_only: true },
+    incident_feature: { enabled: courierIncidentEnabled(settings,incidentPilot,req.session.user.id), pilot_only: settings.scope !== "all" },
     pre_departure: preDeparture,
     route,
     server_now: new Date().toISOString()
@@ -11681,11 +11695,22 @@ app.put("/api/admin/pre-departure/settings", auth, adminOnly, serviceRoute(async
   const settings = await preDepartureService.saveSettings({
     actorUserId: req.session.user.id,
     flags: req.body?.flags || {},
+    scope: req.body?.scope,
     params: req.body?.params,
     ttlMinutes: req.body?.ttl_minutes,
     reason: req.body?.reason
   });
   res.json({ settings, server_now: new Date().toISOString() });
+}));
+
+app.put("/api/admin/pre-departure/couriers/:id/exemption", auth, adminOnly, serviceRoute(async (req, res) => {
+  const exemption = await preDepartureService.saveCourierExemption({
+    actorUserId: req.session.user.id,
+    courierId: routeId(req.params.id),
+    exempt: req.body?.exempt,
+    reason: req.body?.reason
+  });
+  res.json({ exemption, server_now: new Date().toISOString() });
 }));
 
 // Ponto de partida das rotas: o admin confirma no mapa o local da loja (R. Tapajós, 846).
