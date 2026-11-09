@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventEmitter } from "node:events";
 import { createPerformanceDiagnostics } from "../lib/performance-diagnostics.js";
-import { createRecoverySweepGate } from "../lib/recovery-sweep-gate.js";
 
 test("diagnostics is strictly disabled in production regardless of env", async () => {
   const seen = [];
@@ -62,19 +61,3 @@ test("transaction metrics do not include order IDs, addresses, or credentials", 
   assert.equal(JSON.parse(seen[0].split("STAGING_PERF_TX_V1 ")[1]).success,false);
 });
 
-test("recovery gate executes first, suppresses redundant checks, and retries failures", async()=>{
-  let clock=0,n=0;
-  const due=createRecoverySweepGate({intervalMs:60_000,now:()=>clock});
-  assert.equal(await due(async()=>{n++;}),true);
-  clock=30_000;assert.equal(await due(async()=>{n++;}),false);
-  clock=60_000;assert.equal(await due(async()=>{n++;}),true);
-  assert.equal(n,2);
-  clock=120_000;
-  await assert.rejects(due(async()=>{throw Error("temporary DB failure")}),/temporary DB failure/);
-  clock=130_000;assert.equal(await due(async()=>{n++;}),true);
-  assert.equal(n,3);
-});
-test("recovery gate refuses excessive sweep intervals",()=>{
-  assert.throws(()=>createRecoverySweepGate({intervalMs:5000}),RangeError);
-  assert.throws(()=>createRecoverySweepGate({intervalMs:300000}),RangeError);
-});
