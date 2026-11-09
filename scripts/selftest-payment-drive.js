@@ -27,10 +27,11 @@ assert.equal(paymentDaySheetTitle("2026-10-01","LUNCH"),"01/10 Q");
 assert.equal(paymentDaySheetTitle("2026-10-01","DINNER"),"01/10 Q");
 assert.equal(paymentDaySheetTitle("2026-09-26","DINNER"),"26/09 S");
 const daily=paymentRowsToDailySheetData([{
-  courier_name:"Danielle",delivery_count:12,base_amount:75,rain:true,rain_bonus:10,
+  courier_name:"Danielle",pix_key:"00123456789",pix_type:"CPF",delivery_count:12,base_amount:75,rain:true,rain_bonus:10,
   adjustment_amount:3,tip_amount:4,discount_amount:2,payment_method:"DINHEIRO",status:"PAID",notes:"ok"
 }]);
 assert.deepEqual(daily.names,[["Danielle"]]);
+assert.deepEqual(daily.pix,[["00123456789","CPF"]]);
 assert.deepEqual(daily.payments,[[12,88,4,2,"Dinheiro","Sim"]]);
 assert.deepEqual(daily.notes,[["ok"]]);
 
@@ -58,22 +59,43 @@ assert.ok(calls.some(call=>call.url.includes(":clear")));
 assert.ok(calls.some(call=>call.url.includes("valueInputOption=RAW")));
 
 const dailyCalls=[];
+const dailyRows=[
+  {courier_name:"Danielle",pix_key:"00123456789",pix_type:"CPF",delivery_count:12,base_amount:75,status:"OPEN"},
+  {courier_name:"Ana",pix_key:"+550000000000",pix_type:"Celular",status:"PAID"},
+  {courier_name:"João",status:"OPEN"}
+];
+let returnedKey=dailyRows[0].pix_key;
+let pixHeaders=["CHAVE PIX","TIPO PIX"];
 const dailyFetch=async(url,options={})=>{
   dailyCalls.push({url,options});
   if(url.includes("oauth2.googleapis.com"))return new Response(JSON.stringify({access_token:"token"}),{status:200});
-  if(url.includes("?fields=properties.title,sheets.properties"))return new Response(JSON.stringify({properties:{title:"Janta"},sheets:[{properties:{sheetId:109,title:"26/09 S"}}]}),{status:200});
-  if(url.includes("/values/")&&String(options.method||"GET")==="GET")return new Response(JSON.stringify({values:[["Danielle"]]}),{status:200});
+  if(url.includes("?fields=properties.title,sheets.properties"))return Response.json({properties:{title:"Janta"},sheets:[{properties:{sheetId:109,title:"26/09 S"}},{properties:{sheetId:110,title:"Cadastro"}}]});
+  if(decodeURIComponent(url).includes("C3:D3"))return Response.json({values:[pixHeaders]});
+  if(decodeURIComponent(url).includes("A4:D6"))return Response.json({values:[["Danielle","",returnedKey,"CPF"],["Ana","",dailyRows[1].pix_key,"Celular"],["João"]]});
   return new Response(JSON.stringify({}),{status:200});
 };
-const closed=await syncPaymentDayToGoogleSheets({date:"2026-09-26",shiftCode:"DINNER",rows:[{courier_name:"Danielle",delivery_count:12,base_amount:75,status:"OPEN"}],spreadsheetId:"dinner-id",env,dailyFetch,fetchFn:dailyFetch});
+const close=()=>syncPaymentDayToGoogleSheets({date:"2026-09-26",shiftCode:"DINNER",rows:dailyRows,spreadsheetId:"dinner-id",env,fetchFn:dailyFetch});
+const closed=await close();
 assert.equal(closed.tabTitle,"26/09 S");
-assert.equal(closed.rows,1);
-assert.ok(dailyCalls.some(call=>call.url.includes("values:batchClear")));
-assert.ok(dailyCalls.some(call=>call.url.includes("values:batchUpdate")));
-const clearBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchClear")).options.body);
-assert.deepEqual(clearBody.ranges,["'26/09 S'!A4:A200","'26/09 S'!E4:J200","'26/09 S'!M4:M200","'26/09 S'!N4:P200"]);
-const updateBody=JSON.parse(dailyCalls.find(call=>call.url.includes("values:batchUpdate")).options.body);
-assert.deepEqual(updateBody.data.map(item=>item.range),["'26/09 S'!A4:A4","'26/09 S'!E4:J4","'26/09 S'!M4:M4","'26/09 S'!N3:P3","'26/09 S'!N4:P4"],"sem longas a fórmula TOTAL PAGO da planilha não é tocada");
+assert.equal(closed.rows,3);
+const writes=dailyCalls.filter(call=>call.url.endsWith(":batchUpdate"));
+assert.equal(writes.length,1,"o fechamento diário deve usar uma gravação atômica");
+const updates=JSON.parse(writes[0].options.body).requests.map(request=>request.updateCells);
+assert.ok(updates.every(update=>update.range.sheetId===109&&update.fields==="userEnteredValue"));
+assert.deepEqual(updates.map(({range:r})=>[r.startRowIndex,r.endRowIndex,r.startColumnIndex,r.endColumnIndex]),
+  [[3,4,2,4],[3,200,0,1],[3,200,2,4],[3,200,4,10],[3,200,12,13],[3,200,13,16],[2,3,13,16]],
+  "sem longas, preserva fórmulas de status e total");
+assert.deepEqual(updates[2].rows[0].values.map(cell=>cell.userEnteredValue),[{stringValue:"00123456789"},{stringValue:"CPF"}]);
+assert.deepEqual(updates[2].rows[1].values[0].userEnteredValue,{stringValue:"+550000000000"});
+assert.match(updates[2].rows[2].values[0].userEnteredValue.formulaValue,/XLOOKUP\(A6;Cadastro!/);
+assert.deepEqual(updates[3].rows[0].values[0].userEnteredValue,{numberValue:12});
+
+returnedKey=123456789;
+await assert.rejects(close,{code:"PAYMENT_DAY_VERIFY_FAILED"});
+pixHeaders=["OUTRA COLUNA","TIPO PIX"];
+dailyCalls.length=0;
+await assert.rejects(close,{code:"PAYMENT_DAY_PIX_COLUMNS_INVALID"});
+assert.ok(!dailyCalls.some(call=>call.url.endsWith(":batchUpdate")));
 
 const checks={
   admin_month_endpoint:server.includes('app.get("/api/admin/payments/month"'),
@@ -90,3 +112,4 @@ const checks={
 };
 assert.ok(Object.values(checks).every(Boolean),JSON.stringify(checks));
 console.log(JSON.stringify({result:"PASS",checks},null,2));
+
