@@ -1,0 +1,109 @@
+name: Route provider chaos - isolated HTTP + PostgreSQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/mock-ors-chaos.js
+      - scripts/smoke-route-chaos-http.js
+      - lib/pre-departure-service.js
+      - lib/route-providers.js
+      - lib/route-quota.js
+      - .github/workflows/route-chaos-staging.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  routing-faults:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: despachefull_chaos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d despachefull_chaos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachefull_chaos
+      TARGET_URL: http://127.0.0.1:3000
+      APP_ENV: staging
+      STAGING_SAFE_MODE: "true"
+      NODE_ENV: test
+      ROUTE_CHAOS_MOCK_ONLY: "YES"
+      LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
+      OPENROUTESERVICE_API_KEY: CHAOS_SYNTHETIC_STAGING_ONLY
+      ROUTE_PROVIDER: openrouteservice
+      ADMIN_USERNAME: chaosadmin
+      ADMIN_NAME: Administrador Teste Caos
+      IFOOD_ENABLED: "true"
+      IFOOD_DISPATCH_ENABLED: "true"
+      IFOOD_ENVIRONMENT: production
+      IFOOD_CLIENT_ID: chaos-fake-client
+      IFOOD_CLIENT_SECRET: chaos-fake-secret
+      IFOOD_MERCHANT_ID: chaos-fake-merchant
+      ANOTAAI_ENABLED: "true"
+      ANOTAAI_CLIENT_ID: chaos-fake-client
+      ANOTAAI_CLIENT_SECRET: chaos-fake-secret
+      PORT: "3000"
+      DB_POOL_MAX: "10"
+      OPERATIONAL_NOW_OVERRIDE: "2026-09-29T15:00:00Z"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Generate short-lived local-only credentials
+        run: |
+          SESSION_SECRET="$(openssl rand -hex 32)"
+          ADMIN_PASSWORD="Chaos-$(openssl rand -hex 24)"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          {
+            echo "SESSION_SECRET=$SESSION_SECRET"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+          } >> "$GITHUB_ENV"
+      - name: Install dependencies and prepare actual app
+        run: |
+          npm ci
+          npm run prestart
+          node --check scripts/mock-ors-chaos.js
+          node --check scripts/smoke-route-chaos-http.js
+      - name: Prove chaos injection fails closed outside staging
+        run: |
+          if APP_ENV=production node --import ./scripts/mock-ors-chaos.js -e ''; then
+            echo "::error::Mock accepted production environment"
+            exit 1
+          fi
+      - name: Start isolated staging with synthetic ORS fault injection
+        run: |
+          node --import ./scripts/mock-ors-chaos.js server.js > route-chaos-server.log 2>&1 &
+          echo $! > route-chaos-server.pid
+      - name: Require healthy and safe isolated service
+        run: |
+          for i in {1..60}; do
+            code="$(curl -sS -o chaos-health.json -w '%{http_code}' --max-time 4 http://127.0.0.1:3000/api/health || true)"
+            if [ "$code" = "200" ]; then
+              node -e 'const h=require("./chaos-health.json");if(h.environment!=="staging"||h.stagingSafeMode!==true||h.externalMutationsAllowed!==false||h.database!=="connected")process.exit(1)'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Chaos staging was not healthy"
+          grep -Ei 'ERROR|FAIL' route-chaos-server.log | tail -15 || true
+          exit 1
+      - name: Inject 429 503 offline partial-matrix timeout and verify manual recovery over HTTP
+        run: node scripts/smoke-route-chaos-http.js
+      - name: Safe diagnostics after failure
+        if: failure()
+        run: |
+          grep -Ei 'ERROR|FAIL|CHAOS_MATRIX_INTERCEPTED' route-chaos-server.log | tail -20 || true

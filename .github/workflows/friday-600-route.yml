@@ -1,0 +1,110 @@
+name: Friday 600 synthetic route HTTP gate
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  friday-600-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: despachefull_staging
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d despachefull_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachefull_staging
+      TARGET_URL: http://127.0.0.1:3000
+      APP_ENV: staging
+      STAGING_SAFE_MODE: "true"
+      NODE_ENV: test
+      FRIDAY_MOCK_ORS_ONLY: "YES"
+      LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
+      OPENROUTESERVICE_API_KEY: FRIDAY_SYNTHETIC_STAGING_ONLY
+      ROUTE_PROVIDER: openrouteservice
+      ADMIN_USERNAME: stagingadmin
+      ADMIN_NAME: Administrador Homologacao
+      IFOOD_ENABLED: "true"
+      IFOOD_DISPATCH_ENABLED: "true"
+      IFOOD_ENVIRONMENT: production
+      IFOOD_CLIENT_ID: staging-fake-client
+      IFOOD_CLIENT_SECRET: staging-fake-secret
+      IFOOD_MERCHANT_ID: staging-fake-merchant
+      ANOTAAI_ENABLED: "true"
+      ANOTAAI_CLIENT_ID: staging-fake-client
+      ANOTAAI_CLIENT_SECRET: staging-fake-secret
+      PORT: "3000"
+      DB_POOL_MAX: "10"
+      OPERATIONAL_NOW_OVERRIDE: "2026-09-29T15:00:00Z"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Ephemeral credentials
+        shell: bash
+        run: |
+          SESSION_SECRET="$(openssl rand -hex 32)"
+          ADMIN_PASSWORD="Stg-$(openssl rand -hex 24)"
+          LOAD_TEST_KEY="$(openssl rand -hex 24)"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$LOAD_TEST_KEY"
+          {
+            echo "SESSION_SECRET=$SESSION_SECRET"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "LOAD_TEST_KEY=$LOAD_TEST_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Install and prestart
+        run: |
+          npm ci
+          npm run prestart
+      - name: Verify isolated mock guards
+        run: |
+          node --check scripts/mock-ors-friday.js
+          node --check scripts/smoke-staging-friday600.js
+          if APP_ENV=production node --import ./scripts/mock-ors-friday.js -e ''; then
+            echo "::error::mock ORS nao bloqueou o modo production"
+            exit 1
+          fi
+      - name: Start isolated server with mock ORS
+        run: |
+          node --import ./scripts/mock-ors-friday.js server.js > friday-staging-server.log 2>&1 &
+          echo $! > friday-server.pid
+      - name: Wait for safe-mode health
+        run: |
+          for i in {1..60}; do
+            code="$(curl -sS -o friday-health.json -w '%{http_code}' --max-time 4 http://127.0.0.1:3000/api/health || true)"
+            if [ "$code" = "200" ]; then
+              node -e 'const h=require("./friday-health.json");if(h.environment!=="staging"||h.stagingSafeMode!==true||h.externalMutationsAllowed!==false)process.exit(1)'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::staging nao esta saudavel"
+          tail -40 friday-staging-server.log
+          exit 1
+      - name: Validate persistent quota under concurrent claims
+        run: node scripts/check-route-quota-pg.js
+      - name: Model 600-order Matrix quota including rolling 24h boundary
+        run: node scripts/simulate-friday-route-capacity.mjs
+      - name: Simulate 600 orders and 36 couriers over HTTP
+        run: node scripts/smoke-staging-friday600.js
+      - name: Concurrent incidents and stale-route acknowledgement - 40 synthetic couriers
+        run: node scripts/smoke-incident-concurrency-40.mjs
+      - name: Safe diagnostics on failure
+        if: failure()
+        run: |
+          echo "Server process: $(cat friday-server.pid 2>/dev/null || true)"
+          grep -Ei 'ERROR|FAIL|timeout' friday-staging-server.log | tail -20 || true

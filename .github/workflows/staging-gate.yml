@@ -3,7 +3,24 @@ name: Staging release gate
 on:
   push:
     branches: [staging]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      historical_mode:
+        description: "Histórico: sem acesso (none), pré-auditoria sem API (preflight) ou 50+40 com ORS (full)"
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - preflight
+          - full
+      coordinates_transfer_approved:
+        description: "Autoriza enviar apenas as coordenadas dos pedidos historicos ao ORS? (somente full)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -30,9 +47,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/despachefull_staging
-      SESSION_SECRET: github-actions-staging-session-secret-2026-safe-very-long
       ADMIN_USERNAME: stagingadmin
-      ADMIN_PASSWORD: StagingAdmin-987654
       ADMIN_NAME: Administrador Homologacao
       NODE_ENV: test
       APP_ENV: staging
@@ -47,13 +62,12 @@ jobs:
       ANOTAAI_CLIENT_ID: staging-fake-client
       ANOTAAI_CLIENT_SECRET: staging-fake-secret
       PORT: "3000"
-      DB_POOL_MAX: "20"
-      LOAD_TEST_KEY: staging-gate-load-test
+      DB_POOL_MAX: "10"
       TARGET_URL: http://127.0.0.1:3000
       LOADTEST_ADMIN_USERNAME: stagingadmin
-      LOADTEST_ADMIN_PASSWORD: StagingAdmin-987654
       LOAD_TEST_CONFIRM: STAGING_ONLY_I_UNDERSTAND
-      COURIERS: "8"
+      COURIERS: "40"
+      PRE_DEPARTURE_COURIERS: "40"
       DEPARTURES_PER_COURIER: "3"
       OPERATIONAL_NOW_OVERRIDE: "2026-09-29T15:00:00Z"
 
@@ -65,6 +79,22 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Prepare ephemeral staging secrets
+        shell: bash
+        run: |
+          SESSION_SECRET="$(openssl rand -hex 32)"
+          ADMIN_PASSWORD="Stg-$(openssl rand -hex 24)"
+          LOAD_TEST_KEY="$(openssl rand -hex 24)"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$LOAD_TEST_KEY"
+          {
+            echo "SESSION_SECRET=$SESSION_SECRET"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "LOADTEST_ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "LOAD_TEST_KEY=$LOAD_TEST_KEY"
+          } >> "$GITHUB_ENV"
+
       - name: Install
         run: npm install
 
@@ -74,6 +104,9 @@ jobs:
       - name: Static and regression gates
         run: |
           node --check server.js
+          node --check scripts/loadtest-staging-50.js
+          node --check scripts/smoke-staging-gate.js
+          node --check scripts/smoke-staging-predeparture.js
           node scripts/selftest-staging-safety.js
           failed=0
           for test in scripts/selftest-*.js; do
@@ -107,7 +140,15 @@ jobs:
                 if(h.ifood.eventSyncEnabled!==false) throw new Error("iFood sync must be disabled in staging");
                 if(h.ifood.dispatchFlagEnabled!==false) throw new Error("iFood dispatch must be disabled in staging");
                 if(h.anotaai.automaticSyncEnabled!==false) throw new Error("Anota AI sync must be disabled in staging");
-                console.log("PASS - staging runtime safety");
+                // O contrato de /api/health em main (3.7.0) informa banco conectado
+                // diretamente; nao exigir campos de um health center de outra branch.
+                if(h.database!=="connected") throw new Error("database must be connected");
+                if(!Number.isFinite(h.dbLatencyMs)||h.dbLatencyMs<0) throw new Error("database latency must be measured");
+                if(h.status!==undefined&&h.status!=="healthy") throw new Error("health status not healthy");
+                if(h.components?.database&&h.components.database.status!=="healthy") throw new Error("database component unhealthy");
+                if(h.components?.integrations&&h.components.integrations.status!=="protected") throw new Error("external integrations unprotected");
+                if(h.criticalReasons!==undefined&&(!Array.isArray(h.criticalReasons)||h.criticalReasons.length)) throw new Error("critical health reasons detected");
+                console.log("PASS - staging runtime safety + operational health");
               '
               exit 0
             fi
@@ -120,6 +161,79 @@ jobs:
       - name: Critical-flow smoke under concurrency
         run: node scripts/smoke-staging-gate.js
 
+      - name: Pre-departure smoke - 40 couriers on real PostgreSQL
+        run: node scripts/smoke-staging-predeparture.js
+
+      # Manual-only: only synthetic coordinates, never a customer, order or production DB.
+      # The existing workflow is present on main, so the user can select the PR branch
+      # under Actions > Staging release gate > Run workflow.
+      - name: OpenRouteService provider smoke - manual, synthetic points only
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode != 'preflight'
+        env:
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          HISTORICAL_BENCHMARK_CONFIRM: SMOKE_ONLY
+        shell: bash
+        run: |
+          if [ -z "$OPENROUTESERVICE_API_KEY" ]; then
+            echo "::error::Configure OPENROUTESERVICE_API_KEY em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js --provider-smoke
+
+      # O DATABASE_URL acima pertence SOMENTE ao staging efemero. O URL abaixo
+      # e uma credencial DIFERENTE e de SOMENTE LEITURA, em segredo separado.
+      # Esta etapa nunca usa ORS nem envia coordenadas de clientes pela rede.
+      - name: Historical preflight - somente SELECT, nenhum envio externo
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode == 'preflight'
+        env:
+          DATABASE_URL: ${{ secrets.DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL }}
+          STORE_ORIGIN_VERIFIED: "YES"
+          HISTORICAL_BENCHMARK_CONFIRM: PREFLIGHT_ONLY
+          SAMPLE_DATE: "2026-10-23"
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Configure o segredo DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL com role PostgreSQL exclusiva de SELECT."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js --preflight | tee historical-preflight-report.json
+
+      # Somente dispara com selecao MANUAL 'full' e segundo aceite explicito.
+      # Nenhuma chamada a tabelas do staging e nenhuma mutacao de producao.
+      - name: Historical Matrix benchmark - 50 destinos e 40 duplas com ORS
+        if: github.event_name == 'workflow_dispatch' && inputs.historical_mode == 'full'
+        env:
+          DATABASE_URL: ${{ secrets.DESPACHEFULL_HISTORICAL_READONLY_DATABASE_URL }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          STORE_ORIGIN_VERIFIED: "YES"
+          HISTORICAL_BENCHMARK_CONFIRM: READ_ONLY
+          CUSTOMER_COORDINATES_TRANSFER_APPROVED: ${{ inputs.coordinates_transfer_approved && 'YES' || 'NO' }}
+          SAMPLE_DATE: "2026-10-23"
+        shell: bash
+        run: |
+          if [ "$CUSTOMER_COORDINATES_TRANSFER_APPROVED" != "YES" ]; then
+            echo "::error::Marque a autorizacao de envio de coordenadas antes de executar o teste completo."
+            exit 1
+          fi
+          if [ -z "$DATABASE_URL" ] || [ -z "$OPENROUTESERVICE_API_KEY" ]; then
+            echo "::error::Faltam secrets da conta PostgreSQL de somente leitura ou do OpenRouteService."
+            exit 1
+          fi
+          node scripts/benchmark-ors-historical.js | tee historical-benchmark-report.json
+
+      - name: Diagnostic evidence when staging fails
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== SERVER LAST 300 LOG LINES ==="
+          tail -n 300 staging-server.log || true
+          echo "=== SERVER PROCESS STATE ==="
+          if [ -f staging-server.pid ]; then
+            ps -o pid,ppid,stat,rss,vsz,etime,args -p "$(cat staging-server.pid)" || true
+          fi
+          echo "=== ISOLATED STAGING HEALTH CHECK ==="
+          curl --max-time 4 -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:3000/api/health || true
+
       - name: Summary
         if: always()
         run: |
@@ -128,9 +242,11 @@ jobs:
           echo "- APP_ENV=staging" >> "$GITHUB_STEP_SUMMARY"
           echo "- STAGING_SAFE_MODE=true" >> "$GITHUB_STEP_SUMMARY"
           echo "- External integrations forced off" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 8 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 40 motoboys × 3 ciclos administrativos" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 40 motoboys: conferencia individual, sequencia digitada, saida, idempotencia e bloqueio de segunda saida" >> "$GITHUB_STEP_SUMMARY"
           echo "- Idempotência do client_token validada" >> "$GITHUB_STEP_SUMMARY"
           echo "- Corrida concorrente do mesmo pedido validada" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fault injection F01-F18 executada com evidência por cenário" >> "$GITHUB_STEP_SUMMARY"
           if [ -f staging-smoke-report.json ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '~~~json' >> "$GITHUB_STEP_SUMMARY"
@@ -146,6 +262,12 @@ jobs:
           path: |
             health.json
             staging-smoke-report.json
+            staging-predeparture-report.json
+            historical-preflight-report.json
+            historical-benchmark-report.json
+            fault-injection-f01-f08.json
+            fault-injection-f09-f15.json
+            fault-injection-f16-f18.json
             staging-server.log
           if-no-files-found: ignore
 

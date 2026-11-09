@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 
 // Execute production functions and SQL against isolated PostgreSQL (WASM).
@@ -22,7 +23,7 @@ const pool={query,connect:async()=>{
   const previous=tail;let release;tail=new Promise(r=>release=r);await previous;
   return {query,release};
 }};
-const context=vm.createContext({pool,console,Date,process,Set,Map,
+const context=vm.createContext({pool,console,crypto,Date,process,Set,Map,
   io:{emit(){}},emitRealtime:()=>{},
   getCurrentOperationalShift:d=>({operational_date:d.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
   resolveDispatchShift:({departedAt,existingOperationalDate,existingShiftCode})=>existingShiftCode?({operational_date:existingOperationalDate,shift_code:existingShiftCode,shift_label:existingShiftCode==='LUNCH'?'Almoço':'Janta'}):({operational_date:new Date(departedAt).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}),shift_code:'LUNCH',shift_label:'Almoço'}),
