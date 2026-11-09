@@ -39,14 +39,17 @@ assert.equal(findPaymentDayTab(tabs(["03/11 T", "0311 T"]), "2026-11-03", "DINNE
 const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
 const env = { GOOGLE_SERVICE_ACCOUNT_EMAIL: "svc@test.iam.gserviceaccount.com", GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: privateKey };
 const lunchOct = tabs([...days(d => `${d}/10`, 31), "Cadastro"]);
-const calls = []; const written = {};
+const calls = []; let written = [];
+const submittedNames = updates => updates.find(({ range }) => range.startColumnIndex === 0)
+  .rows.map(row => row.values.map(cell => cell.userEnteredValue.stringValue));
+const unpack = row => row.values.map(cell => cell.userEnteredValue?.numberValue ?? cell.userEnteredValue?.stringValue ?? "");
 const fetchFn = async (url, opt = {}) => {
   const u = String(url); calls.push({ u, method: opt.method || "GET", body: typeof opt.body === "string" && opt.body.startsWith("{") ? JSON.parse(opt.body) : null });
   const ok = data => ({ ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) });
   if (u.includes("oauth2.googleapis.com")) return ok({ access_token: "tok" });
-  if (u.includes("values:batchClear")) return ok({});
-  if (u.includes("values:batchUpdate")) { for (const d of calls.at(-1).body.data) written[d.range] = d.values; return ok({}); }
-  if (u.includes("/values/")) { const range = decodeURIComponent(u.split("/values/")[1].split("?")[0]); return ok({ values: written[range] || [] }); }
+  if (u.endsWith(":batchUpdate")) { written = calls.at(-1).body.requests.map(request => request.updateCells); return ok({}); }
+  if (decodeURIComponent(u).includes("'13/10'!C3:D3")) return ok({ values: [["CHAVE PIX", "TIPO PIX"]] });
+  if (decodeURIComponent(u).includes("'13/10'!A4:D5")) return ok({ values: submittedNames(written) });
   return ok({ properties: { title: "(M) MOTOBOY OUTUBRO 2026" }, sheets: lunchOct });
 };
 const rows = [
@@ -56,12 +59,10 @@ const rows = [
 const result = await syncPaymentDayToGoogleSheets({ date: "2026-10-13", shiftCode: "LUNCH", rows, spreadsheetId: "SHEET_LUNCH", env, fetchFn });
 assert.equal(result.tabTitle, "13/10");
 assert.equal(result.rows, 2);
-const clear = calls.find(c => c.u.includes("batchClear")).body.ranges;
-assert.deepEqual(clear, ["'13/10'!A4:A200", "'13/10'!E4:J200", "'13/10'!M4:M200", "'13/10'!N4:P200"]);
-assert.deepEqual(written["'13/10'!A4:A5"], [["Ana"], ["João D'Ávila"]]);
-assert.deepEqual(written["'13/10'!E4:J5"][0], [12, 55, 5, "", "PIX", "Sim"]);
-assert.deepEqual(written["'13/10'!E4:J5"][1], [9, 45, "", 2.5, "Dinheiro", "Não"]);
-assert.ok(!calls.some(c => c.body && JSON.stringify(c.body).includes("13/10 T")), "não pode escrever em aba inexistente");
+assert.deepEqual(submittedNames(written), [["Ana"], ["João D'Ávila"]]);
+const payments = written.find(({ range }) => range.startColumnIndex === 4);
+assert.deepEqual(payments.rows.map(unpack), [[12, 55, 5, "", "PIX", "Sim"], [9, 45, "", 2.5, "Dinheiro", "Não"]]);
+assert.ok(written.every(({ range }) => range.sheetId === findPaymentDayTab(lunchOct, "2026-10-13", "LUNCH").sheetId));
 
 // 3) Teste de conexão aceita os dois formatos
 calls.length = 0;
@@ -91,7 +92,7 @@ assert.equal(connNov.lunch.tabsFound, 30);
 assert.equal(connNov.dinner.tabsFound, 30);
 
 // 5) Envio de janta em 03/11 deve usar exatamente a aba existente "0311 T".
-const novWrites = {};
+let novWrites = [];
 const novCalls = [];
 const novResult = await syncPaymentDayToGoogleSheets({
   date: "2026-11-03", shiftCode: "DINNER", rows, spreadsheetId: "NOV_DINNER", env,
@@ -100,19 +101,19 @@ const novResult = await syncPaymentDayToGoogleSheets({
     novCalls.push({ url: u, method: options.method || "GET" });
     const ok = data => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
     if (u.includes("oauth2.googleapis.com")) return ok({ access_token: "tok" });
-    if (u.includes("values:batchClear")) return ok({});
-    if (u.includes("values:batchUpdate")) {
-      for (const row of JSON.parse(options.body).data) novWrites[row.range] = row.values;
+    if (u.endsWith(":batchUpdate")) {
+      novWrites = JSON.parse(options.body).requests.map(request => request.updateCells);
       return ok({});
     }
-    if (u.includes("/values/")) return ok({ values: novWrites[decodeURIComponent(u.split("/values/")[1].split("?")[0])] || [] });
+    if (decodeURIComponent(u).includes("'0311 T'!C3:D3")) return ok({ values: [["CHAVE PIX", "TIPO PIX"]] });
+    if (decodeURIComponent(u).includes("'0311 T'!A4:D5")) return ok({ values: submittedNames(novWrites) });
     return ok({ properties: { title: "Novembro 2026" }, sheets: novDinner });
   }
 });
 assert.equal(novResult.tabTitle, "0311 T");
-assert.deepEqual(novWrites["'0311 T'!A4:A5"], [["Ana"], ["João D'Ávila"]]);
+assert.deepEqual(submittedNames(novWrites), [["Ana"], ["João D'Ávila"]]);
 assert.ok(!novCalls.some(c => c.url.includes("NOV_LUNCH")), "janta nunca escreve na planilha de almoço");
-assert.ok(!Object.keys(novWrites).some(range => range.includes("03/11 T")), "nao criar/selecionar aba inexistente");
+assert.ok(novWrites.every(({ range }) => range.sheetId === findPaymentDayTab(novDinner, "2026-11-03", "DINNER").sheetId));
 
 // 6) Google 403 por permissao vira erro claro; nao muda credenciais nem faz retry de escrita.
 await assert.rejects(
@@ -127,3 +128,4 @@ await assert.rejects(
 );
 
 console.log("PASS: aba do dia encontrada nos formatos 'DD/MM X' (janta) e 'DD/MM' (almoço); envio e teste de conexão verificados.");
+
