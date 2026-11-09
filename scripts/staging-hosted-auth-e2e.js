@@ -235,6 +235,12 @@ export async function runHostedAuthSmoke({pool,port}) {
     assert.equal(blockedAgain.value.code,"INCIDENT_FEATURE_DISABLED");
     mark("disable-switches-off-immediately");
 
+    if(process.env.STAGE8_ISOLATED==="true"){
+      const {runStage8FortyAuthenticated}=await import("./stage8-hosted-forty-auth.mjs");
+      await runStage8FortyAuthenticated({pool,port});
+      mark("stage8-40-authenticated-and-predeparture");
+    }
+
     console.log("STAGING_HOSTED_AUTH_E2E_PASS "+JSON.stringify({
       run,scenarios:completed.length,checks:completed,synthetic_orders:orderIds.length,
       simulated_couriers:2,production_access:false,external_mutations:false,
