@@ -83,6 +83,7 @@ const context = vm.createContext({
   readIncidentPilotSettings, incidentEnabledForCourier,
   emitRealtime: (e, p) => emitted.push([e, p]), auditBestEffort: async (...a) => { audits.push(a); },
   logOperationalConflict: async () => {}, touchPresence: async () => {},
+  perfDiagnostics: { span: async (_req, _phase, task) => task(), transaction: () => {} },
   currentUser: async id => ({ id, must_change_password: false }),
   getCurrentOperationalShift: () => ({ operational_date: today, shift_code: "LUNCH", shift_label: "Almoço" }),
   // Depois do prestart (apply-late-shift-dispatch) a saída e a pré-saída usam dispatchShiftAt.
