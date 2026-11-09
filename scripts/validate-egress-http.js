@@ -12,6 +12,8 @@ const adminUrl=process.env.EGRESS_CI_DATABASE_URL;
 assert.ok(adminUrl,'EGRESS_CI_DATABASE_URL is required');
 assert.ok(['127.0.0.1','localhost','[::1]'].includes(new URL(adminUrl).hostname),'Only loopback test databases are allowed');
 const baseline=path.resolve(process.env.EGRESS_BASELINE_DIR||'../baseline'),candidate=path.resolve('.');
+const baselineScopedTransfer=fs.readFileSync(path.join(baseline,'server.js'),'utf8')
+  .includes('courier_ids: [transfer.from_courier_id, transfer.to_courier_id]');
 const admin=new pg.Client({connectionString:adminUrl,ssl:false});await admin.connect();
 const fixtureAt=new Date().toISOString(),reports=[],snapshots=[];
 const percentile=(a,p)=>{a=[...a].sort((a,b)=>a-b);return Number(a[Math.min(a.length-1,Math.ceil(a.length*p)-1)].toFixed(3));};
@@ -70,13 +72,15 @@ for(const [index,root] of [baseline,candidate].entries()){
     for(let n=0;n<40&&!sessions.slice(0,2).every(s=>s.events.some(e=>e[0]==='ifood:changed'));n++)await delay(25);
     await delay(100);
     const transferRecipients=sessions.filter(s=>s.events.some(e=>e[0]==='ifood:changed')).length;
-    assert.equal(transferRecipients,index===1?2:30,'Transfer should reach its declared courier rooms');
+    const expectedTransferRecipients=index===1?2:(baselineScopedTransfer?2:30);
+    assert.equal(transferRecipients,expectedTransferRecipients,
+      'Transfer recipient scope must match baseline implementation and target only two couriers on candidate');
     const blocked=await fetch(url+'/api/admin/couriers/2',{method:'PATCH',headers:{'content-type':'application/json',cookie:adminCookie},body:JSON.stringify({active:false})});assert.equal(blocked.status,200);
     for(let n=0;n<40&&sessions[0].socket.readyState!==WebSocket.CLOSED;n++)await delay(50);
     assert.equal(sessions[0].socket.readyState,WebSocket.CLOSED,'Revoked courier socket must disconnect');
     assert.equal((await fetch(url+endpoints[2],{headers:{cookie:cookies[0]}})).status,401);
     assert.equal((await fetch(url+endpoints[2],{headers:{cookie:cookies[1]}})).status,200);
-    const realtime={authenticatedClients:30,unauthenticatedRejected:true,transferRecipients,revocationDisconnected:true,revokedHttpStatus:401,unrelatedCourierHttpStatus:200};
+    const realtime={authenticatedClients:30,unauthenticatedRejected:true,transferRecipients,baselineScopedTransfer,revocationDisconnected:true,revokedHttpStatus:401,unrelatedCourierHttpStatus:200};
     for(const session of sessions)session.socket.close();
     // The existing transactional smoke starts with couriers who have no route.
     await db.query("UPDATE dispatches SET status='RELEASED' WHERE dispatch_code LIKE 'egress-%'");

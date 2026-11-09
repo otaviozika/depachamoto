@@ -46,6 +46,16 @@ O Financeiro, o CSV e a planilha separam **Normais**, **Longas** e **Valor longa
 
 A tela do motoboy não muda: nenhum selo, valor ou mapa da regra aparece para ele, e a API de ganhos do motoboy não traz os campos LONGE (só o total, que inclui as longas pagas quando a regra está ativa). O mapa da zona fica no Financeiro do admin (Leaflet servido pelo próprio app, mapa-base do OpenStreetMap). A classificação roda a cada 15 s fora da transação de saída: uma falha nela nunca bloqueia um despacho.
 
+## Conferência de sacolas, rota de até 5 entregas e correção de endereço
+
+Três funções atrás de feature flags (desligadas por padrão), em **Operação → Conferência de sacolas e rotas**. Ligar e desligar pede motivo, registrado na Auditoria.
+
+- **Conferência de sacolas**: o motoboy digita de 1 a 5 pedidos e o app cria uma pré-saída (reserva os pedidos; não cria saída, não inicia o cronômetro e não aciona iFood nem Anota AI). Ele confirma cada sacola individualmente e só depois confirma a saída, que segue pelo `POST /api/courier/depart` existente, uma única vez.
+- **Sequência automática**: avalia todas as ordens possíveis (até 5! = 120) com a matriz de tempos pelas vias, sem trânsito ao vivo. O serviço padrão é o openrouteservice (gratuito, OpenStreetMap, `OPENROUTESERVICE_API_KEY`); se ambas as chaves existirem, usa o openrouteservice por padrão. Para usar Google explicitamente, configure `ROUTE_PROVIDER=google` no Render. O admin confirma uma vez no mapa o local da loja, que é o ponto de partida. **Prioridade: menor tempo viável pela via, não menor distância em km**. O motor compara as 120 sequências, calcula a menor duração e aceita apenas candidatas com acréscimo de no máximo 10% e 3 minutos (o menor dos limites). Entre essas rotas rápidas, usa custo α·duração + β·Σ esperas + γ·Σ excesso² (α=1, β=1, γ=0,2; espera acima de 45 min penalizada) para favorecer os pedidos antigos sem alongar demais o percurso. Sem localização segura ou sem o serviço de rotas, a rota vai para o admin; nenhum tempo é inventado.
+- **Correção de endereço**: o admin corrige antes ou durante a rota, com motivo e versão. O original da plataforma é preservado. Na pré-saída, a rota inteira é recalculada; em rua, só as entregas pendentes, a partir da última entrega confirmada. O motoboy precisa dar **Ciente**.
+
+Detalhes, fórmula, simulações, testes, ativação e rollback: [`docs/PRE_SAIDA_ROTA.md`](docs/PRE_SAIDA_ROTA.md) e [`docs/ROTEIRIZACAO_SIMULACOES.md`](docs/ROTEIRIZACAO_SIMULACOES.md). Testes: `npm run selftest:pre-departure`.
+
 ## Rotas e recuperação de pedidos
 
 - O motoboy escolhe a quantidade (1–5), preenche exatamente os campos escolhidos e valida todos no iFood antes da saída.

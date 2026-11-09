@@ -1,0 +1,36 @@
+# Homologação do DespacheFull — NÃO gerencia produção.
+# Este Blueprint deve ser revisado no Render antes de qualquer aprovação.
+# O banco já existe, é do plano Free e é referenciado sem expor credenciais.
+services:
+  - type: web
+    name: despachefull-staging
+    runtime: node
+    plan: free
+    region: oregon
+    repo: https://github.com/otaviozika/depachamoto
+    branch: feat/incident-pilot-safety-gate-20261106
+    autoDeployTrigger: off
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: despachefull-incidentes-homologacao-20261107
+          property: connectionString
+      - key: APP_ENV
+        value: staging
+      - key: STAGING_SAFE_MODE
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: IFOOD_ENABLED
+        value: "false"
+      - key: IFOOD_DISPATCH_ENABLED
+        value: "false"
+      - key: ANOTAAI_ENABLED
+        value: "false"
+      - key: DB_POOL_MAX
+        value: "10"
+      - key: SESSION_SECRET
+        generateValue: true
