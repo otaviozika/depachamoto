@@ -11,6 +11,7 @@ import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
+import { createPerformanceDiagnostics } from "./lib/performance-diagnostics.js";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
@@ -71,6 +72,7 @@ const pool = new Pool({
 pool.on("error", err => {
   console.error("PostgreSQL pool error:", err);
 });
+const perfDiagnostics = createPerformanceDiagnostics({ appEnv: APP_ENV, pool });
 
 const app = express();
 const server = http.createServer(app);
@@ -106,6 +108,7 @@ const sessionMiddleware = session({
     maxAge: 1000 * 60 * 60 * 12
   }
 });
+app.use(perfDiagnostics.middleware);
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
 
@@ -6311,10 +6314,11 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
 app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
-  const q = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
+  const q = await perfDiagnostics.span(req, "user_lookup", () => pool.query("SELECT * FROM users WHERE username=$1", [username]));
   const user = q.rows[0];
+  const validPassword = user ? await perfDiagnostics.span(req, "bcrypt_compare", () => bcrypt.compare(password, user.password_hash)) : false;
 
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  if (!validPassword) {
     await audit(null, "LOGIN_FAILED", "security", null, { username, ...requestMeta(req) });
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
   }
@@ -6326,7 +6330,7 @@ app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req,
     return res.status(403).json({ error: "Seu cadastro não foi aprovado. Procure o administrador." });
   }
 
-  await new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
+  await perfDiagnostics.span(req, "session_regenerate", () => new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve())));
   req.session.user = {
     id: user.id,
     name: user.name,
@@ -6334,7 +6338,7 @@ app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req,
     role: user.role
   };
 
-  await audit(user.id, "LOGIN", "user", user.id, requestMeta(req));
+  await perfDiagnostics.span(req, "audit_write", () => audit(user.id, "LOGIN", "user", user.id, requestMeta(req)));
   res.json({
     user: {
       ...req.session.user,
@@ -11482,6 +11486,7 @@ const preDepartureService = createPreDepartureService({
   describeOrder: preDepartureOrderDetails,
   emitRealtime,
   audit: auditBestEffort,
+  onTransactionMetric: metric => perfDiagnostics.transaction(metric),
   onAddressCorrected: ({ platform, externalOrderId, latitude, longitude }) => longeRule.applyOperationalLocation({ platform, externalOrderId, latitude, longitude })
 });
 await preDepartureService.recoverInterrupted();
@@ -11599,15 +11604,15 @@ app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req
 }));
 
 app.post("/api/courier/pre-departures", auth, courierOnly, serviceRoute(async (req, res) => {
-  await requirePreDepartureFlag("pre_departure");
+  await perfDiagnostics.span(req, "flag_check", () => requirePreDepartureFlag("pre_departure"));
   validateDepartureCount(req.body);
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const gate = await courierDepartureGate(req.session.user.id);
+  await perfDiagnostics.span(req, "presence", () => touchPresence(req.session.user.id, "COURIER_WEB"));
+  const gate = await perfDiagnostics.span(req, "courier_gate", () => courierDepartureGate(req.session.user.id));
   if (gate) return res.status(gate.status).json({ ...gate.body, server_now: new Date().toISOString() });
   const orders = normalizeOrders(req.body);
-  const resolved = await resolvePreDepartureLinks(orders, req.body);
+  const resolved = await perfDiagnostics.span(req, "resolve_orders", () => resolvePreDepartureLinks(orders, req.body));
   if (resolved.error) return res.status(resolved.error.status).json({ ...resolved.error.body, server_now: new Date().toISOString() });
-  const preDeparture = await preDepartureService.create({ courierId: req.session.user.id, links: resolved.links });
+  const preDeparture = await perfDiagnostics.span(req, "create_and_view", () => preDepartureService.create({ courierId: req.session.user.id, links: resolved.links }));
   res.status(preDeparture.duplicate ? 200 : 201).json({ pre_departure: preDeparture, server_now: new Date().toISOString() });
 }));
 
