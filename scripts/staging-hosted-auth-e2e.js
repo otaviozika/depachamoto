@@ -8,14 +8,24 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 const EXPECTED_DB="despachefull_incidentes_homologacao";
+const STAGE8_PROJECT="yubiztqoaunkbexrfwhq";
 const STATUS_WANTED="ON_ROAD";
 
 function assertIsolated() {
   assert.equal(process.env.APP_ENV,"staging","Only APP_ENV=staging is allowed");
   assert.equal(process.env.STAGING_SAFE_MODE,"true","STAGING_SAFE_MODE must be true");
   const db=new URL(String(process.env.DATABASE_URL||""));
-  assert.equal(decodeURIComponent(db.pathname.slice(1)),EXPECTED_DB,"Forbidden database: only dedicated free Render staging");
-  assert.ok(db.hostname.includes("dbn9n1psrm7s738pu81g"),"Database endpoint is not the approved isolated Render instance");
+  // Explicit allowlist: legacy isolated Render Postgres or the separate Stage 8 Supabase project.
+  // Never accept the primary DespacheFull Supabase project or an arbitrary staging host.
+  const legacy=decodeURIComponent(db.pathname.slice(1))===EXPECTED_DB &&
+    db.hostname.startsWith("dpg-dbn9n1psrm7s738pu81g-a") &&
+    process.env.STAGE8_ISOLATED!=="true";
+  const stage8=process.env.STAGE8_ISOLATED==="true" &&
+    process.env.NODE_ENV==="production" &&
+    db.pathname==="/postgres" && db.port==="5432" &&
+    db.hostname.endsWith(".pooler.supabase.com") &&
+    decodeURIComponent(db.username).endsWith("."+STAGE8_PROJECT);
+  assert.ok(legacy||stage8,"AUTH E2E forbidden: dedicated isolated DB only");
 }
 export async function runHostedAuthSmoke({pool,port}) {
   assertIsolated();
