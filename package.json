@@ -45,7 +45,6 @@
     "selftest:delivery-incident-pilot": "node scripts/selftest-delivery-incident-pilot.js"
   },
   "dependencies": {
-    "bcrypt": "6.0.0",
     "bcryptjs": "^3.0.2",
     "connect-pg-simple": "^10.0.0",
     "dotenv": "^16.6.1",

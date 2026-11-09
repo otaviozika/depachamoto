@@ -12,7 +12,6 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import { createPerformanceDiagnostics } from "./lib/performance-diagnostics.js";
-import { compareLoginPassword } from "./lib/login-password.js";
 import { coalesceSessionTouches } from "./lib/session-touch-coalescer.js";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
@@ -6323,10 +6322,9 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
 app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
-  const q = await perfDiagnostics.span(req, "user_lookup", () => pool.query(
-    "SELECT id,name,username,password_hash,role,active,approval_status,must_change_password FROM users WHERE username=$1", [username]));
+  const q = await perfDiagnostics.span(req, "user_lookup", () => pool.query("SELECT * FROM users WHERE username=$1", [username]));
   const user = q.rows[0];
-  const validPassword = user ? await perfDiagnostics.span(req, "bcrypt_compare", () => compareLoginPassword(password, user.password_hash)) : false;
+  const validPassword = user ? await perfDiagnostics.span(req, "bcrypt_compare", () => bcrypt.compare(password, user.password_hash)) : false;
 
   if (!validPassword) {
     await audit(null, "LOGIN_FAILED", "security", null, { username, ...requestMeta(req) });
@@ -11598,8 +11596,19 @@ app.post("/api/admin/delivery-incidents/:id/decision",auth,adminOnly,serviceRout
 }));
 
 app.get("/api/courier/pre-departure", auth, courierOnly, serviceRoute(async (req, res) => {
-  const overview = await preDepartureService.courierOverview(req.session.user.id);
-  res.json({ ...overview, server_now: new Date().toISOString() });
+  const settings = await preDepartureService.readSettings();
+  const [preDeparture, route, incidentPilot] = await Promise.all([
+    settings.pre_departure ? preDepartureService.current(req.session.user.id) : null,
+    preDepartureService.activeRouteForCourier(req.session.user.id),
+    readIncidentPilotSettings(pool)
+  ]);
+  res.json({
+    enabled: { pre_departure: settings.pre_departure, route_planner: settings.route_planner },
+    incident_feature: { enabled: incidentEnabledForCourier(incidentPilot,req.session.user.id), pilot_only: true },
+    pre_departure: preDeparture,
+    route,
+    server_now: new Date().toISOString()
+  });
 }));
 
 app.post("/api/courier/pre-departures", auth, courierOnly, serviceRoute(async (req, res) => {

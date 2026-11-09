@@ -25,8 +25,7 @@ const query = async (sql, args = []) => {
   const result = await db.query(sql, args);
   return { ...result, rowCount: result.rows.length || result.affectedRows || 0 };
 };
-let poolQueryCount = 0;
-const pool = { query: (...args) => { poolQueryCount++; return query(...args); }, connect: async () => {
+const pool = { query, connect: async () => {
   const previous = tail; let release;
   tail = new Promise(r => { release = r; }); await previous;
   return { query, release };
@@ -242,14 +241,6 @@ async function scenario(id, name, fn) {
 }
 
 await setFlags({ pre_departure: true, route_planner: true, address_correction: true });
-
-const queriesBeforeIdleRead = poolQueryCount;
-const idleState = await getState(40);
-assert.equal(poolQueryCount - queriesBeforeIdleRead, 1, "Idle pre-departure overview must use one database query");
-assert.equal(idleState.enabled.pre_departure, true);
-assert.equal(idleState.incident_feature.enabled, false);
-assert.equal(idleState.pre_departure, null);
-assert.equal(idleState.route, null);
 
 // Conferência ----------------------------------------------------------------
 for (const n of [1, 2, 3, 4, 5]) {
