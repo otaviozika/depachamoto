@@ -12,7 +12,6 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Server } from "socket.io";
 import crypto from "crypto";
 import { createPerformanceDiagnostics } from "./lib/performance-diagnostics.js";
-import { createRecoverySweepGate } from "./lib/recovery-sweep-gate.js";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
@@ -2136,7 +2135,6 @@ async function resetStaleAnotaAiDispatchJobs() {
   return q.rowCount;
 }
 
-const recoverAnotaAiIfDue = createRecoverySweepGate({ intervalMs: 60_000 });
 async function runAnotaAiDispatchWorkerOnce() {
   if (STAGING_SAFE_MODE) return { skipped: true, reason: "STAGING_SAFE_MODE" };
   if (!anotaAiConfigured() || anotaAiDispatchWorkerRunning) return;
@@ -2145,9 +2143,7 @@ async function runAnotaAiDispatchWorkerOnce() {
   try {
     await resetStaleAnotaAiDispatchJobs();
     // Recover a crash between saving a local confirmation and enqueueing FINALIZE.
-    // The 10-second durable queue continues unchanged; only this exceptional
-    // full-database recovery sweep is throttled to at most once per minute.
-    await recoverAnotaAiIfDue(() => queueAnotaAiDeliveryFinalization());
+    await queueAnotaAiDeliveryFinalization();
 
     const jobs = (await pool.query(`
       SELECT
