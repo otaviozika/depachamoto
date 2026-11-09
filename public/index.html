@@ -1039,6 +1039,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 .pd-admin-flags{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:15px}
 .pd-flag{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .pd-flag p{margin:0}
+.pd-scope{grid-column:1/-1}
+.pd-scope-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:8px;width:100%}
 .pd-flag-state{font-weight:900}.pd-flag-state.on{color:#22c55e}.pd-flag-state.off{color:var(--muted)}
 .pd-params{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 15px 15px;align-items:end}
 .pd-params label{font-size:12px;color:var(--muted)}
@@ -6161,11 +6163,12 @@ function renderPreDepartureScope(st){
       <span class="badge ${exempt?'gray':'green'}">${exempt?'Dispensado hoje':enabled?'Obrigatória':'Aguardando ativação'}</span>
       <button type="button" class="btn outline" data-id="${id}" data-exempt="${!exempt}" onclick="setPreDepartureExemption(this,Number(this.dataset.id),this.dataset.exempt==='true')">${exempt?'Voltar a exigir':'Dispensar hoje'}</button></div>`;
   }).join(''):'';
-  return `<div class="pd-flag"><b>${general?'Todos no plantão':pilot?'Piloto · '+escapeHtml(pilot.name):'Escopo configurado'}</b>
+  return `<div class="pd-flag pd-scope"><b>${general?'Todos no plantão':pilot?'Piloto · '+escapeHtml(pilot.name):'Escopo configurado'}</b>
     <p class="small muted">A conferência passa a valer na próxima saída de quem estiver no plantão, inclusive para quem entrar depois. As dispensas valem pelo dia operacional.</p>
     ${!general||!enabled?`<button type="button" class="btn primary" onclick="setPreDepartureScope(this,true)">Ativar para o plantão</button>`:''}
     ${general?`<button type="button" class="btn outline" onclick="setPreDepartureScope(this,false)">Voltar ao escopo configurado</button>`:''}
-    ${list}</div>`;
+    ${list?`<div class="pd-scope-list">${list}</div>`:''}
+  </div>`;
 }
 async function setPreDepartureScope(button,general){
   const reason=preDepartureReason(general?'Ativar a conferência obrigatória para o plantão. Informe o motivo.':'Voltar ao escopo configurado. Informe o motivo.');if(!reason)return;
