@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mock } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import bcrypt from "bcrypt";
 import bcryptjs from "bcryptjs";
 import { compareLoginPassword } from "../lib/login-password.js";
 
@@ -17,4 +20,26 @@ for (const prefix of ["$2a$", "$2y$"]) {
   assert.equal(await compareLoginPassword("errada", legacyHash), false);
 }
 assert.equal(await compareLoginPassword(password, "$2b$04$invalid"), false);
+
+let active = 0;
+let peak = 0;
+const compareMock = mock.method(bcrypt, "compare", async value => {
+  peak = Math.max(peak, ++active);
+  try {
+    await delay(5);
+    if (value === "fail") throw new Error("Synthetic native failure");
+    return true;
+  } finally {
+    active--;
+  }
+});
+try {
+  const results = await Promise.allSettled(Array.from({ length: 8 }, (_, i) =>
+    compareLoginPassword(i === 2 ? "fail" : password, hash)));
+  assert.equal(peak, 2);
+  assert.equal(results.filter(result => result.status === "fulfilled" && result.value).length, 7);
+  assert.equal(results[2].status, "rejected");
+} finally {
+  compareMock.mock.restore();
+}
 console.log("Login bcrypt compatibility OK");
