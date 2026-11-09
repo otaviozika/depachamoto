@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventEmitter } from "node:events";
 import { createPerformanceDiagnostics } from "../lib/performance-diagnostics.js";
+import { runStage8FortyAuthenticated } from "./stage8-hosted-forty-auth.mjs";
 
 test("diagnostics is strictly disabled in production regardless of env", async () => {
   const seen = [];
@@ -61,3 +62,11 @@ test("transaction metrics do not include order IDs, addresses, or credentials", 
   assert.equal(JSON.parse(seen[0].split("STAGING_PERF_TX_V1 ")[1]).success,false);
 });
 
+
+test("Stage 8 hosted synthetic 40-courier suite refuses any unapproved runtime", async () => {
+  await assert.rejects(
+    runStage8FortyAuthenticated({ pool:null, port:0 }),
+    /AssertionError/,
+    "A missing dedicated Stage8 safe-mode flag must fail before any SQL or HTTP action"
+  );
+});
