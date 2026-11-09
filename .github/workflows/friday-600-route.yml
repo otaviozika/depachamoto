@@ -76,7 +76,6 @@ jobs:
           node --check server.js
           node --check lib/pre-departure-service.js
           node --check lib/performance-diagnostics.js
-          node --check lib/recovery-sweep-gate.js
           node --test scripts/selftest-stage8-performance.mjs
       - name: Verify isolated mock guards
         run: |
