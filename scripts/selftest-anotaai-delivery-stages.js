@@ -3,6 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { normalizeAnotaAiOrder } from '../lib/anotaai.js';
+import { createRecoverySweepGate } from '../lib/recovery-sweep-gate.js';
 
 const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const db = new PGlite();
@@ -26,7 +27,7 @@ async function change(action, id) {
 }
 let confirm;
 const context = vm.createContext({
-  Date, console: { warn() {}, error() {} }, normalizeAnotaAiOrder,
+  Date, console: { warn() {}, error() {} }, normalizeAnotaAiOrder, createRecoverySweepGate,
   pool: { query }, STAGING_SAFE_MODE: false,
   anotaAiConfigured: () => true, anotaAiSafeError: error => error.message,
   assertExternalMutationAllowed: () => { assert.equal(context.STAGING_SAFE_MODE, false); },
