@@ -102,7 +102,7 @@ equal(audit.length,3,"audit three changes");
 equal(events.filter(e=>e[0]==="settings:changed").length,3,"notify changes");
 
 const server=fs.readFileSync(path.join(root,"server.js"),"utf8");
-yes(server.includes('incidentEnabledForCourier(pilot,req.session.user.id)'),"server gates incident report");
+yes(server.includes('courierIncidentEnabled(settings,pilot,courierId)'),"server gates incident report");
 yes(server.includes('code:"INCIDENT_FEATURE_DISABLED"'),"fail closed http error");
 yes(server.includes('app.put("/api/admin/delivery-incidents/pilot",auth,adminOnly'),"admin-only pilot endpoint");
 yes(server.includes("ALTER TABLE dispatch_delivery_incidents ENABLE ROW LEVEL SECURITY"),"incident RLS");

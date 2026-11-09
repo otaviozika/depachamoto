@@ -1039,6 +1039,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 .pd-admin-flags{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:15px}
 .pd-flag{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .pd-flag p{margin:0}
+.pd-scope{grid-column:1/-1}
+.pd-scope-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:8px;width:100%}
 .pd-flag-state{font-weight:900}.pd-flag-state.on{color:#22c55e}.pd-flag-state.off{color:var(--muted)}
 .pd-params{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 15px 15px;align-items:end}
 .pd-params label{font-size:12px;color:var(--muted)}
@@ -6096,14 +6098,15 @@ function renderIncidentAdmin(st){
  const pilot=st.incident_pilot||{enabled:false,courier_id:null};
  const couriers=(dashboard?.couriers||[]).filter(u=>u.active&&u.approval_status==='APPROVED');
  const selected=Number(pilot.courier_id||0);
+ const general=st.settings.scope==='all';
  const pilotOptions='<option value="">Selecione um motoboy</option>'+
    couriers.map(u=>'<option value="'+Number(u.id)+'" '+(selected===Number(u.id)?'selected':'')+'>'+escapeHtml(u.name)+'</option>').join('');
  const pilotPanel='<div class="pd-admin-item" style="margin:10px 0;border:1px solid #596275;border-radius:12px;padding:12px">'+
-   '<b>Controle do piloto — problemas na entrega</b><p class="small">Desligado por padrão. Somente um motoboy autorizado pode abrir novas ocorrências. Desativar não apaga ocorrências pendentes.</p>'+
-   '<div class="small" style="margin:7px 0"><b>Situação:</b> '+(pilot.enabled?'ATIVO PARA UM MOTOBOY':'DESLIGADO')+'</div>'+
-   '<label class="small">Motoboy autorizado<select id="incidentPilotCourier" style="width:100%;margin:6px 0;padding:9px">'+pilotOptions+'</select></label>'+
+   '<b>Problemas na entrega</b><p class="small">As ocorrências seguem o escopo da conferência quando habilitadas. As pendências já registradas continuam disponíveis.</p>'+
+   '<div class="small" style="margin:7px 0"><b>Situação:</b> '+(pilot.enabled?(general?'ATIVO PARA O PLANTÃO':'ATIVO PARA UM MOTOBOY'):'DESLIGADO')+'</div>'+
+   (general?'':'<label class="small">Motoboy autorizado<select id="incidentPilotCourier" style="width:100%;margin:6px 0;padding:9px">'+pilotOptions+'</select></label>')+
    '<div class="pd-admin-actions"><button type="button" class="btn outline" onclick="adminSetIncidentPilot(false)">Desligar ocorrências</button>'+
-   '<button type="button" class="btn primary" onclick="adminSetIncidentPilot(true)">Habilitar piloto</button></div></div>';
+   '<button type="button" class="btn primary" onclick="adminSetIncidentPilot(true)">Habilitar ocorrências</button></div></div>';
  el.innerHTML=pilotPanel+'<div class="small muted" style="margin:10px 0"><b>⚠ Problemas nas entregas ('+all.length+')</b> · Acompanhe e autorize quando necessário.</div>'+
  (all.map(i=>{
   const open=i.status==='OPEN',label=INCIDENT_LABELS[i.reason]||i.reason;
@@ -6122,8 +6125,9 @@ function renderIncidentAdmin(st){
 }
 async function adminSetIncidentPilot(enabled){
  const selected=Number($('incidentPilotCourier')?.value||preDepartureAdminState?.incident_pilot?.courier_id||0);
- if(enabled&&(!Number.isSafeInteger(selected)||selected<1))return alert('Selecione um motoboy ativo e aprovado.');
- if(!confirm(enabled?'Habilitar ocorrências para somente este motoboy?':'Desligar novas ocorrências para todos os motoboys? As pendências existentes serão preservadas.'))return;
+ const general=preDepartureAdminState?.settings.scope==='all';
+ if(enabled&&!general&&(!Number.isSafeInteger(selected)||selected<1))return alert('Selecione um motoboy ativo e aprovado.');
+ if(!confirm(enabled?(general?'Habilitar ocorrências para o plantão?':'Habilitar ocorrências para somente este motoboy?'):'Desligar novas ocorrências para todos os motoboys? As pendências existentes serão preservadas.'))return;
  const reason=prompt('Motivo da alteração (mínimo de 5 caracteres):');
  if(reason===null)return;
  if(reason.trim().length<5)return alert('Informe um motivo de pelo menos 5 caracteres.');
@@ -6144,12 +6148,46 @@ async function adminIncidentDecision(id,action){
  catch(e){alert(e.message);}
  await loadPreDepartureAdmin();
 }
+function renderPreDepartureScope(st){
+  const general=st.settings.scope==='all', enabled=st.settings.pre_departure;
+  const scope=st.courier_scope||{};
+  const couriers=(dashboard?.couriers||[]).filter(u=>u.active&&u.approval_status==='APPROVED');
+  const pilot=couriers.find(u=>Number(u.id)===scope.pilot_courier_id);
+  const exemptions=new Set(scope.exempt_courier_ids||[]);
+  const priority=u=>Number(!!u.present_today)*2+Number(!!u.is_online);
+  couriers.sort((a,b)=>priority(b)-priority(a)||a.name.localeCompare(b.name,'pt-BR'));
+  const list=general?couriers.map(u=>{
+    const id=Number(u.id), exempt=exemptions.has(id);
+    const presence=[u.present_today?'Em plantão':'',u.is_online?'Online':'Offline'].filter(Boolean).join(' · ');
+    return `<div class="pd-admin-item pd-admin-item-head"><b>${escapeHtml(u.name)}</b><span class="small muted">${presence}</span>
+      <span class="badge ${exempt?'gray':'green'}">${exempt?'Dispensado hoje':enabled?'Obrigatória':'Aguardando ativação'}</span>
+      <button type="button" class="btn outline" data-id="${id}" data-exempt="${!exempt}" onclick="setPreDepartureExemption(this,Number(this.dataset.id),this.dataset.exempt==='true')">${exempt?'Voltar a exigir':'Dispensar hoje'}</button></div>`;
+  }).join(''):'';
+  return `<div class="pd-flag pd-scope"><b>${general?'Todos no plantão':pilot?'Piloto · '+escapeHtml(pilot.name):'Escopo configurado'}</b>
+    <p class="small muted">A conferência passa a valer na próxima saída de quem estiver no plantão, inclusive para quem entrar depois. As dispensas valem pelo dia operacional.</p>
+    ${!general||!enabled?`<button type="button" class="btn primary" onclick="setPreDepartureScope(this,true)">Ativar para o plantão</button>`:''}
+    ${general?`<button type="button" class="btn outline" onclick="setPreDepartureScope(this,false)">Voltar ao escopo configurado</button>`:''}
+    ${list?`<div class="pd-scope-list">${list}</div>`:''}
+  </div>`;
+}
+async function setPreDepartureScope(button,general){
+  const reason=preDepartureReason(general?'Ativar a conferência obrigatória para o plantão. Informe o motivo.':'Voltar ao escopo configurado. Informe o motivo.');if(!reason)return;
+  button.disabled=true;
+  try{await preDepartureAdminCall('/api/admin/pre-departure/settings',{method:'PUT',payload:{scope:general?'all':'configured',...(general&&{flags:{pre_departure:true}}),reason}})}
+  finally{button.disabled=false}
+}
+async function setPreDepartureExemption(button,id,exempt){
+  const reason=preDepartureReason(exempt?'Dispensar este motoboy hoje. Informe o motivo.':'Voltar a exigir a conferência deste motoboy. Informe o motivo.');if(!reason)return;
+  button.disabled=true;
+  try{await preDepartureAdminCall(`/api/admin/pre-departure/couriers/${id}/exemption`,{method:'PUT',payload:{exempt,reason}})}
+  finally{button.disabled=false}
+}
 function renderPreDepartureAdmin(){
   const st=preDepartureAdminState;if(!st)return;
   const s=st.settings,p=s.params||{};
   renderIncidentAdmin(st);
   const flag=(key,title,desc)=>`<div class="pd-flag"><b>${title}</b><p class="small muted">${desc}</p><span class="pd-flag-state ${s[key]?'on':'off'}">${s[key]?'LIGADA':'DESLIGADA'}</span><button type="button" class="btn ${s[key]?'outline':'primary'}" data-flag="${key}" data-value="${s[key]?'false':'true'}" onclick="togglePreDepartureFlag(this.dataset.flag,this.dataset.value==='true')">${s[key]?'Desligar':'Ligar'}</button></div>`;
-  $('preDepartureFlags').innerHTML=flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
+  $('preDepartureFlags').innerHTML=renderPreDepartureScope(st)+flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
     flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pelas vias, sem trânsito ao vivo. Depende da conferência e da chave do serviço de rotas.')+
     flag('address_correction','Correção de endereço','O admin corrige o endereço operacional antes e durante a rota.');
   const origin=st.store_origin;
