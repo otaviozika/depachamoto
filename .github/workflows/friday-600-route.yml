@@ -103,6 +103,8 @@ jobs:
           echo "::error::staging nao esta saudavel"
           tail -40 friday-staging-server.log
           exit 1
+      - name: Evaluate daily SQL index on disposable 20k-row table
+        run: node scripts/stage8-index-experiment.mjs
       - name: Validate persistent quota under concurrent claims
         run: node scripts/check-route-quota-pg.js
       - name: Model 600-order Matrix quota including rolling 24h boundary
