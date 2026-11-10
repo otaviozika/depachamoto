@@ -863,6 +863,26 @@ await scenario("S5", "Serviço de rotas gratuito: chave obrigatória e local da 
   return `sem chave a sequência não liga (ROUTE_PROVIDER_NOT_CONFIGURED); com a chave gratuita liga; ponto fora da R. Tapajós recusado; rota parte do local confirmado pelo admin e mostra a atribuição do OpenStreetMap`;
 });
 
+await scenario("S8", "Prazo de entrega iFood desempata duas sequências de mesma duração", async () => {
+  const point = at(75, 1400);
+  const first = await ifood(3890, point, { age: 20 });
+  const second = await ifood(3891, point, { age: 20 });
+  await query(`UPDATE ifood_orders SET payload=jsonb_set(payload,'{delivery,deliveryDateTime}',to_jsonb($2::text)) WHERE order_id=$1`,
+    [first.id, minutesAgo(-5)]);
+  await query(`UPDATE ifood_orders SET payload=jsonb_set(payload,'{delivery,deliveryDateTime}',to_jsonb($2::text)) WHERE order_id=$1`,
+    [second.id, minutesAgo(0)]);
+  const created = await createPd(38, [first, second]);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const pd = await checkAll(38, created.body.pre_departure);
+  const response = await route(38, pd);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const planned = response.body.pre_departure.route;
+  assert.deepEqual(plain(planned.stops.map(stop => stop.order_number)), [second.number, first.number]);
+  assert.equal(planned.extra_minutes, 0);
+  await service.cancel({ actorUserId: 38, courierId: 38, id: pd.id });
+  return "o pedido com prazo iFood vencido vai primeiro no empate, com zero tempo adicional";
+});
+
 await scenario("S6", "Conferência e ocorrências restritas ao motoboy selecionado", async () => {
   await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(41,'Motoboy piloto','m41','x','courier',true,'APPROVED'),(42,'Motoboy legado','m42','x','courier',true,'APPROVED')");
   routesEnv = { PRE_DEPARTURE_PILOT_COURIER_ID: "41" };

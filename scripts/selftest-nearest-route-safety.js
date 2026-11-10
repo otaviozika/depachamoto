@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import { planRoute, planFastestViableRoute, FASTEST_VIABLE_POLICY } from "../lib/route-planner.js";
+import { planRoute, planFastestViableRoute } from "../lib/route-planner.js";
 
 let checks = 0;
 function check(name, fn) { fn(); checks++; console.log("PASS", name); }
@@ -82,15 +82,22 @@ check("mais próximo em metros não obriga desvio demorado", () => {
   assert.equal(trip.evaluated, 2);
   assert.equal(trip.extra_minutes, 0);
 });
-check("idade antiga pode ganhar prioridade sem desvio acima de 10% ou 3 min", () => {
-  const stops=[{key:"A",age_minutes:70},{key:"B",age_minutes:10},{key:"C",age_minutes:5}];
-  const minutes=[[0,5,5,8],[5,0,4,4],[5,4,0,4],[8,4,4,0]];
-  const p=planFastestViableRoute({stops,minutes,keepCandidates:true});
-  assert.equal(p.evaluated,6);
-  assert.ok(p.best.duration_minutes <= p.fastest_duration_minutes + p.max_extra_minutes + 1e-9);
-  assert.ok(p.max_extra_minutes <= FASTEST_VIABLE_POLICY.max_extra_minutes);
-  assert.ok(p.max_extra_minutes <= p.fastest_duration_minutes * FASTEST_VIABLE_POLICY.max_extra_ratio + 1e-9);
-  assert.ok(p.candidates.every(c=>c.duration_minutes <= p.fastest_duration_minutes + p.max_extra_minutes + 1e-9));
+check("prazo vencido desempata sem acrescentar tempo total", () => {
+  const stops=[{key:"A",age_minutes:10},{key:"B",age_minutes:10,delivery_overdue:true}];
+  const minutes=[[0,3,4],[3,0,7],[4,6,0]];
+  const tied=planFastestViableRoute({stops,minutes,keepCandidates:true});
+  assert.deepEqual(tied.best.sequence,["B","A"]);
+  assert.equal(tied.best.duration_minutes,10);
+  assert.equal(tied.candidates.length,2);
+
+  // Uma diferença de 30 segundos cabia na tolerância antiga.
+  stops[1].age_minutes=50;
+  minutes[2][1]=6.5;
+  const fastest=planFastestViableRoute({stops,minutes,keepCandidates:true});
+  assert.deepEqual(fastest.best.sequence,["A","B"]);
+  assert.equal(fastest.best.duration_minutes,10);
+  assert.equal(fastest.extra_minutes,0);
+  assert.equal(fastest.candidates.length,1);
 });
 check("cinco destinos têm 120 rotas analisadas e limite temporal verificado", () => {
   const ss=Array.from({length:5},(_,i)=>({key:"p"+i,age_minutes:5+i*12}));

@@ -73,9 +73,8 @@ function checkPlan(group, matrix, plan) {
   assert.equal(plan.evaluated,factorial(group.stops.length));
   assert.equal(new Set(plan.best.order).size,group.stops.length);
   assert.deepEqual(plan.best.order.slice().sort((a,b)=>a-b),Array.from({length:group.stops.length},(_,i)=>i));
-  assert.ok(plan.extra_minutes>=-1e-8 && plan.extra_minutes<=plan.max_extra_minutes+1e-7);
-  assert.ok(plan.max_extra_minutes<=3+1e-8);
-  assert.ok(plan.max_extra_minutes<=plan.fastest_duration_minutes*.10+1e-8);
+  assert.ok(plan.extra_minutes<=1e-9);
+  assert.equal(plan.max_extra_minutes,0);
   assert.ok(Number.isFinite(plan.best.cost));
   assert.ok(group.stops.every(s=>s.age_minutes>=0));
   if(group.stops.length>1){
@@ -207,7 +206,7 @@ const shiftHours=5.5, speedSensitivity=[20,30,40,50,60].map(roundTripMin=>({
 const result={
   result:"PASS_SYNTHETIC_NOT_PRODUCTION_CERTIFICATION",
   test:"Friday 600 orders / 36 couriers / 5.5h concentrated dinner",
-  policy:"FASTEST_VIABLE, <= min(10%, 3 minutes); up to 5 stops",
+  policy:"FASTEST_VIABLE, shortest total duration; up to 5 stops",
   simulated_only:true,real_customer_coordinates_used:false,real_provider_requests:0,production_database_access:false,
   stress:{scenarios:patterns,overall_cpu:stats(pooledCPU),
     by_stops:Object.fromEntries(Object.entries(cpuByStop).map(([k,v])=>[k,stats(v)])),
