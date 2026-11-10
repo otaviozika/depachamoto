@@ -3,7 +3,7 @@
 // geocodificacao, carga HTTP, ou atendimento de cota do fornecedor.
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { planFastestViableRoute, FASTEST_VIABLE_POLICY } from "../lib/route-planner.js";
+import { planFastestViableRoute } from "../lib/route-planner.js";
 
 function fixture(seed) {
   const stops = Array.from({ length: 5 }, (_, i) => ({
@@ -27,9 +27,8 @@ for (let round = 0; round < 3; round++) {
     assert.equal(out.evaluated, 120);
     assert.ok(out.eligible_evaluated >= 1 && out.eligible_evaluated <= 120);
     assert.equal(new Set(out.best.sequence).size, 5);
-    assert.ok(out.extra_minutes >= -1e-9);
-    assert.ok(out.extra_minutes <= FASTEST_VIABLE_POLICY.max_extra_minutes + 1e-9);
-    assert.ok(out.extra_minutes <= out.fastest_duration_minutes * FASTEST_VIABLE_POLICY.max_extra_ratio + 1e-9);
+    assert.ok(out.extra_minutes <= 1e-9);
+    assert.equal(out.max_extra_minutes, 0);
     assert.ok(out.best.stops.every(s => Number.isFinite(s.arrival_minutes) && s.arrival_minutes >= 0));
     return { ms, sequence: out.best.sequence, first: out.best.stops[0].key };
   }));

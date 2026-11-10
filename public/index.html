@@ -4373,7 +4373,7 @@ function preDepartureRouteHtml(pd){
   const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
   const source=['ROAD_MATRIX','GOOGLE_ROUTES'].includes(r.source)
     ? r.strategy==='FASTEST_VIABLE'
-      ? `Sequência otimizada por tempo entre ${Number(r.evaluated)} possibilidades. Considera também pedidos antigos (sem trânsito ao vivo).`
+      ? `Sequência calculada por tempo entre ${Number(r.evaluated)} possibilidades (sem trânsito ao vivo).`
       : `Sequência calculada pelas vias entre ${Number(r.evaluated)} possibilidades (sem trânsito ao vivo).`
     : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
   const extra=Number(r.extra_minutes);
