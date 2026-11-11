@@ -960,7 +960,7 @@
 body.staging-mode .staging-banner{display:block}
 body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
 </style>
-<link rel="stylesheet" href="/courier-dark.css?v=4">
+<link rel="stylesheet" href="/courier-dark.css?v=5">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 <style>/* longe-rule-v1 */
 .longe-map{height:380px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
@@ -1871,31 +1871,27 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     </nav>
     <section id="courierHomeTab" class="courier-tab-panel active" data-courier-panel="home">
       <div id="courierHome" class="courier-home-card courier-home-direct">
-        <div>
-          <div class="courier-eyebrow">Pedidos de hoje</div>
-          <h1><span id="myToday">0</span> pedidos</h1>
-          <p>Total despachado por você hoje.</p>
-        </div>
+        <span>Hoje: <strong><span id="myToday">0</span> pedidos</strong></span>
       </div>
       <div id="forcePasswordWarning" class="warning hidden"><b>Senha temporária:</b> altere sua senha antes de registrar uma nova saída.</div>
       <div id="offlineQueueStatus"></div><div id="lastDepartureConfirmation"></div>
       <div id="attendanceCheckinStatus"></div>
       <div id="attendanceCheckinActions" class="attendance-checkin-actions hidden">
         <button id="attendanceScannerBtn" class="btn attendance-scan-btn" type="button" onclick="openAttendanceScanner()">📷 Ler QR de presença</button>
-        <span class="small muted">A câmera será aberta dentro do aplicativo.</span>
       </div>
       <div id="departureCard" class="card">
         <div class="courier-card-heading">
           <div><div class="courier-eyebrow">Despachar pedidos</div><h2>Nova saída</h2></div>
-          <span id="orderCounter" class="badge gray">1 de 5</span>
+          <span id="presenceLockBadge" class="badge gray hidden">Aguardando presença</span>
+          <span id="orderCounter" class="badge gray hidden">Escolha a quantidade</span>
         </div>
-        <p class="courier-helper">Digite de 1 a 5 pedidos iFood. Cada pedido será validado automaticamente.</p>
+        <p class="courier-helper">Selecione de 1 a 5 pedidos.</p>
         <form id="departureForm" class="form">
-          <label>Quantos pedidos você vai levar?
+          <label>Quantidade de pedidos
             <select id="departureCount" required onchange="resetOrderFields()"><option value="">Selecione a quantidade</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
           </label><div id="orderFields"></div>
           <div class="courier-add-row">
-            <span class="small muted">Preencha todos os campos da quantidade escolhida.</span>
+            <span id="departureFieldHint" class="small muted">Após selecionar, digite os números dos pedidos.</span>
           </div>
           <button id="departureSubmit" class="btn primary">🛵 Confirmar e sair para entrega</button>
         </form>
@@ -2338,7 +2334,18 @@ function clearPendingAttendanceToken(){
 function renderAttendanceCheckinNotice(text,type='ok'){
   if(!$('attendanceCheckinStatus'))return;
   const icon=type==='ok'?'✓':type==='err'?'!':'i';
-  $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}"><span class="courier-notice-icon" aria-hidden="true">${icon}</span><span>${escapeHtml(text)}</span></div>`:'';
+  $('attendanceCheckinStatus').innerHTML=text?`<div class="attendance-checkin-banner ${type}"><span class="courier-notice-icon" aria-hidden="true">${icon}</span><span>${escapeHtml(text)}</span>${type==='ok'?'<span class="courier-checkin-today">Hoje: <span id="myTodayInline">0</span> pedidos</span>':''}</div>`:'';
+}
+function updateCourierHomePresence(){
+  const checkedIn=courierAttendancePresent&&!courierShiftEnded;
+  $('courierHome').classList.toggle('hidden',checkedIn);
+  $('presenceLockBadge').classList.toggle('hidden',checkedIn||courierShiftEnded);
+  $('departureCount').disabled=!courierAttendancePresent||courierShiftEnded||!!courierActiveDispatch;
+  $('departureCard').classList.toggle('courier-departure-locked',!checkedIn);
+  $('departureCard').classList.toggle('courier-departure-empty',!$('departureCount').value);
+  $('departureFieldHint').textContent=courierShiftEnded?'Novas saídas estão bloqueadas hoje.':checkedIn?'Após selecionar, digite os números dos pedidos.':'Após confirmar a presença, selecione de 1 a 5 pedidos.';
+  const today=$('myTodayInline');
+  if(today)today.textContent=$('myToday').textContent;
 }
 function updateAttendanceScannerAction(){
   const actions=$('attendanceCheckinActions');
@@ -2364,6 +2371,7 @@ async function processPendingAttendanceToken(){
     courierAttendancePresent=true;
     updateAttendanceScannerAction();
     renderAttendanceCheckinNotice(d.message||'Presença confirmada.','ok');
+    updateCourierHomePresence();
     return d;
   }catch(err){
     if(['ATTENDANCE_QR_EXPIRED','ATTENDANCE_QR_INVALID','ATTENDANCE_QR_WRONG_DAY'].includes(err.code)){
@@ -2540,7 +2548,7 @@ function applyManualPaste(){
   $('manualOrderFields').innerHTML='';
   vals.forEach(v=>{addManualOrderField();const inputs=$('manualOrderFields').querySelectorAll('.manual-order-input');inputs[inputs.length-1].value=v});
 }
-function resetOrderFields(){$('orderFields').innerHTML='';for(let i=0;i<Number($('departureCount').value);i++)addOrderField();updateOrderUi()}
+function resetOrderFields(){$('orderFields').innerHTML='';for(let i=0;i<Number($('departureCount').value);i++)addOrderField();updateOrderUi();updateCourierHomePresence()}
 function addOrderField(){const count=$('orderFields').querySelectorAll('.order-row').length;if(count>=5||courierActiveDispatch)return;const row=document.createElement('div');row.className='order-row';row.innerHTML=`<label>Pedido ${count+1}<span class="order-input-wrap"><input class="order-input" placeholder="#45892" maxlength="50" required data-platform-valid="false" data-platform="" inputmode="text" enterkeyhint="done" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="scheduleOrderFieldLookup(this)"></span></label><span></span><div class="order-validation"></div>`;$('orderFields').appendChild(row);updateOrderUi();row.querySelector('input').focus()}
 function removeOrderField(btn){btn.closest('.order-row').remove();[...$('orderFields').querySelectorAll('.order-row')].forEach((row,i)=>row.querySelector('label').childNodes[0].nodeValue=`Pedido ${i+1}`);updateOrderUi()}
 function getOrderValues(){return[...document.querySelectorAll('.order-input')].map(i=>i.value.trim()).filter(Boolean)}
@@ -2575,6 +2583,7 @@ function updateCourierDepartureEligibility(){
   else if(checkinLocked)btn.textContent='Confirme as entregas pendentes';
   else if(offline)btn.textContent='🔒 Conexão necessária para validar pedido';
   else if(legacyQueue)btn.textContent='🔒 Sincronize a saída pendente';
+  else if(!$('departureCount').value)btn.textContent='Continuar';
   else if(!valid)btn.textContent='🔒 Valide os pedidos';
   else btn.textContent=courierPreDeparture.enabled?.pre_departure?'📦 Conferir sacolas':'🛵 Confirmar e sair para entrega';
 
@@ -2926,6 +2935,7 @@ async function confirmScannedAttendance(raw){
     updateAttendanceScannerAction();
     updateCourierDepartureEligibility();
     renderAttendanceCheckinNotice(d.message||'Presença confirmada.','ok');
+    updateCourierHomePresence();
     scannerMessage('Presença confirmada com sucesso.','ok');
     if(navigator.vibrate)navigator.vibrate([80,50,120]);
     await loadCourier({related:false}).catch(()=>{});
@@ -4631,10 +4641,9 @@ async function loadCourier({related=true}={}){
     const when=d.attendance?.checked_out_at?localTime(d.attendance.checked_out_at):'hoje';
     renderAttendanceCheckinNotice(`Expediente encerrado pelo Admin às ${when}. Novas saídas estão bloqueadas hoje.`,'warn');
   }else if(courierAttendancePresent){
-    const when=d.attendance?.checked_in_at?localTime(d.attendance.checked_in_at):'hoje';
-    renderAttendanceCheckinNotice(`Presença confirmada às ${when}. Você está ativo na operação de hoje.`,'ok');
+    renderAttendanceCheckinNotice('Presença confirmada','ok');
   }else{
-    renderAttendanceCheckinNotice('Presença ainda não confirmada. Escaneie o QR exibido na loja. Nenhuma saída será liberada antes do check-in.','warn');
+    renderAttendanceCheckinNotice('Confirme sua presença na loja para iniciar uma saída.','warn');
   }
   updateAttendanceScannerAction();
 
@@ -4642,6 +4651,7 @@ async function loadCourier({related=true}={}){
   document.querySelectorAll('.order-input').forEach(i=>i.disabled=checkinLocked);
   updateCourierDepartureEligibility();
   $('myToday').textContent=d.stats.today;$('statToday').textContent=d.stats.today;$('statWeek').textContent=d.stats.week;$('statMonth').textContent=d.stats.month;
+  updateCourierHomePresence();
   $('myHistory').innerHTML=d.recent.map(x=>{const label=x.status==='RELEASED'?'CONCLUÍDO':x.operational_stage==='RETURNING'?'RETORNANDO':'EM ROTA';const cls=x.status==='RELEASED'?'green':x.operational_stage==='RETURNING'?'blue':'orange';return `<tr><td>${ordersHtml(x)}</td><td>${localDate(x.departed_at)}</td><td><span class="badge ${cls}">${label}</span></td></tr>`}).join('')||empty(3);
 
   $('departureCard').classList.toggle('hidden',!!courierPreDeparture.pre_departure);
@@ -4854,6 +4864,7 @@ async function depart(e){
       if((r.status===403||r.status===409)&&d.code==='ATTENDANCE_REQUIRED'){
         courierAttendancePresent=false;
         updateCourierDepartureEligibility();
+        updateCourierHomePresence();
         throw new Error(d.error||'Confirme sua presença pelo QR da loja antes de registrar uma saída.');
       }
       if(r.status===409&&(d.code==='RETURN_CHECKIN_REQUIRED'||d.code==='PENDING_DELIVERIES_BLOCK_NEW_DEPARTURE')){

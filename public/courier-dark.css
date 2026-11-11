@@ -26,6 +26,8 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
  background:#152230!important;border:1px solid #304154;box-shadow:none;color:#fff;
 }
 #courierApp .courier-home-card p{color:#b4c3d5}
+#courierApp #courierHome.courier-home-direct{padding:11px 15px;margin-bottom:13px;border-radius:15px;color:#aab9cb;font-size:14px}
+#courierApp #courierHome strong{color:#f5f7fb}
 #courierApp .courier-today{background:#1c2b3b;border-color:#34465b}
 #courierApp .card,#courierApp .section,#courierApp .courier-earning-card{
  background:#152230;color:#f5f7fb;border:1px solid #304154;box-shadow:none;
@@ -37,9 +39,22 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 }
 #courierApp .attendance-checkin-banner.warn{background:#25251f!important;border-color:#574629!important;color:#f4ead7!important}
 #courierApp .attendance-checkin-banner.ok{background:#152e27!important;border-color:#305b49!important;color:#b9efce!important}
+#courierApp #attendanceCheckinStatus .attendance-checkin-banner.ok{align-items:center;padding:11px 15px;background:#152230!important;border-color:#304154!important;color:#f5f7fb!important}
+#courierApp #attendanceCheckinStatus .attendance-checkin-banner.ok .courier-notice-icon{background:transparent;color:#80e6b5;width:auto;height:auto;font-size:17px}
+#courierApp .courier-checkin-today{margin-left:auto;color:#aab9cb;font-size:13px;font-weight:500;white-space:nowrap}
 #courierApp .attendance-checkin-banner.err{background:#372027!important;border-color:#74404c!important;color:#ffcad0!important}
 #courierApp .courier-notice-icon{background:#42331c;color:#f1b846}
+#courierApp .attendance-checkin-actions{grid-template-columns:1fr}
+#courierApp .attendance-scan-btn{width:100%;background:#101827;color:#f5f7fb;box-shadow:none}
 #courierApp #departureCard{border-top:3px solid #dba037}
+#courierApp #departureCard.courier-departure-locked #departureSubmit{display:none}
+#courierApp #departureCard.courier-departure-locked .courier-helper{display:none}
+#courierApp #departureCard.courier-departure-locked #departureCount{opacity:.62}
+#courierApp #departureCard.courier-departure-locked .courier-add-row{margin-top:15px}
+#courierApp #departureCard.courier-departure-empty #departureSubmit{margin-top:14px}
+#courierApp #departureCard .courier-add-row{margin-top:12px}
+#courierApp #departureCard .courier-card-heading{align-items:center}
+#courierApp #departureCard .courier-card-heading h2{font-size:23px}
 #courierApp #orderCounter,#courierApp .badge.gray{background:#233447;color:#c9d5e4;border:1px solid #36485e}
 #courierApp .form label{color:#e7edf6}
 #courierApp input,#courierApp select,#courierApp textarea,
@@ -83,6 +98,8 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
  #courierApp .courier-topbar{background:#0b131c!important}
  #courierApp .content{padding-top:14px!important}
  #courierApp .courier-home-card,#courierApp .courier-home-direct{border-radius:17px}
+ #courierApp #courierHome.courier-home-direct{padding:11px 14px}
+ #courierApp .courier-checkin-today{font-size:12px}
  #courierApp .courier-earnings-summary{gap:11px}
  #courierApp .courier-earning-card{border-radius:16px}
  #courierApp .courier-mobile-nav{background:#0c151f!important;box-shadow:0 10px 28px rgba(0,0,0,.32)!important}
