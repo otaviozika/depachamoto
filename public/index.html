@@ -960,7 +960,7 @@
 body.staging-mode .staging-banner{display:block}
 body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
 </style>
-<link rel="stylesheet" href="/courier-dark.css?v=6">
+<link rel="stylesheet" href="/courier-dark.css?v=7">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 <style>/* longe-rule-v1 */
 .longe-map{height:380px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
@@ -1918,19 +1918,17 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 
     <section id="courierEarningsTab" class="courier-tab-panel" data-courier-panel="earnings">
       <div class="courier-tab-heading">
-        <div class="courier-eyebrow">Meu resumo</div>
         <h1>Ganhos</h1>
-        <p>Valores parciais calculados pelas entregas registradas.</p>
       </div>
       <div class="courier-earnings-summary">
-        <div class="courier-earning-card today"><span>Hoje</span><strong id="myEarningsToday">R$ 0,00</strong><small>Parcial do dia</small></div>
-        <div class="courier-earning-card"><span>Semana</span><strong id="myEarningsWeek">R$ 0,00</strong><small>Segunda até hoje</small></div>
-        <div class="courier-earning-card"><span>Mês</span><strong id="myEarningsMonth">R$ 0,00</strong><small>Do dia 1 até hoje</small></div>
+        <div class="courier-earning-card today"><span>Hoje</span><strong id="myEarningsToday">R$ 0,00</strong><small>Parcial</small></div>
+        <div class="courier-earning-card"><span>Semana</span><strong id="myEarningsWeek">R$ 0,00</strong></div>
+        <div class="courier-earning-card"><span>Mês</span><strong id="myEarningsMonth">R$ 0,00</strong></div>
       </div>
 
       <section id="courierMonthlyCard" class="card courier-monthly-card" aria-label="Ganhos por dia do mês">
         <div class="courier-monthly-heading">
-          <div><div class="courier-eyebrow">Extrato mensal</div><h2>Quanto fiz em cada dia</h2><p class="small muted">Almoço e janta separados. Dias sem registro aparecem com R$ 0,00.</p></div>
+          <div class="courier-eyebrow">Extrato mensal</div>
           <div class="courier-month-controls" role="group" aria-label="Selecionar mês e ano">
             <button type="button" class="btn outline courier-month-arrow" onclick="changeCourierPaymentMonth(-1)" aria-label="Mês anterior">‹</button>
             <div class="courier-month-picker">
@@ -1942,19 +1940,19 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
         </div>
         <div id="courierMonthTotal" class="courier-month-total">Carregando...</div>
         <div id="courierMonthDays" class="courier-month-days" aria-live="polite">Carregando os dias do mês...</div>
+        <button id="courierMonthShowAll" type="button" class="courier-month-show-all hidden" aria-expanded="false" onclick="toggleCourierMonthDays()">Ver todos os dias <span aria-hidden="true">›</span></button>
       </section>
 
-      <div class="courier-section-heading"><h2>Entregas realizadas</h2><p>Quantidade de pedidos em cada período.</p></div>
-      <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
-        <div class="card"><div class="label">Hoje</div><div id="statToday" class="metric">0</div></div>
-        <div class="card"><div class="label">Semana atual</div><div id="statWeek" class="metric">0</div></div>
-        <div class="card"><div class="label">Mês atual</div><div id="statMonth" class="metric">0</div></div>
-      </div>
-
-      <div id="myPaymentCard" class="card courier-payment-card" style="margin-bottom:18px">
+      <details id="myPaymentCard" class="card courier-payment-card courier-earnings-disclosure">
+        <summary><span>Detalhes de hoje<strong id="myPaymentTotal" class="payment-own-total">R$ 0,00</strong></span><span aria-hidden="true" class="courier-disclosure-arrow">›</span></summary>
+        <div class="courier-payment-details">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
-          <div><div class="label">Detalhes de hoje</div><div id="myPaymentTotal" class="payment-own-total">R$ 0,00</div></div>
           <span id="myPaymentStatus" class="badge gray">EM ABERTO</span>
+        </div>
+        <div class="cards courier-stats" style="grid-template-columns:repeat(3,1fr)">
+          <div class="card"><div class="label">Hoje</div><div id="statToday" class="metric">0</div></div>
+          <div class="card"><div class="label">Semana</div><div id="statWeek" class="metric">0</div></div>
+          <div class="card"><div class="label">Mês</div><div id="statMonth" class="metric">0</div></div>
         </div>
         <div class="payment-mini">
           <div><div class="label">Entregas</div><b id="myPaymentDeliveries">0</b></div>
@@ -1963,14 +1961,16 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div><div class="label">Ajustes líquidos</div><b id="myPaymentAdjustments">R$ 0,00</b></div>
         </div>
         <div id="myPaymentMessage" class="small muted" style="margin-top:10px">Calculado automaticamente pelas entregas registradas hoje.</div>
-      </div>
-      <div id="myPixCard" class="card courier-pix-card" style="margin-bottom:18px">
+        </div>
+      </details>
+      <p class="courier-earnings-note">Valores parciais das entregas registradas.</p>
+      <details id="myPixCard" class="card courier-pix-card courier-pix-disclosure">
+        <summary>Meu PIX <span id="myPixStatus" class="badge gray">NÃO CADASTRADO</span><span aria-hidden="true" class="courier-disclosure-arrow">›</span></summary>
+        <div class="courier-pix-details">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
           <div>
-            <h2 style="margin:0">Meu PIX</h2>
             <div class="small muted" style="margin-top:4px">Cadastre sua chave. Ela só será usada em pagamentos depois que o administrador confirmar.</div>
           </div>
-          <span id="myPixStatus" class="badge gray">NÃO CADASTRADO</span>
         </div>
         <form id="myPixForm" class="form" style="margin-top:14px">
           <div class="pix-self-grid">
@@ -1990,7 +1990,8 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <button id="myPixSaveBtn" class="btn primary" type="submit">Salvar meu PIX</button>
         </form>
         <div id="myPixMsg"></div>
-      </div>
+        </div>
+      </details>
     </section>
   </main>
   <nav class="courier-mobile-nav" aria-label="Navegação do motoboy">
@@ -3889,6 +3890,14 @@ async function saveMonthlyPayments(){
 }
 
 let courierPaymentMonth='';
+let courierMonthExpanded=false;
+function toggleCourierMonthDays(){
+  courierMonthExpanded=!courierMonthExpanded;
+  document.querySelectorAll('#courierMonthDays .courier-month-day.extra').forEach(day=>day.classList.toggle('hidden',!courierMonthExpanded));
+  const button=$('courierMonthShowAll');
+  button.setAttribute('aria-expanded',String(courierMonthExpanded));
+  button.firstChild.textContent=courierMonthExpanded?'Mostrar menos dias ':'Ver todos os dias ';
+}
 function courierMonthToday(){
   const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).formatToParts(new Date());return parts.find(p=>p.type==='year').value+'-'+parts.find(p=>p.type==='month').value;
 }
@@ -3907,10 +3916,14 @@ async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthTo
   $('courierPaymentMonth').max=courierMonthToday();
   $('courierNextMonth').disabled=month>=courierMonthToday();
   $('courierMonthDays').textContent='Carregando os dias do mês...';
+  $('courierMonthShowAll').classList.add('hidden');
   try{
     const data=await api('/api/courier/payment/month?month='+encodeURIComponent(month));
     if(month!==courierPaymentMonth)return;
-    $('courierMonthTotal').textContent='Total do mês: '+brl(data.summary.total_amount)+' • '+data.summary.delivery_count+' entregas';
+    $('courierMonthTotal').textContent=data.summary.delivery_count+' entregas • '+brl(data.summary.total_amount);
+    courierMonthExpanded=false;
+    const visibleDays=data.days.filter(day=>!day.future&&(Number(day.delivery_count)>0||Number(day.total_amount)!==0));
+    const previewDates=new Set(visibleDays.slice(0,2).map(day=>day.date));
     $('courierMonthDays').innerHTML=data.days.map(day=>{
       const weekday=new Intl.DateTimeFormat('pt-BR',{weekday:'short',timeZone:'UTC'}).format(new Date(day.date+'T12:00:00Z'));
       const dateLabel=day.date.slice(8)+'/'+day.date.slice(5,7);
@@ -3928,12 +3941,17 @@ async function loadCourierPaymentMonth(month=courierPaymentMonth||courierMonthTo
         }
         return '<div class="courier-month-shift"><span><b class="courier-shift-tag '+(label==='Almoço'?'lunch':label==='Janta'?'dinner':'legacy')+'">'+escapeHtml(label)+'</b> · '+Number(shift.delivery_count||0)+' entregas</span><strong>'+brl(shift.total_amount)+'</strong></div>';
       }).join('');
-      return '<details class="courier-month-day'+(day.future?' future':'')+'"><summary><span class="courier-month-date"><b>'+dateLabel+'</b><small>'+weekday+'</small></span><span class="courier-month-count">'+(day.future?'Ainda não ocorreu':day.delivery_count+' entrega(s)')+'</span><strong>'+brl(day.total_amount)+'</strong></summary>'+(shifts?'<div class="courier-month-shifts">'+shifts+'</div>':'<div class="courier-month-shifts small muted">'+(day.future?'Dia futuro':'Sem entregas ou pagamento registrado')+'</div>')+'</details>';
+      return '<details class="courier-month-day'+(day.future?' future':'')+(previewDates.has(day.date)?'':' extra hidden')+'"><summary><span class="courier-month-date"><b>'+dateLabel+'</b><small>'+weekday+'</small></span><span class="courier-month-count">'+(day.future?'Ainda não ocorreu':day.delivery_count+' entrega(s)')+'</span><strong>'+brl(day.total_amount)+'</strong></summary>'+(shifts?'<div class="courier-month-shifts">'+shifts+'</div>':'<div class="courier-month-shifts small muted">'+(day.future?'Dia futuro':'Sem entregas ou pagamento registrado')+'</div>')+'</details>';
     }).join('');
+    const button=$('courierMonthShowAll');
+    button.classList.toggle('hidden',data.days.length<=previewDates.size);
+    button.setAttribute('aria-expanded','false');
+    button.firstChild.textContent='Ver todos os dias ';
   }catch(err){
     if(month!==courierPaymentMonth)return;
     $('courierMonthTotal').textContent='Extrato indisponível';
     $('courierMonthDays').textContent=err.message||'Não foi possível carregar os valores deste mês.';
+    $('courierMonthShowAll').classList.add('hidden');
   }
 }
 

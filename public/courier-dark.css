@@ -171,6 +171,48 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 #courierApp .courier-shift-tag.legacy{background:#33383f;color:#c7d0dc}
 @media(max-width:440px){#courierApp .courier-month-controls{width:100%;gap:9px}#courierApp .courier-month-controls .courier-month-arrow{width:44px;min-width:44px}#courierApp #courierPaymentMonth{width:100%;min-width:0;font-size:16px}}
 
+/* Ganhos: resumo e extrato compactos, mantendo o detalhamento acessível. */
+#courierApp #courierEarningsTab .courier-tab-heading{margin-bottom:15px}
+#courierApp #courierEarningsTab .courier-tab-heading h1{margin:0}
+#courierApp .courier-earnings-summary{gap:8px}
+#courierApp .courier-earning-card{min-width:0;padding:14px 12px;background:#152230;border:1px solid #34465b;border-radius:17px;box-shadow:none}
+#courierApp .courier-earning-card.today{background:#222623;border-color:#9d722d}
+#courierApp .courier-earning-card span{color:#e7edf5;font-size:11px;letter-spacing:.08em}
+#courierApp .courier-earning-card strong{color:#f5f7fb;font-size:clamp(15px,2vw,23px);white-space:nowrap}
+#courierApp .courier-earning-card small{color:#aab9cb;font-size:11px}
+#courierApp .courier-monthly-card{margin:14px 0;padding:17px}
+#courierApp .courier-monthly-heading .courier-eyebrow{font-size:12px;letter-spacing:.12em}
+#courierApp .courier-month-controls{margin-top:12px;align-items:center}
+#courierApp .courier-month-picker label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#courierApp .courier-month-total{margin:13px 0 12px}
+#courierApp .courier-month-day summary{grid-template-columns:minmax(55px,auto) minmax(0,1fr) auto;gap:7px}
+#courierApp .courier-month-day summary>strong{font-size:14px}
+#courierApp .courier-month-show-all{width:100%;display:flex;justify-content:space-between;align-items:center;min-height:44px;margin-top:10px;padding:8px 5px;border:0;background:transparent;color:#efb33d;font-weight:800;text-align:left;cursor:pointer}
+#courierApp .courier-month-show-all span{font-size:22px}
+#courierApp .courier-month-day.hidden,#courierApp .courier-month-show-all.hidden{display:none!important}
+#courierApp .courier-earnings-disclosure{margin:0 0 12px;padding:0;border-radius:17px}
+#courierApp .courier-earnings-disclosure>summary{display:flex;justify-content:space-between;align-items:center;min-height:78px;padding:15px 18px;list-style:none;cursor:pointer}
+#courierApp .courier-earnings-disclosure>summary::-webkit-details-marker,#courierApp .courier-pix-disclosure>summary::-webkit-details-marker{display:none}
+#courierApp .courier-earnings-disclosure .payment-own-total{display:block;margin-top:4px;font-size:25px;color:#f5f7fb}
+#courierApp .courier-disclosure-arrow{font-size:27px;color:#b9c9da;line-height:1;transition:transform .15s}
+#courierApp details[open]>.courier-disclosure-arrow,#courierApp details[open]>summary>.courier-disclosure-arrow{transform:rotate(90deg)}
+#courierApp .courier-payment-details,#courierApp .courier-pix-details{padding:0 18px 17px;border-top:1px solid #304154}
+#courierApp .courier-payment-details{padding-top:16px}
+#courierApp .courier-earnings-note{margin:12px 3px 16px;color:#aab9cb;font-size:12px}
+#courierApp .courier-pix-disclosure{padding:0;margin-bottom:16px;border-radius:14px}
+#courierApp .courier-pix-disclosure>summary{display:flex;align-items:center;gap:9px;min-height:48px;padding:10px 15px;list-style:none;cursor:pointer;font-weight:750}
+#courierApp .courier-pix-disclosure>summary .badge{margin-left:auto;font-size:10px}
+#courierApp .courier-pix-details{padding-top:12px}
+@media(max-width:720px){
+ #courierApp .courier-earnings-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #courierApp .courier-earning-card{display:block;padding:12px 9px;min-height:94px}
+ #courierApp .courier-earning-card strong{display:block;margin-top:10px;font-size:clamp(14px,4vw,20px);text-align:left;letter-spacing:-.035em}
+ #courierApp .courier-earning-card small{display:block;margin-top:6px}
+ #courierApp .courier-month-day summary{grid-template-columns:46px minmax(0,1fr) auto}
+ #courierApp .courier-month-count{font-size:11px}
+}
+@media(max-width:365px){#courierApp .courier-earning-card strong{font-size:13px}#courierApp .courier-month-count{font-size:10px}}
+
 /* Courier order card: customer, address and navigation (v2). */
 #courierApp .delivery-list{gap:14px}
 #courierApp .delivery-item{
