@@ -93,6 +93,30 @@ body:has(#courierApp:not(.hidden)){background:#0c141e;color:#f5f7fb}
 #courierApp .courier-mobile-nav button.active{background:#302a21;color:#efb33d}
 #courierApp .courier-mobile-nav button.active span{color:#efb33d}
 #courierApp .courier-section-heading{color:#f5f7fb}
+#courierApp .courier-route-idle,#courierApp .courier-focus-card,#courierApp .courier-route-disclosure{background:#152230;border:1px solid #304154;border-radius:18px;color:#f5f7fb;margin-bottom:13px}
+#courierApp .courier-route-idle{padding:20px}
+#courierApp .courier-route-idle h2,#courierApp .courier-focus-card h2{margin:8px 0 12px;color:#f5f7fb;font-size:24px}
+#courierApp .courier-route-idle p{margin:0 0 17px;color:#cbd5e1}
+#courierApp .courier-route-idle .btn{min-height:46px}
+#courierApp .courier-focus-card{padding:19px}
+#courierApp .courier-focus-address{font-size:18px;font-weight:800;margin:15px 0;color:#f5f7fb}
+#courierApp .courier-focus-card .delivery-navigation{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#courierApp .courier-focus-card .delivery-navigation .btn{min-width:0;font-size:12px;padding:9px 5px}
+#courierApp .courier-focus-card .delivery-actions>.btn.success{width:100%;min-height:50px;margin-top:11px}
+#courierApp .courier-route-disclosure>summary,#courierApp .courier-future-order>summary{cursor:pointer;list-style:none;padding:15px 17px;font-weight:800}
+#courierApp .courier-route-disclosure>summary::-webkit-details-marker,#courierApp .courier-future-order>summary::-webkit-details-marker,#courierApp .courier-focus-detail>summary::-webkit-details-marker{display:none}
+#courierApp .courier-route-disclosure>summary:after{content:'⌄';float:right;color:#cbd5e1}
+#courierApp .courier-route-disclosure[open]>summary:after{content:'⌃'}
+#courierApp .courier-route-disclosure[open]{padding-bottom:12px}
+#courierApp .courier-route-disclosure>.delivery-item,#courierApp .courier-route-disclosure>.my-route,#courierApp .courier-route-disclosure>.hero{margin:8px 12px}
+#courierApp .courier-future-list{display:grid;gap:8px;padding:0 12px}
+#courierApp .courier-future-order{background:#111e2b;border:1px solid #34465b;border-radius:12px}
+#courierApp .courier-future-order>summary span{display:block;color:#aab9cb;font-weight:500;font-size:12px;margin-top:4px}
+#courierApp .courier-future-order>.delivery-item{margin:8px}
+#courierApp .courier-focus-detail{margin-top:9px}
+#courierApp .courier-focus-detail>summary{padding:10px;text-align:center;color:#aab9cb;cursor:pointer}
+#courierApp .courier-focus-detail>.delivery-item{margin-top:7px}
+#courierApp .courier-pending{border-color:#8c703d}
 #courierApp .stage-badge{box-shadow:none}
 @media(max-width:720px){
  #courierApp .courier-topbar{background:#0b131c!important}
