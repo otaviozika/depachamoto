@@ -960,7 +960,7 @@
 body.staging-mode .staging-banner{display:block}
 body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacing:0}
 </style>
-<link rel="stylesheet" href="/courier-dark.css?v=5">
+<link rel="stylesheet" href="/courier-dark.css?v=6">
 <!-- APPROVED COURIER DELIVERY CARD V1 -->
 <style>/* longe-rule-v1 */
 .longe-map{height:380px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:#e5e7eb;position:relative;z-index:0;isolation:isolate}
@@ -1903,23 +1903,17 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
     <section id="courierRouteTab" class="courier-tab-panel" data-courier-panel="route">
       <div class="courier-tab-heading">
         <div class="courier-eyebrow">Minha operação</div>
-        <h1>Rota e pedidos</h1>
-        <p>Acompanhe a rota ativa e confirme as entregas pendentes.</p>
+        <h1>Minha rota</h1>
+        <p id="courierRouteProgress" class="hidden"></p>
       </div>
+      <div id="courierRouteIdle" class="card courier-route-idle hidden"><div class="courier-eyebrow">Minha operação</div><h2>Nenhuma entrega em rota</h2><p>Você pode iniciar uma nova saída.</p><button type="button" class="btn primary" onclick="activateCourierTab('home',null,true)">Iniciar nova saída</button></div>
+      <div id="courierRouteFocus"></div>
+      <details id="courierRouteAdvanced" class="courier-route-disclosure hidden"><summary>Detalhes da operação</summary>
       <div id="activeDispatch"></div>
       <div id="courierMyRoute"></div>
-      <div id="courierDeliveriesCard" class="card" style="margin-bottom:18px">
-        <div class="courier-card-heading">
-          <div>
-            <div class="courier-eyebrow">Pedidos de hoje</div>
-            <h2 style="margin:4px 0 0">Entregas e confirmações</h2>
-            <div class="small muted" style="margin-top:4px">Pedidos concluídos aparecem aqui. O que ainda precisar de código ficará pendente.</div>
-          </div>
-          <button type="button" class="btn outline courier-refresh-btn" onclick="loadCourierDeliveries()">Atualizar</button>
-        </div>
-        <div id="courierDeliveriesList" class="delivery-list"></div>
-      </div>
-      <div class="section courier-history-card"><div class="section-head"><b>Histórico de saídas</b></div><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></div>
+      </details>
+      <div id="courierDeliveriesCard"><div id="courierDeliveriesList" class="delivery-list"></div></div>
+      <details class="courier-route-disclosure courier-history-card"><summary>Histórico de saídas</summary><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></details>
     </section>
 
     <section id="courierEarningsTab" class="courier-tab-panel" data-courier-panel="earnings">
@@ -4249,6 +4243,25 @@ function courierDeliveryRow(x){
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
+function courierFocusOrder(x,stop){
+  const display=escapeHtml(x.display_id||String(x.local_order_number||'').replace(/^#/,''));
+  const street=String(x.address_parts?.street||x.navigation?.address||'').trim();
+  const number=String(x.address_parts?.number||'').trim();
+  const address=[street,number].filter(Boolean).join(', ');
+  const route=courierPreDeparture?.route;
+  const blocked=!!stop&&(route?.ack_required||stop.is_next!==true);
+  const navigation=stop?.navigation?.prefer_coordinates?{...x,navigation:stop.navigation}:x;
+  const platform=String(x.platform||'ifood').toLowerCase();
+  const confirm=x.can_confirm===true?(platform==='anotaai'
+    ?`<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||'')})'>Confirmar entrega</button>`
+    :`<button type="button" class="btn success" onclick='openDeliveryConfirmModal(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||'')})'>Confirmar entrega</button>`):'';
+  return `<div class="courier-focus-card"><div class="courier-eyebrow">${stop?.is_next===true?'Próxima entrega':'Entrega em rota'}</div><h2>Pedido #${display}</h2><div class="courier-focus-address">${escapeHtml(address||'Endereço no detalhe do pedido')}</div>
+    ${x.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin. Confira os detalhes.</div>':''}
+    ${courierDeliveryPaymentHtml(x)}
+    ${blocked?'<div class="delivery-address-changed">Navegação bloqueada até confirmar a atualização da rota.</div>':courierDeliveryNavigationButtons(navigation)}
+    <div class="delivery-actions">${confirm}${typeof incidentActionHtml==='function'?incidentActionHtml(stop):''}</div>
+    <details class="courier-focus-detail"><summary>Ver detalhes do pedido</summary>${courierDeliveryRow(x)}</details></div>`;
+}
 
 async function loadCourierDeliveries(){
   if(!me||me.role!=='courier'||!$('courierDeliveriesCard'))return;
@@ -4269,25 +4282,30 @@ async function loadCourierDeliveries(){
       routeBadge.classList.toggle('hidden',attentionCount===0);
     }
 
-    if(!hasAny){
-      $('courierDeliveriesList').innerHTML='<div class="empty">Nenhum pedido registrado hoje.</div>';
-      return;
-    }
+    const route=courierPreDeparture?.route;
+    const ordered=current.slice().sort((a,b)=>{
+      const pos=x=>route?.stops?.find(s=>s.platform===x.platform&&String(s.external_order_id)===String(x.order_id))?.sequence??999;
+      return pos(a)-pos(b);
+    });
+    const next=ordered.find(x=>route?.stops?.some(s=>s.platform===x.platform&&String(s.external_order_id)===String(x.order_id)&&s.is_next))||ordered[0];
+    const others=ordered.filter(x=>x!==next);
+    const stop=route?.stops?.find(s=>s.platform===next?.platform&&String(s.external_order_id)===String(next?.order_id));
+    $('courierRouteFocus').innerHTML=next?courierFocusOrder(next,stop):'';
+    $('courierRouteProgress').textContent=route?.counts?`${route.counts.delivered} de ${route.counts.total} entregas`:ordered.length?`${ordered.length} entrega(s) em rota`:'';
+    $('courierRouteProgress').classList.toggle('hidden',!next);
+    if(!hasAny){$('courierDeliveriesList').innerHTML='';return}
 
     let out='';
-    if(current.length){
-      out+=`<div class="delivery-section-label">Em rota agora</div>${current.map(courierDeliveryRow).join('')}`;
-    }
+    if(others.length)out+=`<details class="courier-route-disclosure"><summary>Mais ${others.length} entrega(s)</summary><div class="courier-future-list">${others.map((x,i)=>`<details class="courier-future-order"><summary><b>${i+2} · Pedido #${escapeHtml(x.display_id||x.local_order_number||'')}</b><span>${escapeHtml([x.address_parts?.street,x.address_parts?.number].filter(Boolean).join(', ')||x.navigation?.address||'Ver endereço')}</span></summary>${courierDeliveryRow(x)}</details>`).join('')}</div></details>`;
     if(pending.length){
-      out+=`<div class="delivery-section-label">Pendentes de confirmação</div>
-        <div class="small muted" style="margin-bottom:6px">Estes pedidos ainda precisam ser confirmados.</div>
-        ${pending.map(courierDeliveryRow).join('')}`;
+      out+=`<details class="courier-route-disclosure courier-pending" open><summary>Pendentes de confirmação · ${pending.length}</summary>${pending.map(courierDeliveryRow).join('')}</details>`;
     }
     if(completed.length){
-      out+=`<div class="delivery-section-label">Confirmados hoje</div>${completed.map(courierDeliveryRow).join('')}`;
+      out+=`<details class="courier-route-disclosure"><summary>Entregas concluídas hoje · ${completed.length}</summary>${completed.map(courierDeliveryRow).join('')}</details>`;
     }
     $('courierDeliveriesList').innerHTML=out;
   }catch(err){
+    $('courierRouteFocus').innerHTML='';
     $('courierDeliveriesList').innerHTML=`<div class="msg err">${escapeHtml(err.message)}</div>`;
   }
 }
@@ -4656,6 +4674,9 @@ async function loadCourier({related=true}={}){
 
   $('departureCard').classList.toggle('hidden',!!courierPreDeparture.pre_departure);
   if(!$('orderFields').querySelector('.order-row'))resetOrderFields();
+  $('courierRouteIdle').classList.toggle('hidden',!!d.active);
+  $('courierRouteAdvanced').classList.toggle('hidden',!d.active);
+  if(courierPreDeparture?.route?.ack_required||!navigator.onLine)$('courierRouteAdvanced').open=true;
 
   if(d.active){
     const x=d.active;
@@ -4677,10 +4698,7 @@ async function loadCourier({related=true}={}){
       $('departureCard').insertBefore(note,$('departureCard').children[2]||null);
     }
   }else{
-    const last=d.last_finished;
-    const waiting=last?.released_at?Math.max(0,Math.floor((serverNowMs()-Date.parse(last.released_at))/60000)):null;
-    const adminReleased=last?.return_source==='ADMIN_PENDING_DELIVERIES_OVERRIDE';
-    $('activeDispatch').innerHTML=last?`<section class="hero courier-route-card" style="background:#10231c;border:1px solid #287d54;border-radius:18px"><div class="courier-route-kicker">MINHA OPERAÇÃO</div><h2>Nova saída autorizada</h2><p>${adminReleased?'Liberado pelo administrador. Entregas anteriores pendentes continuam disponíveis para confirmação.':'Todas as entregas da última saída foram resolvidas.'}</p><div class="courier-route-clock"><span>${adminReleased?'Tempo desde a liberação administrativa':'Aguardando próxima saída'}</span><strong class="big">${waiting===null?'—':Math.floor(waiting/60)+'h '+String(waiting%60).padStart(2,'0')+'min'}</strong></div></section>`:'';
+    $('activeDispatch').innerHTML='';
     $('currentDepartureNote')?.remove();
   }
 
