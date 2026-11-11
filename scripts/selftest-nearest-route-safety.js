@@ -64,7 +64,7 @@ check("nenhum botão antigo de mapa fica ativo antes do Ciente", () => {
 });
 check("tempo viário e pino exato são a base da rota operacional", () => {
   const service = fs.readFileSync(new URL("../lib/pre-departure-service.js", import.meta.url), "utf8");
-  assert.match(service, /planFastestViableRoute\(/);
+  assert.match(service, /planNearestDelayRoute\(/);
   assert.match(service, /matrix\.minutes/);
   assert.doesNotMatch(service, /requiredFirstIndex = fromOrigin/);
   assert.match(service, /prefer_coordinates: validCoordinate\(address\)/);
