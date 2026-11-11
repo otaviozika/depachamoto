@@ -580,7 +580,9 @@ await scenario(27, "Dois pedidos já entregues e a rota dos três restantes reca
   const delivered = view.stops.slice(0, 2).map(s => s.order_number);
   const pending = view.stops.slice(2);
   const target = route26.orders.find(o => o.id === pending[1].external_order_id);
-  const r = await correct(target, at(200, 3500), 0);
+  // A different optimizer can leave the previously corrected order pending.
+  const version = (await query("SELECT COALESCE(MAX(version),0)::int AS version FROM order_address_overrides WHERE platform=$1 AND external_order_id=$2", [target.platform, target.id])).rows[0].version;
+  const r = await correct(target, at(200, 3500), version);
   assert.equal(r.status, 200);
   const after = (await getState(25)).route;
   assert.deepEqual(plain(after.stops.slice(0, 2).map(s => [s.order_number, s.state])), plain(delivered.map(n => [n, "DELIVERED"])));
@@ -588,6 +590,16 @@ await scenario(27, "Dois pedidos já entregues e a rota dos três restantes reca
   const routeRow = (await query("SELECT route FROM dispatch_routes WHERE dispatch_id=$1", [dispatch.id])).rows[0].route;
   const last = routeRow.history.at(-1);
   assert.equal(routeRow.pending_plan.evaluated, 6, "3! sequências dos pendentes");
+  assert.equal(routeRow.pending_plan.strategy, "NEAREST_DELAY");
+  assert.equal(routeRow.pending_plan.params.include_return, true);
+  const confirmedStore = await service.storeOrigin();
+  assert.equal(routeRow.pending_plan.return_destination.latitude, confirmedStore.latitude);
+  assert.equal(routeRow.pending_plan.return_destination.longitude, confirmedStore.longitude);
+  const planned = routeRow.pending_plan;
+  const finalStop = planned.stops.at(-1);
+  assert.equal(planned.duration_minutes, finalStop.arrival_minutes + planned.params.stop_minutes + planned.return_minutes);
+  const finalIndex = pending.findIndex(s => s.external_order_id === finalStop.external_order_id) + 1;
+  assert.equal(planned.return_minutes, planned.matrix_minutes[finalIndex][pending.length + 1]);
   assert.ok(last.origin.startsWith("ENTREGA"), "origem confiável = última entrega confirmada");
   assert.equal(after.stops.find(s => s.is_next).state, "PENDING");
   return `entregues mantidos (${delivered.join(", ")}); 3 pendentes recalculados com ${routeRow.pending_plan.evaluated} sequências a partir de "${last.origin}"; nova ordem pendente ${last.pending_sequence.join(" → ")}`;
@@ -935,6 +947,33 @@ await scenario("S7", "Ativação para o plantão com dispensa por dia operaciona
   assert.equal((await getState(41)).enabled.pre_departure, true);
   assert.equal((await getState(42)).enabled.pre_departure, false);
   return "16 motoboys abrangidos, dispensa individual, pré-saída aberta preservada, saída direta autorizada, expiração diária e retorno ao piloto";
+});
+
+await scenario("S8", "Sequência desligada não calcula; ativação depende do administrador", async () => {
+  routesEnv = { OPENROUTESERVICE_API_KEY: "test-key" };
+  service = makeService(); context.preDepartureService = service;
+  await service.saveSettings({ actorUserId: 1, flags: { pre_departure: true, route_planner: false }, scope: "all", reason: "Validar publicação com sequência desligada" });
+  const orders = [await ifood(9901, at(63, 1470)), await ifood(9902, at(247, 1930))];
+  const calls = { matrix: google.matrix, geocode: google.geocode, resolve: google.resolve };
+  let pd = await checkAll(38, (await createPd(38, orders)).body.pre_departure);
+  pd = (await route(38, pd)).body.pre_departure;
+  assert.equal(pd.route_status, "DISABLED");
+  assert.equal(pd.route.source, "TYPED_ORDER");
+  assert.deepEqual(pd.route.stops.map(s => s.order_number), orders.map(o => o.number));
+  assert.deepEqual({ matrix: google.matrix, geocode: google.geocode, resolve: google.resolve }, calls);
+  const on = await call("PUT /api/admin/pre-departure/settings", { user: admin, body: { flags: { route_planner: true }, reason: "Ativação explícita para teste" } });
+  assert.equal(on.status, 200);
+  pd = (await route(38, pd)).body.pre_departure;
+  assert.equal(pd.route.strategy, "NEAREST_DELAY");
+  assert.equal(pd.route_status, "READY");
+  assert.ok(google.matrix > calls.matrix);
+  await service.saveSettings({ actorUserId: 1, flags: { route_planner: false }, reason: "Manter sequência desligada após teste" });
+  const count = google.matrix;
+  pd = (await route(38, pd)).body.pre_departure;
+  assert.equal(pd.route_status, "DISABLED");
+  assert.equal(google.matrix, count);
+  await service.cancel({ actorUserId: 38, courierId: 38, id: pd.id });
+  return "zero chamadas ao provedor com sequência desligada; admin liga NEAREST_DELAY; desligar restaura ordem digitada";
 });
 
 const failed = results.filter(r => r.result === "FAIL");
