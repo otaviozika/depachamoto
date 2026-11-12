@@ -258,7 +258,7 @@ for (const n of [1, 2, 3, 4, 5]) {
 }
 
 
-await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(141,'Motoboy 141','m41','x','courier',true,'APPROVED'),(142,'Motoboy 142','m42','x','courier',true,'APPROVED'),(143,'Motoboy 143','m43','x','courier',true,'APPROVED')");
+await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(141,'Motoboy 141','m141','x','courier',true,'APPROVED'),(142,'Motoboy 142','m142','x','courier',true,'APPROVED'),(143,'Motoboy 143','m143','x','courier',true,'APPROVED')");
 
 await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas conferidas e em ordem livre", async () => {
   const orders=[
