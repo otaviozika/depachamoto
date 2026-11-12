@@ -6404,13 +6404,32 @@ async function openAddressFix(platform,externalId){
       <div class="form" style="margin-top:10px"><label>Ocorrência<textarea id="afOccurrence" rows="3" maxlength="500"></textarea></label><button type="button" class="btn primary" onclick="saveAddressOccurrence()">Registrar ocorrência</button></div>`;
   $('addressFixBody').innerHTML=`<div class="address-compare">${addressFixBox('Original (plataforma)',a.original)}${addressFixBox(a.version?`Vigente (versão ${Number(a.version)})`:'Vigente',a.current)}</div>${body}${history}`;
   $('addressFixModal').style.display='grid';
+  // A saved map pin must correspond to the address currently in the form.
+  for(const id of ['afStreet','afNumber','afNeighborhood','afCity','afState','afPostal']){
+    $(id)?.addEventListener('input',invalidateAddressFixLocation);
+  }
 }
 function addressFixFields(){
   return {street:$('afStreet').value,number:$('afNumber').value,complement:$('afComplement').value,neighborhood:$('afNeighborhood').value,
     city:$('afCity').value,state:$('afState').value,postal_code:$('afPostal').value,reference:$('afReference').value};
 }
+function addressFixLocationSignature(fields){
+  return ['street','number','neighborhood','city','state','postal_code'].map(
+    k=>String(fields?.[k]||'').trim().toLowerCase()).join('|');
+}
+function invalidateAddressFixLocation(){
+  if(!addressFixState||addressFixState.mode==='store')return;
+  if(addressFixState.location_signature===addressFixLocationSignature(addressFixFields()))return;
+  addressFixState.point=null;
+  addressFixState.location_source=null;
+  if($('addressFixSave'))$('addressFixSave').disabled=true;
+  message('addressFixMsg','Endereço alterado. Localize e confira novamente o ponto no mapa antes de salvar.','');
+}
 async function showAddressFixPoint(point,source){
   addressFixState.point=point;addressFixState.location_source=source;
+  if(addressFixState.mode!=='store'){
+    addressFixState.location_signature=addressFixLocationSignature(addressFixFields());
+  }
   const el=$('addressFixMap');el.classList.remove('hidden');
   const L=await loadLeaflet();
   if(!addressFixMap){
@@ -6427,11 +6446,22 @@ async function showAddressFixPoint(point,source){
   $('addressFixSave').disabled=false;
 }
 async function geocodeAddressFix(){
+  const fields=addressFixFields();
+  const requested=addressFixLocationSignature(fields);
+  const current=addressFixState;
   try{
-    const d=await api('/api/admin/orders/address/geocode',{method:'POST',body:JSON.stringify({fields:addressFixFields()})});
+    const d=await api('/api/admin/orders/address/geocode',{method:'POST',body:JSON.stringify({fields})});
+    if(current!==addressFixState||requested!==addressFixLocationSignature(addressFixFields())){
+      message('addressFixMsg','O endereço mudou durante a consulta. Localize novamente.','');
+      return;
+    }
     message('addressFixMsg',d.location.warning||`Localizado a ${(d.location.distance_from_store_meters/1000).toFixed(1).replace('.',',')} km da loja (em linha reta). Confira o ponto no mapa.`,d.location.warning?'err':'ok');
     await showAddressFixPoint({latitude:d.location.latitude,longitude:d.location.longitude},'GOOGLE');
   }catch(err){
+    if(current!==addressFixState||requested!==addressFixLocationSignature(addressFixFields())){
+      message('addressFixMsg','Endereço mudou. Localize novamente.','');
+      return;
+    }
     const cur=addressFixState?.current;
     const start=cur?.latitude!=null&&cur?.longitude!=null?{latitude:cur.latitude,longitude:cur.longitude}:{latitude:-23.62446,longitude:-46.55491};
     message('addressFixMsg',`${err.message} Arraste o marcador até o local correto.`,'err');
@@ -6440,6 +6470,10 @@ async function geocodeAddressFix(){
 }
 async function saveAddressFix(){
   const a=addressFixState;if(!a?.point)return;
+  if(a.location_signature!==addressFixLocationSignature(addressFixFields())){
+    invalidateAddressFixLocation();
+    return message('addressFixMsg','Confira novamente o ponto no mapa para esse endereço.','err');
+  }
   const reason=$('afReason').value.trim();
   if(reason.length<5)return message('addressFixMsg','Informe o motivo da alteração (mínimo de 5 caracteres).','err');
   $('addressFixSave').disabled=true;
