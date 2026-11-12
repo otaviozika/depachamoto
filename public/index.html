@@ -6323,8 +6323,8 @@ function renderManualRouteEditor(){
       <b>${i+1}. ${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span>
       <span class="small">${escapeHtml(o.address)}</span>
       <div class="pd-admin-actions">
-        <button type="button" class="btn outline" aria-label="Subir ${escapeHtml(o.order_number)}" ${i===0||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${i},-1)">↑</button>
-        <button type="button" class="btn outline" aria-label="Descer ${escapeHtml(o.order_number)}" ${i===st.stops.length-1||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${i},1)">↓</button>
+        <button type="button" class="btn outline" aria-label="Subir ${escapeHtml(o.order_number)}" ${i===0||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},-1)">↑</button>
+        <button type="button" class="btn outline" aria-label="Descer ${escapeHtml(o.order_number)}" ${i===st.stops.length-1||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},1)">↓</button>
       </div></div>`).join('')}</div>
     <label>Motivo da orientação (obrigatório)<textarea id="manualRouteReason" rows="2" maxlength="300" placeholder="Ex.: pedido antigo com prioridade">${escapeHtml(st.reason)}</textarea></label>
     <div class="pd-admin-actions"><button type="button" class="btn primary" ${manualRouteBusy?'disabled':''} onclick="saveManualRouteEdit()">${manualRouteBusy?'Salvando...':'Enviar orientação ao motoboy'}</button></div>
