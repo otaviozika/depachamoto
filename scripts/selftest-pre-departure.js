@@ -258,7 +258,7 @@ for (const n of [1, 2, 3, 4, 5]) {
 }
 
 
-await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(41,'Motoboy 41','m41','x','courier',true,'APPROVED'),(42,'Motoboy 42','m42','x','courier',true,'APPROVED'),(43,'Motoboy 43','m43','x','courier',true,'APPROVED')");
+await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(141,'Motoboy 141','m41','x','courier',true,'APPROVED'),(142,'Motoboy 142','m42','x','courier',true,'APPROVED'),(143,'Motoboy 143','m43','x','courier',true,'APPROVED')");
 
 await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas conferidas e em ordem livre", async () => {
   const orders=[
@@ -269,19 +269,19 @@ await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas confe
   const oldMatrix=google.matrix,oldGeocode=google.geocode;
   google.down=true;
   try{
-    let pd=(await createPd(41,orders)).body.pre_departure;
+    let pd=(await createPd(141,orders)).body.pre_departure;
     assert.equal(pd.can_dispatch,false);
-    pd=await checkAll(41,pd);
+    pd=await checkAll(141,pd);
     assert.equal(pd.status,"CHECKED");
     assert.equal(pd.can_dispatch,true);
     assert.equal(pd.route,null);
-    const first=await depart(41,pd);
+    const first=await depart(141,pd);
     assert.equal(first.status,201,JSON.stringify(first.body));
     const dispatch=first.body.dispatch;
-    const replay=await depart(41,pd);
+    const replay=await depart(141,pd);
     assert.equal(replay.status,200,JSON.stringify(replay.body));
     assert.equal(replay.body.duplicate,true);
-    assert.equal(await count("SELECT COUNT(*)::int c FROM dispatches WHERE courier_id=41"),1);
+    assert.equal(await count("SELECT COUNT(*)::int c FROM dispatches WHERE courier_id=141"),1);
     const stops=await stopsOf(dispatch.id);
     assert.equal(stops.length,5);
     const saved=(await query("SELECT route_status FROM dispatch_routes WHERE dispatch_id=$1",[dispatch.id])).rows[0];
@@ -290,11 +290,11 @@ await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas confe
     assert.equal(google.geocode,oldGeocode);
     const last=stops[4];
     if(last.platform==="anotaai"){
-      await query("INSERT INTO anotaai_delivery_confirmations(anotaai_order_id,dispatch_id,courier_id,confirmed_at) VALUES($1,$2,41,NOW())",[last.external_order_id,dispatch.id]);
+      await query("INSERT INTO anotaai_delivery_confirmations(anotaai_order_id,dispatch_id,courier_id,confirmed_at) VALUES($1,$2,141,NOW())",[last.external_order_id,dispatch.id]);
     }else{
-      await query("INSERT INTO ifood_delivery_confirmations(ifood_order_id,dispatch_id,courier_id,status,verified_at) VALUES($1,$2,41,'VERIFIED',NOW())",[last.external_order_id,dispatch.id]);
+      await query("INSERT INTO ifood_delivery_confirmations(ifood_order_id,dispatch_id,courier_id,status,verified_at) VALUES($1,$2,141,'VERIFIED',NOW())",[last.external_order_id,dispatch.id]);
     }
-    const ongoing=(await getState(41)).route;
+    const ongoing=(await getState(141)).route;
     assert.equal(ongoing.counts.delivered,1);
     assert.equal(ongoing.counts.pending,4);
     assert.equal(ongoing.stops[4].state,"DELIVERED");
@@ -305,29 +305,29 @@ await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas confe
 
 await scenario("O2", "Conferência parcial continua bloqueada sem rota obrigatória",async()=>{
   const orders=[await ifood(9810,at(0,650)),await anota(9811,at(120,700))];
-  let pd=(await createPd(42,orders)).body.pre_departure;
-  let attempt=await depart(42,pd);
+  let pd=(await createPd(142,orders)).body.pre_departure;
+  let attempt=await depart(142,pd);
   assert.equal(attempt.status,409);assert.equal(attempt.body.code,"PRE_DEPARTURE_CHECK_PENDING");
-  pd=(await call("POST /api/courier/pre-departures/:id/orders/:orderId/check", {user:courier(42),params:{id:String(pd.id),orderId:String(pd.orders[0].id)},body:{composition_version:pd.composition_version}})).body.pre_departure;
-  attempt=await depart(42,pd);
+  pd=(await call("POST /api/courier/pre-departures/:id/orders/:orderId/check", {user:courier(142),params:{id:String(pd.id),orderId:String(pd.orders[0].id)},body:{composition_version:pd.composition_version}})).body.pre_departure;
+  attempt=await depart(142,pd);
   assert.equal(attempt.status,409);assert.equal(attempt.body.code,"PRE_DEPARTURE_CHECK_PENDING");
-  pd=await checkAll(42,pd);
+  pd=await checkAll(142,pd);
   assert.equal(pd.can_dispatch,true);
-  attempt=await depart(42,pd);
+  attempt=await depart(142,pd);
   assert.equal(attempt.status,201,JSON.stringify(attempt.body));
   return "0/2 e 1/2 sacolas bloqueiam; 2/2 liberam saída sem cálculo";
 });
 
 await scenario("O3", "Falha no cálculo opcional não impede saída com sacolas verificadas",async()=>{
   const orders=[await ifood(9820,at(20,1100)),await ifood(9821,at(90,1350))];
-  let pd=await checkAll(43,(await createPd(43,orders)).body.pre_departure);
+  let pd=await checkAll(143,(await createPd(143,orders)).body.pre_departure);
   google.down=true;
   try{
-    pd=(await route(43,pd)).body.pre_departure;
+    pd=(await route(143,pd)).body.pre_departure;
     assert.equal(pd.route_status,"NEEDS_ADMIN");
     assert.equal(pd.status,"CHECKED");
     assert.equal(pd.can_dispatch,true);
-    const sent=await depart(43,pd);
+    const sent=await depart(143,pd);
     assert.equal(sent.status,201,JSON.stringify(sent.body));
     return "roteador fora do ar → erro informativo, não bloqueio; entrega autorizada sem matriz";
   }finally{google.down=false;}
@@ -537,12 +537,13 @@ await scenario(22, "Endereço incompleto ou ambíguo", async () => {
   for (const [c, o] of [[19, incomplete], [20, far], [21, missing], [21, rough]]) {
     const pd = await checkAll(c, (await createPd(c, [o])).body.pre_departure);
     const v = (await route(c, pd)).body.pre_departure;
-    assert.equal(v.route_status, "NEEDS_ADMIN"); assert.equal(v.status, "BLOCKED"); assert.equal(v.route, null);
+    assert.equal(v.route_status, "NEEDS_ADMIN"); assert.equal(v.status, "CHECKED"); assert.equal(v.route, null);
+    assert.equal(v.can_dispatch,true,"erro na sugestão de roteiro não impede a saída após conferência");
     codes.push(v.route_error.code);
     await service.cancel({ actorUserId: c, courierId: c, id: pd.id });
   }
   assert.deepEqual(codes, ["ADDRESS_INCOMPLETE", "ADDRESS_OUT_OF_REGION", "ADDRESS_NOT_FOUND", "ADDRESS_AMBIGUOUS"]);
-  return `sem número e sem pino → ${codes[0]}; localizado a 80 km → ${codes[1]}; não localizado → ${codes[2]}; só a rua (aproximado) → ${codes[3]}; todos vão para o admin, sem rota fictícia`;
+  return `sem número e sem pino → ${codes[0]}; localizado a 80 km → ${codes[1]}; não localizado → ${codes[2]}; só a rua (aproximado) → ${codes[3]}; rota indisponível informada, sem rota fictícia, mas saída conferida permanece liberada`;
 });
 
 await scenario(23, "Recuperação de uma rota após perda de conexão", async () => {
