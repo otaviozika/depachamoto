@@ -4595,6 +4595,9 @@ async function ackCourierRoute(dispatchId,version){
     const d=await api(`/api/courier/routes/${Number(dispatchId)}/ack`,{method:'POST',body:JSON.stringify({route_version:Number(version)})});
     courierPreDeparture.route=d.route;
     renderCourierMyRoute();
+    // The previous cards may still contain blocked or outdated navigation links.
+    // Rebuild all delivery cards from the freshly acknowledged destination data.
+    await loadCourierDeliveries();
   }catch(err){
     alert(err.message);
     await loadCourierPreDeparture();
@@ -6326,7 +6329,7 @@ function renderManualRouteEditor(){
         <button type="button" class="btn outline" aria-label="Subir ${escapeHtml(o.order_number)}" ${i===0||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},-1)">↑</button>
         <button type="button" class="btn outline" aria-label="Descer ${escapeHtml(o.order_number)}" ${i===st.stops.length-1||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},1)">↓</button>
       </div></div>`).join('')}</div>
-    <label>Motivo da orientação (obrigatório)<textarea id="manualRouteReason" rows="2" maxlength="300" placeholder="Ex.: pedido antigo com prioridade">${escapeHtml(st.reason)}</textarea></label>
+    <label>Motivo da orientação (obrigatório)<textarea id="manualRouteReason" rows="2" maxlength="300" placeholder="Ex.: pedido antigo com prioridade" oninput="if(manualRouteState)manualRouteState.reason=this.value">${escapeHtml(st.reason)}</textarea></label>
     <div class="pd-admin-actions"><button type="button" class="btn primary" ${manualRouteBusy?'disabled':''} onclick="saveManualRouteEdit()">${manualRouteBusy?'Salvando...':'Enviar orientação ao motoboy'}</button></div>
     <div id="manualRouteMsg" class="small muted">O motoboy receberá um aviso e deverá tocar em Ciente. A entrega permanece livre.</div>`;
 }
