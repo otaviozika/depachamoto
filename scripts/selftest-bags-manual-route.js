@@ -114,6 +114,47 @@ test("Uncertain bag check reconciles saved state instead of asking for a second 
   assert.equal(notice,0);
 });
 
+test("Acknowledging a manual change refreshes the order cards and navigation",async()=>{
+  const previous={route:{dispatch_id:51,route_version:2,ack_required:true}};
+  let renders=0,refreshes=0,urls=[];
+  const ctx=vm.createContext({
+    courierPreDeparture:previous,
+    api:async(url,opts)=>{
+      urls.push(url);
+      assert.equal(opts.method,"POST");
+      return {route:{dispatch_id:51,route_version:2,ack_required:false}};
+    },
+    renderCourierMyRoute:()=>{renders++},
+    loadCourierDeliveries:async()=>{refreshes++},
+    alert:msg=>{throw new Error(msg)},
+    loadCourierPreDeparture:async()=>{throw new Error("No recovery should be needed")}
+  });
+  vm.runInContext(piece("async function ackCourierRoute(dispatchId,version){","async function confirmAnotaAiDelivery("),ctx);
+  await vm.runInContext("ackCourierRoute(51,2)",ctx);
+  assert.deepEqual(urls,["/api/courier/routes/51/ack"]);
+  assert.equal(previous.route.ack_required,false);
+  assert.equal(renders,1);
+  assert.equal(refreshes,1,"Navigation and delivery cards must refresh after Ciente");
+});
+
+test("Admin reason survives a background overview rerender",()=>{
+  const htmlEditor=piece("function renderManualRouteEditor(){","function moveManualRouteStop(");
+  assert.match(htmlEditor,/oninput="if\(manualRouteState\)manualRouteState\.reason=this\.value"/);
+  const node={innerHTML:"",classList:{toggle(){}}};
+  const ctx=vm.createContext({
+    $:id=>id==="manualRouteEditor"?node:null,
+    manualRouteState:{dispatchId:91,reason:"Cliente pediu prioridade",stops:[
+      {key:"ifood:a",order_number:"#13",platform_label:"iFood",address:"Rua Teste"}
+    ]},
+    manualRouteBusy:false,escapeHtml:x=>String(x)
+  });
+  vm.runInContext(htmlEditor,ctx);
+  vm.runInContext("renderManualRouteEditor()",ctx);
+  assert.match(node.innerHTML,/Cliente pediu prioridade/);
+  vm.runInContext("manualRouteState.reason='Pedido antigo, priorizar';renderManualRouteEditor()",ctx);
+  assert.match(node.innerHTML,/Pedido antigo, priorizar/);
+});
+
 test("Dispatch and bags remain independent of automatic route planning",()=>{
   assert.match(html,/confirmPreDepartureDeparture\(\)/);
   assert.match(html,/togglePreDepartureBag\(\$\{Number\(o\.id\)\}\)/);
