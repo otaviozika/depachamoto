@@ -15,6 +15,8 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: node --check server.js
+      - name: Regression: bag check once and no stale refresh
+        run: node --test scripts/selftest-predeparture-bag-oneway.mjs
       - name: Testes de regressão e rotas
         run: |
           failed=0

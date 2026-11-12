@@ -18,7 +18,7 @@ const checks = {
   concludedEventSync: server.includes("SET status='CONCLUDED'"),
   courierCard: html.includes('id="courierDeliveriesCard"'),
   confirmationModal: html.includes('id="deliveryConfirmModal"'),
-  courierOnlyOwnOrders: html.includes("Rota e pedidos") && html.includes("Entregas e confirmações"),
+  courierOnlyOwnOrders: html.includes('id="courierDeliveriesCard"') && html.includes('id="courierDeliveriesList"') && server.includes("AND d.courier_id=$2"),
   successText: html.includes("Confirmar entrega"),
   platformColumn: server.includes("ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual'"),
   platformLookupEndpoint: server.includes('/api/courier/orders/lookup'),

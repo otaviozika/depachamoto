@@ -117,14 +117,11 @@ async function exercise(item,index,adminCookie,adminId) {
       "ORS stalled request should fail in around 8s, not 20s: "+item.name+" "+routingMs+"ms");
   }
   if(item.error) {
-    assert.equal(pd.status,"BLOCKED","provider failure must block");
+    assert.equal(pd.status,"CHECKED","optional provider failure must never block physical dispatch");
     assert.equal(pd.route_status,"NEEDS_ADMIN");
     assert.equal(pd.route,null,"fake route forbidden");
     assert.equal(pd.route_error.code,item.error,"fault "+item.name);
-    assert.equal(pd.can_dispatch,false);
-    const denied=await request("/api/courier/depart",cookie,"POST",
-      {pre_departure_id:pd.id,composition_version:pd.composition_version});
-    assert.equal(denied.status,409,"departure blocked until admin override");
+    assert.equal(pd.can_dispatch,true,"courier may depart without route");
     const override=(await must("/api/admin/pre-departures/"+pd.id+"/sequence",adminCookie,"POST",
       {reason:"Provedor falhou no teste de caos: "+item.name},200)).pre_departure;
     assert.equal(override.route_status,"ADMIN");
@@ -166,7 +163,7 @@ async function exercise(item,index,adminCookie,adminId) {
   assert.equal(Number((await pool.query(
     "SELECT count(*)::int n FROM anotaai_delivery_confirmations WHERE anotaai_order_id=ANY($1::text[])",[orders.map(o=>o.id)])).rows[0].n),2);
   return {type:item.name,result:"PASS",code:item.error||null,routeMs:routingMs,
-    blockedBeforeAdmin:Boolean(item.error),manualFallback:Boolean(item.error),
+    blockedBeforeAdmin:false,manualFallback:Boolean(item.error),
     acknowledged:Boolean(item.error),noFalseDeliveries:true,
     afterSyntheticConfirm:"RELEASED"};
 }
@@ -193,17 +190,17 @@ async function runSimultaneousOutage(adminCookie,adminId) {
   const reasonCounts={};
   for(let i=0;i<B;i++){
     const pd=routes[i].pre_departure;
-    assert.equal(pd.status,"BLOCKED","simultaneous outage never sends courier away");
+    assert.equal(pd.status,"CHECKED","outage must not block confirmed bags");
     assert.equal(pd.route_status,"NEEDS_ADMIN");
     assert.equal(pd.route,null);
-    assert.equal(pd.can_dispatch,false);
+    assert.equal(pd.can_dispatch,true);
     assert.ok(["ROUTES_RATE_LIMITED","ROUTES_RATE_LIMITED_LOCAL"].includes(pd.route_error?.code),pd.route_error?.code);
     reasonCounts[pd.route_error.code]=(reasonCounts[pd.route_error.code]||0)+1;
     fixtures[i].pd=pd;
   }
   const ids=fixtures.map(x=>x.courierId);
   const before=await pool.query("SELECT count(*)::int n FROM dispatches WHERE courier_id=ANY($1::int[])",[ids]);
-  assert.equal(Number(before.rows[0].n),0,"36 blocked routes must not create dispatches");
+  assert.equal(Number(before.rows[0].n),0,"failed route suggestion alone must not register any dispatch");
   const confirmedBefore=await pool.query(
     "SELECT count(*)::int n FROM anotaai_delivery_confirmations WHERE anotaai_order_id=ANY($1::text[])",
     [fixtures.flatMap(x=>x.orders.map(o=>o.id))]);
@@ -211,16 +208,11 @@ async function runSimultaneousOutage(adminCookie,adminId) {
   const latencies=[];
   for(const x of fixtures){
     const t=performance.now();
-    let pd=(await must("/api/admin/pre-departures/"+x.pd.id+"/sequence",adminCookie,"POST",
-      {reason:"Autorizacao manual do caixa sob pane simultanea em homologacao"},200)).pre_departure;
-    assert.equal(pd.route_status,"ADMIN");
-    assert.equal(pd.ack_required,true);
-    pd=(await must("/api/courier/pre-departures/"+pd.id+"/ack",x.cookie,"POST",
-      {version:pd.version},200)).pre_departure;
-    assert.equal(pd.can_dispatch,true);
     const d=await must("/api/courier/depart",x.cookie,"POST",
-      {pre_departure_id:pd.id,composition_version:pd.composition_version},201);
+      {pre_departure_id:x.pd.id,composition_version:x.pd.composition_version},201);
     assert.ok(Number(d.dispatch.id)>0);
+    const manifest=(await pool.query("SELECT route_status FROM dispatch_routes WHERE dispatch_id=$1",[d.dispatch.id])).rows[0];
+    assert.equal(manifest.route_status,"DISABLED","departs via unordered manifest");
     latencies.push(Math.round(performance.now()-t));
     for(const order of x.orders){
       const completed=await must("/api/courier/anotaai/orders/"+order.id+"/confirm-delivery",
@@ -232,11 +224,12 @@ async function runSimultaneousOutage(adminCookie,adminId) {
   }
   const percentile=(vals,p)=>[...vals].sort((a,b)=>a-b)[Math.max(0,Math.ceil(vals.length*p)-1)];
   return {couriers:B,orders:B*2,result:"PASS",mockProvider429:B,
-    blockedBeforeOverride:B,manuallyRecovered:B,releasedAfterSyntheticConfirm:B,
+    blockedBeforeOverride:0,directWithoutRoute:B,releasedAfterSyntheticConfirm:B,
     unexpectedConfirmations:0,peakRouteWaveMs:wallMs,
-    adminRecoveryPerCourierP95Ms:percentile(latencies,.95),
+    directDeparturePerCourierP95Ms:percentile(latencies,.95),
     routeErrors:reasonCounts};
 }
+
 try {
   const {auth,adminId}=await prepare();
   for(const [i,item] of modes.entries()){
@@ -249,11 +242,11 @@ try {
     "SELECT count(*)::int n FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'")).rows[0].n);
   assert.ok(reservations>=modes.length && reservations<=modes.length+burst.couriers,
     "Rate limiter records no more than the attempted Matrix calls");
-  assert.equal(results.filter(x=>x.blockedBeforeAdmin).length,6);
+  assert.equal(results.filter(x=>x.blockedBeforeAdmin).length,0);
   assert.equal(results.length,7);
   console.log("ROUTE_CHAOS_REPORT_START");
   console.log(JSON.stringify({result:"PASS",mode:"REAL_HTTP_POSTGRES16_MOCK_EXTERNAL_ORS",
-    scenarios:results.length,blockedThenManual:6,providerLiveCalls:0,
+    scenarios:results.length,blockedThenManual:0,providerLiveCalls:0,
     productionTouched:false,unexpectedConfirmations:0,quotaReservations:reservations,
     burst, statuses:stats,results},null,2));
   console.log("ROUTE_CHAOS_REPORT_END");

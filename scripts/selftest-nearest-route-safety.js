@@ -128,7 +128,7 @@ check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => 
   const enabled = ctx.courierDeliveryRow(order);
   assert.match(enabled, /DESTINO:-23\.62446/);
   ctx.courierPreDeparture.route.stops[0].is_next=false;
-  assert.doesNotMatch(ctx.courierDeliveryRow(order), /DESTINO:/);
+  assert.match(ctx.courierDeliveryRow(order), /DESTINO:-23\.62446/, "qualquer entrega pode abrir Waze e Maps, independentemente da sequência");
   ctx.courierPreDeparture.route.stops[0].is_next=true;
   ctx.courierPreDeparture.route.ack_required = true;
   const blocked = ctx.courierDeliveryRow(order);

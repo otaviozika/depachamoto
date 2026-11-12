@@ -2227,6 +2227,8 @@ let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},incid
 // Cached routes remain visible when disconnected; only a successful server refresh marks them fresh.
 let courierRouteFresh=true;
 let preDepartureBusy=false;
+let preDepartureCheckingId=null;
+let preDepartureMutationEpoch=0;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
 
@@ -4232,7 +4234,7 @@ function courierDeliveryRow(x){
   const awaitingAck=activeRoute?.dispatch_status==='ON_ROAD'&&activeRoute?.ack_required===true;
   const activeStop=(activeRoute?.stops||[]).find(s=>s.platform===platform&&String(s.external_order_id)===String(x.order_id));
   // Em rota ativa, o atalho legado so abre a proxima parada autorizada.
-  const navBlocked=!!activeStop&&(awaitingAck||activeStop.is_next!==true);
+  const navBlocked=awaitingAck; // Any dispatched order may be visited; only an unacknowledged address update blocks navigation.
   // Mesmo no card legado, navegar ao pino da nova rota, nunca ao endereço textual divergente.
   const routeNavigation=activeStop?.navigation?.prefer_coordinates===true
     ? {...x,navigation:activeStop.navigation} : x;
@@ -4257,7 +4259,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Navegação indisponível: siga a próxima parada indicada na Minha Rota ou confirme a atualização com Ciente.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
+    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Navegação temporariamente indisponível: confirme a alteração do endereço com Ciente.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
@@ -4267,7 +4269,7 @@ function courierFocusOrder(x,stop){
   const number=String(x.address_parts?.number||'').trim();
   const address=[street,number].filter(Boolean).join(', ');
   const route=courierPreDeparture?.route;
-  const blocked=!!stop&&(route?.ack_required||stop.is_next!==true);
+  const blocked=route?.ack_required===true;
   const navigation=stop?.navigation?.prefer_coordinates?{...x,navigation:stop.navigation}:x;
   const platform=String(x.platform||'ifood').toLowerCase();
   const confirm=x.can_confirm===true?(platform==='anotaai'
@@ -4276,7 +4278,7 @@ function courierFocusOrder(x,stop){
   return `<div class="courier-focus-card"><div class="courier-eyebrow">${stop?.is_next===true?'Próxima entrega':'Entrega em rota'}</div><h2>Pedido #${display}</h2><div class="courier-focus-address">${escapeHtml(address||'Endereço no detalhe do pedido')}</div>
     ${x.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin. Confira os detalhes.</div>':''}
     ${courierDeliveryPaymentHtml(x)}
-    ${blocked?'<div class="delivery-address-changed">Navegação bloqueada até confirmar a atualização da rota.</div>':courierDeliveryNavigationButtons(navigation)}
+    ${blocked?'<div class="delivery-address-changed">Navegação bloqueada até confirmar a alteração do endereço.</div>':courierDeliveryNavigationButtons(navigation)}
     <div class="delivery-actions">${confirm}${typeof incidentActionHtml==='function'?incidentActionHtml(stop):''}</div>
     <details class="courier-focus-detail"><summary>Ver detalhes do pedido</summary>${courierDeliveryRow(x)}</details></div>`;
 }
@@ -4293,28 +4295,26 @@ async function loadCourierDeliveries(){
     const pending=[...(ifood.pending||[]).map(x=>({...x,platform:'ifood'})),...(anotaai.pending||[])].sort(byDeparture);
     const completed=[...(ifood.completed||[]).map(x=>({...x,platform:'ifood'})),...(anotaai.completed||[])].sort(byDeparture);
     const hasAny=current.length||pending.length||completed.length;
-    const attentionCount=current.filter(x=>x.can_confirm===true).length+pending.length;
     const routeBadge=$('courierRouteBadge');
+    const attentionCount=current.filter(x=>x.can_confirm===true).length+pending.length;
     if(routeBadge){
       routeBadge.textContent=String(attentionCount);
       routeBadge.classList.toggle('hidden',attentionCount===0);
     }
-
+    // Show every dispatched order directly; do not hide remaining orders under
+    // "Mais entregas", choose a "next" stop or require any route sequence.
+    $('courierRouteFocus').innerHTML=current.length
+      ? `<div class="courier-route-kicker">PEDIDOS DA SAÍDA</div><p class="courier-helper">Confirme qualquer entrega, na ordem que realizar. Roteiro não obrigatório.</p>`
+      : '';
     const route=courierPreDeparture?.route;
-    const ordered=current.slice().sort((a,b)=>{
-      const pos=x=>route?.stops?.find(s=>s.platform===x.platform&&String(s.external_order_id)===String(x.order_id))?.sequence??999;
-      return pos(a)-pos(b);
-    });
-    const next=ordered.find(x=>route?.stops?.some(s=>s.platform===x.platform&&String(s.external_order_id)===String(x.order_id)&&s.is_next))||ordered[0];
-    const others=ordered.filter(x=>x!==next);
-    const stop=route?.stops?.find(s=>s.platform===next?.platform&&String(s.external_order_id)===String(next?.order_id));
-    $('courierRouteFocus').innerHTML=next?courierFocusOrder(next,stop):'';
-    $('courierRouteProgress').textContent=route?.counts?`${route.counts.delivered} de ${route.counts.total} entregas`:ordered.length?`${ordered.length} entrega(s) em rota`:'';
-    $('courierRouteProgress').classList.toggle('hidden',!next);
+    $('courierRouteProgress').textContent=route?.counts
+      ? `${route.counts.delivered} de ${route.counts.total} entregues`
+      : current.length?`${current.length} pedido(s) em rota`:'';
+    $('courierRouteProgress').classList.toggle('hidden',!current.length);
     if(!hasAny){$('courierDeliveriesList').innerHTML='';return}
-
-    let out='';
-    if(others.length)out+=`<details class="courier-route-disclosure"><summary>Mais ${others.length} entrega(s)</summary><div class="courier-future-list">${others.map((x,i)=>`<details class="courier-future-order"><summary><b>${i+2} · Pedido #${escapeHtml(x.display_id||x.local_order_number||'')}</b><span>${escapeHtml([x.address_parts?.street,x.address_parts?.number].filter(Boolean).join(', ')||x.navigation?.address||'Ver endereço')}</span></summary>${courierDeliveryRow(x)}</details>`).join('')}</div></details>`;
+    let out=current.length
+      ? `<div class="courier-active-deliveries">${current.map(courierDeliveryRow).join('')}</div>`
+      : '';
     if(pending.length){
       out+=`<details class="courier-route-disclosure courier-pending" open><summary>Pendentes de confirmação · ${pending.length}</summary>${pending.map(courierDeliveryRow).join('')}</details>`;
     }
@@ -4332,11 +4332,15 @@ async function loadCourierDeliveries(){
 // pelo mesmo POST /api/courier/depart, que recebe só o id da pré-saída.
 async function loadCourierPreDeparture(){
   if(!me||me.role!=='courier')return courierPreDeparture;
+  const startedAtEpoch=preDepartureMutationEpoch;
   try{
-    courierPreDeparture=await api('/api/courier/pre-departure');
+    const fresh=await api('/api/courier/pre-departure');
+    // Ignore a GET that began before an in-flight bag confirmation.
+    if(preDepartureBusy||startedAtEpoch!==preDepartureMutationEpoch)return courierPreDeparture;
+    courierPreDeparture=fresh;
     courierRouteFresh=true;
   }catch(err){
-    // Do not hide stale-route banner simply because navigator.onLine became true.
+    if(preDepartureBusy||startedAtEpoch!==preDepartureMutationEpoch)return courierPreDeparture;
     courierRouteFresh=false;
     renderCourierMyRoute();
     return courierPreDeparture;
@@ -4448,16 +4452,26 @@ function renderPreDeparture(){
   const total=pd.counts.total,checked=pd.counts.checked,allChecked=checked===total,blocked=pd.status==='BLOCKED';
   const ack=pd.ack_required?`<div class="pd-alert"><b>O admin alterou um endereço</b>Confira o endereço destacado. A conferência das sacolas continua valendo.<button type="button" class="btn primary" ${preDepartureBusy?'disabled':''} onclick="ackPreDeparture()">Ciente</button></div>`:'';
   const block=blocked?`<div class="pd-alert blocked"><b>Aguardando o admin</b>${escapeHtml(pd.blocked_reason?.message||'Pré-saída bloqueada.')}${pd.route_error?.retryable?`<button type="button" class="btn outline" ${preDepartureBusy?'disabled':''} onclick="calculatePreDepartureRoute(true)">Tentar calcular de novo</button>`:''}</div>`:'';
-  const bags=pd.orders.map(o=>`<div class="pd-bag ${o.checked?'checked':''}">
-      <div class="pd-bag-head"><span class="pd-bag-number">${escapeHtml(o.order_number)}</span><span class="delivery-platform-logo ${o.platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(o.platform_label)}</span><span class="pd-bag-state">${o.checked?'Conferida':'Pendente'}</span></div>
+  const bags=pd.orders.map(o=>{
+    const saving=preDepartureCheckingId===Number(o.id);
+    const label=o.checked?'Conferida':saving?'Salvando confirmação…':'Pendente';
+    // A confirmed bag cannot be unchecked by a second tap on the same control.
+    // To correct a real mistake, use the existing "Trocar este pedido" action.
+    return `<div class="pd-bag ${o.checked?'checked':''}">
+      <div class="pd-bag-head"><span class="pd-bag-number">${escapeHtml(o.order_number)}</span><span class="delivery-platform-logo ${o.platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(o.platform_label)}</span><span class="pd-bag-state">${label}</span></div>
       ${o.customer_name?`<div class="pd-bag-meta">Cliente: ${escapeHtml(o.customer_name)}</div>`:''}
       ${o.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin</div>':''}
-      <label class="pd-check"><input type="checkbox" ${o.checked?'checked':''} ${preDepartureBusy?'disabled':''} onchange="togglePreDepartureBag(${Number(o.id)},this.checked)"><span>Confirmo que a comanda corresponde à sacola.</span></label>
-      <button type="button" class="pd-link" onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
-    </div>`).join('');
-  const footer=pd.route_valid&&pd.route&&allChecked
-    ? preDepartureRouteHtml(pd)+`<div class="pd-actions"><button type="button" class="btn primary" ${pd.can_dispatch&&!preDepartureBusy?'':'disabled'} onclick="confirmPreDepartureDeparture()">🛵 CONFIRMAR SAÍDA</button></div>`
-    : `<div class="pd-actions"><button type="button" class="btn primary" ${allChecked&&!blocked&&!preDepartureBusy?'':'disabled'} onclick="calculatePreDepartureRoute(false)">CONFIRMAR SACOLAS E CALCULAR ROTA</button>${allChecked?'':`<div class="small muted">Confira ${total-checked} sacola(s) pendente(s) para liberar.</div>`}</div>`;
+      <label class="pd-check"><input type="checkbox" ${o.checked?'checked':''} ${o.checked||preDepartureBusy?'disabled':''} onchange="togglePreDepartureBag(${Number(o.id)})"><span>Confirmo que a comanda corresponde à sacola.</span></label>
+      <button type="button" class="pd-link" ${preDepartureBusy?'disabled':''} onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
+    </div>`;
+  }).join('');
+  // The physical bag checks remain mandatory. Route calculation is optional
+  // and must never delay the dispatch confirmation.
+  const routeHint=pd.route_valid&&pd.route
+    ? `<details class="courier-route-disclosure"><summary>Consultar roteiro sugerido (opcional)</summary>${preDepartureRouteHtml(pd)}</details>`
+    : '';
+  const footer=`<div class="pd-actions"><button type="button" class="btn primary" ${pd.can_dispatch&&!preDepartureBusy?'':'disabled'} onclick="confirmPreDepartureDeparture()">🛵 CONFIRMAR SAÍDA</button>
+    ${allChecked?'':'<div class="small muted">Confira '+(total-checked)+' sacola(s) pendente(s) para liberar.</div>'}</div>${routeHint}`;
   card.innerHTML=`<div class="courier-card-heading"><div><div class="courier-eyebrow">Pré-saída</div><h2>Conferir sacolas</h2><div class="small muted">Motoboy: ${escapeHtml(pd.courier?.name||me?.name||'')}</div></div><span class="badge ${allChecked?'green':'gray'}">${checked} de ${total}</span></div>
     <p class="courier-helper">Compare cada comanda com o número da sacola e confirme uma por uma. Esta confirmação é a sua declaração de que conferiu.</p>
     <div class="pd-progress">Sacolas conferidas: ${checked}/${total}<span class="pd-progress-bar"><span style="width:${total?Math.round(checked*100/total):0}%"></span></span></div>
@@ -4465,17 +4479,25 @@ function renderPreDeparture(){
     <div id="preDepartureMsg"></div>
     <button type="button" class="pd-cancel" onclick="cancelPreDeparture()">Cancelar pré-saída e liberar os pedidos</button>`;
 }
-async function preDepartureAction(request){
+async function preDepartureAction(request,{checkingOrderId=null}={}){
   if(preDepartureBusy)return false;
-  preDepartureBusy=true;renderPreDeparture();
+  preDepartureBusy=true;
+  preDepartureCheckingId=checkingOrderId;
+  preDepartureMutationEpoch++;
+  renderPreDeparture();
   try{
     const d=await request();
     if(d?.pre_departure)courierPreDeparture.pre_departure=PRE_DEPARTURE_OPEN.includes(d.pre_departure.status)?d.pre_departure:null;
-    preDepartureBusy=false;renderPreDeparture();
+    preDepartureBusy=false;
+    preDepartureCheckingId=null;
+    renderPreDeparture();
     return true;
   }catch(err){
     preDepartureBusy=false;
-    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND'].includes(err.code))await loadCourierPreDeparture();
+    preDepartureCheckingId=null;
+    // On connection errors the server might have saved the confirmation.
+    // Reload from the server rather than telling the courier to tap again.
+    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND','NETWORK_ERROR'].includes(err.code))await loadCourierPreDeparture();
     else renderPreDeparture();
     message('preDepartureMsg',err.message,'err');
     return false;
@@ -4485,9 +4507,14 @@ function preDeparturePost(path,body={}){
   const pd=courierPreDeparture.pre_departure;
   return api(`/api/courier/pre-departures/${Number(pd.id)}${path}`,{method:'POST',body:JSON.stringify(body)});
 }
-function togglePreDepartureBag(orderId,checked){
+function togglePreDepartureBag(orderId){
   const pd=courierPreDeparture.pre_departure;if(!pd)return;
-  preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,{composition_version:pd.composition_version,checked:checked===true}));
+  const row=pd.orders.find(o=>Number(o.id)===Number(orderId));
+  // Confirm once, never accidentally undo; ignore double taps and stale UI.
+  if(!row||row.checked||preDepartureBusy){renderPreDeparture();return}
+  preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,
+    {composition_version:pd.composition_version,checked:true}),
+    {checkingOrderId:Number(orderId)});
 }
 function calculatePreDepartureRoute(retry){
   if(!courierPreDeparture.pre_departure)return;
@@ -4549,7 +4576,7 @@ async function confirmPreDepartureDeparture(){
         const d=await api('/api/courier/depart',{method:'POST',body:JSON.stringify(payload)});
         courierPreDeparture.pre_departure=null;
         showDepartureConfirmation(orders,d.dispatch?.departed_at||new Date().toISOString(),false);
-        message('departureMsg',`Saída registrada com ${orders.length} pedido(s). Siga a sequência da Minha Rota.`,'ok');
+        message('departureMsg',`Saída registrada com ${orders.length} pedido(s). Confirme as entregas na ordem realizada, na aba Rota.`,'ok');
         preDepartureBusy=false;
         await loadCourier();
         activateCourierTab('route',null,true);
@@ -4580,14 +4607,14 @@ function renderCourierMyRoute(){
   const changed=r.stops.filter(s=>s.changed_unacked);
   const ack=r.ack_required?`<div class="pd-alert"><b>Rota atualizada pelo admin</b>${changed.length?`Endereço alterado: ${changed.map(s=>escapeHtml(s.order_number)).join(', ')}. `:''}Consulte as alterações somente com a moto parada, em local seguro.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`:'';
   const stops=r.stops.map(s=>routeStopHtml({order_number:s.order_number,customer_name:s.customer_name,address_text:s.address?.text||'',navigation:s.navigation,platform:s.platform,external_order_id:s.external_order_id,incident:s.incident},
-    {position:s.sequence,state:s.state,next:s.is_next,showNav:s.is_next&&!r.ack_required,changed:s.changed_unacked,deferred:s.is_deferred})).join('');
+    {position:s.sequence,state:s.state,next:false,showNav:s.state==='PENDING'&&!r.ack_required,changed:s.changed_unacked,deferred:s.is_deferred})).join('');
   const deferred=r.stops.filter(s=>s.state==='PENDING'&&s.is_deferred);
   const incidentHint=deferred.length?'<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes, mesmo após autorização do caixa.</div>':'';
   const pendingHint=r.counts.pending>0&&!r.stops.some(s=>s.is_next)?'<div class="incident-alert">Nenhuma próxima parada liberada. Aguarde orientação do caixa.</div>':'';
   const offlineHint=(!navigator.onLine||!courierRouteFresh)?'<div class="incident-alert">Rota não atualizada: esta é a última rota carregada e pode estar desatualizada. Não registre ocorrências ou confirme entregas sem resposta do servidor. Reconecte e confirme a versão da rota com o caixa.</div>':'';
   const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
   el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
-    <div class="my-route-meta">${r.route_status==='ADMIN'?'Sequência definida pelo admin.':'Siga a sequência calculada.'} Confirme cada entrega no card do pedido, em Entregas e confirmações.</div>
+    <div class="my-route-meta">Os pedidos podem ser entregues em qualquer ordem. Confirme cada um no próprio card da aba Rota.</div>
     ${ack}${offlineHint}${incidentHint}<div class="route-stops">${stops}</div>${pendingHint}${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
 }
 async function ackCourierRoute(dispatchId,version){
