@@ -122,4 +122,27 @@ test("Dispatch and bags remain independent of automatic route planning",()=>{
   assert.match(service,/const allChecked = autoRouteEnabled &&/);
 });
 
+
+test("Address corrections invalidate a map pin after the destination changes",()=>{
+  const save={disabled:false};
+  const notices=[];
+  let fields={street:"Rua Teste",number:"100",neighborhood:"Barcelona",city:"São Caetano",state:"SP",postal_code:"09550000"};
+  const ctx=vm.createContext({
+    addressFixState:{mode:"order",point:{latitude:-23.6,longitude:-46.5},location_signature:""},
+    addressFixFields:()=>fields,$:id=>id==="addressFixSave"?save:null,
+    message:(id,msg)=>notices.push(msg),String
+  });
+  vm.runInContext(piece("function addressFixLocationSignature(fields){","async function showAddressFixPoint(point,source){"),ctx);
+  vm.runInContext("addressFixState.location_signature=addressFixLocationSignature(addressFixFields())",ctx);
+  vm.runInContext("invalidateAddressFixLocation()",ctx);
+  assert.equal(vm.runInContext("addressFixState.point",ctx).latitude,-23.6);
+  fields={...fields,number:"200"};
+  vm.runInContext("invalidateAddressFixLocation()",ctx);
+  assert.equal(vm.runInContext("addressFixState.point",ctx),null);
+  assert.equal(save.disabled,true);
+  assert.ok(notices.some(x=>x.includes("novamente")));
+  assert.match(html,/requested!==addressFixLocationSignature\(addressFixFields\(\)\)/);
+  assert.match(html,/a.location_signature!==addressFixLocationSignature\(addressFixFields\(\)\)/);
+});
+
 console.log("Bags and manual route UI regression coverage registered");
