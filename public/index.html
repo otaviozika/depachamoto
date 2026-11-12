@@ -1293,7 +1293,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div id="operationalExceptions" class="exception-list"></div>
         </div>
         <div id="preDepartureAdmin" class="section" style="margin-top:18px">
-          <div class="section-head"><div><b>Conferência de sacolas e rotas</b><div class="small muted">Pré-saídas abertas, sequência das entregas e correção de endereço. Tudo começa desligado.</div></div><button class="btn outline" type="button" onclick="loadPreDepartureAdmin()">Atualizar</button></div>
+          <div class="section-head"><div><b>Conferência de sacolas e entregas</b><div class="small muted">Controle de conferência, saídas e correção de endereços.</div></div><button class="btn outline" type="button" onclick="loadPreDepartureAdmin()">Atualizar</button></div>
           <div id="preDepartureFlags" class="pd-admin-flags"></div>
           <div id="preDepartureParams"></div>
           <div class="pd-admin-search"><b class="small">Corrigir endereço de um pedido</b><input id="addressLookupNumber" placeholder="#4521" onkeydown="if(event.key==='Enter')lookupOrderAddress()"><button class="btn outline" type="button" onclick="lookupOrderAddress()">Buscar pedido</button><span id="addressLookupResults" class="small"></span></div>
@@ -4304,7 +4304,7 @@ async function loadCourierDeliveries(){
     // Show every dispatched order directly; do not hide remaining orders under
     // "Mais entregas", choose a "next" stop or require any route sequence.
     $('courierRouteFocus').innerHTML=current.length
-      ? `<div class="courier-route-kicker">PEDIDOS DA SAÍDA</div><p class="courier-helper">Confirme qualquer entrega, na ordem que realizar. Roteiro não obrigatório.</p>`
+      ? `<div class="courier-route-kicker">PEDIDOS DA SAÍDA</div><p class="courier-helper">Confirme qualquer entrega, na ordem em que realizar.</p>`
       : '';
     const route=courierPreDeparture?.route;
     $('courierRouteProgress').textContent=route?.counts
@@ -4404,43 +4404,6 @@ async function submitDeliveryIncident(reason){
  }
 }
 
-function preDepartureMinutes(v){return v===null||v===undefined?'—':`${Math.max(1,Math.round(Number(v)))} min`}
-function routeStopHtml(stop,{position,state='PENDING',next=false,showNav=false,eta=null,changed=false,deferred=false}){
-  const tag=state==='DELIVERED'?'ENTREGUE':state==='CANCELLED'?'CANCELADO':next?'PRÓXIMA':'PENDENTE';
-  const nav=showNav&&stop.navigation?courierDeliveryNavigationButtons({navigation:stop.navigation}):'';
-  return `<div class="route-stop ${next?'next':''} ${state!=='PENDING'?'done':''} ${deferred?'incident-deferred':''}">
-    <div class="route-stop-head"><span class="route-stop-pos">${Number(position)}ª entrega</span><span class="route-stop-number">Pedido ${escapeHtml(stop.order_number)}</span><span class="route-stop-tag">${tag}</span></div>
-    ${stop.customer_name?`<div class="route-stop-line"><span>Cliente:</span> ${escapeHtml(stop.customer_name)}</div>`:''}
-    ${stop.address_text?`<div class="route-stop-line"><span>Endereço:</span> ${escapeHtml(stop.address_text)}</div>`:''}
-    ${eta!==null&&eta!==undefined?`<div class="route-stop-line"><span>Previsão de chegada:</span> <b>${preDepartureMinutes(eta)}</b></div>`:''}
-    ${changed?'<div class="route-stop-changed">Endereço alterado pelo admin</div>':''}
-    ${typeof incidentActionHtml==='function'?incidentActionHtml({...stop,state}):''}
-    ${nav}
-  </div>`;
-}
-function preDepartureRouteHtml(pd){
-  const r=pd.route;
-  const byKey=new Map(pd.orders.map(o=>[o.platform+':'+o.external_order_id,o]));
-  const source=['ROAD_MATRIX','GOOGLE_ROUTES'].includes(r.source)
-    ? r.strategy==='FASTEST_VIABLE'
-      ? `Sequência otimizada por tempo entre ${Number(r.evaluated)} possibilidades. Considera também pedidos antigos (sem trânsito ao vivo).`
-      : `Sequência calculada pelas vias entre ${Number(r.evaluated)} possibilidades (sem trânsito ao vivo).`
-    : r.source==='ADMIN_SEQUENCE'?'Sequência definida pelo admin.':'Sequência na ordem digitada (cálculo automático desligado).';
-  const extra=Number(r.extra_minutes);
-  const efficiency=r.strategy==='FASTEST_VIABLE'&&Number.isFinite(extra)
-    ? extra<=0.05?'Menor tempo de percurso entre as rotas avaliadas.':`Até ${preDepartureMinutes(extra)} adicionais para reduzir a espera de pedidos antigos (limite operacional controlado).`
-    : '';
-  const stops=r.stops.map((s,i)=>{
-    const o=byKey.get(s.platform+':'+s.external_order_id)||{};
-    return routeStopHtml({order_number:s.order_number,customer_name:o.customer_name||s.customer_name,address_text:o.address?.text||''},
-      {position:s.sequence,next:i===0,eta:s.arrival_minutes,changed:!!o.address_override});
-  }).join('');
-  return `<div class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${pd.counts.total} entrega(s)</h2>
-    <div class="my-route-meta">Motoboy: ${escapeHtml(pd.courier?.name||'')} · Sacolas conferidas: ${pd.counts.checked}/${pd.counts.total}</div>
-    <div class="route-hint">${escapeHtml(source)}</div>${efficiency?`<div class="route-hint">${escapeHtml(efficiency)}</div>`:''}<div class="route-stops">${stops}</div>
-    ${r.duration_minutes!=null?`<div class="route-total">Tempo total estimado da rota: <b>${preDepartureMinutes(r.duration_minutes)}</b></div>`:''}
-    ${r.attribution?`<div class="route-hint">Rotas: ${escapeHtml(r.attribution)}</div>`:''}</div>`;
-}
 function renderPreDeparture(){
   const card=$('preDepartureCard');if(!card)return;
   const enabled=courierPreDeparture.enabled?.pre_departure===true;
@@ -4451,7 +4414,7 @@ function renderPreDeparture(){
   if(!pd){card.innerHTML='';return}
   const total=pd.counts.total,checked=pd.counts.checked,allChecked=checked===total,blocked=pd.status==='BLOCKED';
   const ack=pd.ack_required?`<div class="pd-alert"><b>O admin alterou um endereço</b>Confira o endereço destacado. A conferência das sacolas continua valendo.<button type="button" class="btn primary" ${preDepartureBusy?'disabled':''} onclick="ackPreDeparture()">Ciente</button></div>`:'';
-  const block=blocked?`<div class="pd-alert blocked"><b>Aguardando o admin</b>${escapeHtml(pd.blocked_reason?.message||'Pré-saída bloqueada.')}${pd.route_error?.retryable?`<button type="button" class="btn outline" ${preDepartureBusy?'disabled':''} onclick="calculatePreDepartureRoute(true)">Tentar calcular de novo</button>`:''}</div>`:'';
+  const block=blocked?`<div class="pd-alert blocked"><b>Aguardando o admin</b>${escapeHtml(pd.blocked_reason?.message||'Pré-saída bloqueada.')}</div>`:'';
   const bags=pd.orders.map(o=>{
     const saving=preDepartureCheckingId===Number(o.id);
     const label=o.checked?'Conferida':saving?'Salvando confirmação…':'Pendente';
@@ -4465,13 +4428,9 @@ function renderPreDeparture(){
       <button type="button" class="pd-link" ${preDepartureBusy?'disabled':''} onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
     </div>`;
   }).join('');
-  // The physical bag checks remain mandatory. Route calculation is optional
-  // and must never delay the dispatch confirmation.
-  const routeHint=pd.route_valid&&pd.route
-    ? `<details class="courier-route-disclosure"><summary>Consultar roteiro sugerido (opcional)</summary>${preDepartureRouteHtml(pd)}</details>`
-    : '';
+  // One physical confirmation per bag, followed directly by departure.
   const footer=`<div class="pd-actions"><button type="button" class="btn primary" ${pd.can_dispatch&&!preDepartureBusy?'':'disabled'} onclick="confirmPreDepartureDeparture()">🛵 CONFIRMAR SAÍDA</button>
-    ${allChecked?'':'<div class="small muted">Confira '+(total-checked)+' sacola(s) pendente(s) para liberar.</div>'}</div>${routeHint}`;
+    ${allChecked?'':'<div class="small muted">Confira '+(total-checked)+' sacola(s) pendente(s) para liberar.</div>'}</div>`;
   card.innerHTML=`<div class="courier-card-heading"><div><div class="courier-eyebrow">Pré-saída</div><h2>Conferir sacolas</h2><div class="small muted">Motoboy: ${escapeHtml(pd.courier?.name||me?.name||'')}</div></div><span class="badge ${allChecked?'green':'gray'}">${checked} de ${total}</span></div>
     <p class="courier-helper">Compare cada comanda com o número da sacola e confirme uma por uma. Esta confirmação é a sua declaração de que conferiu.</p>
     <div class="pd-progress">Sacolas conferidas: ${checked}/${total}<span class="pd-progress-bar"><span style="width:${total?Math.round(checked*100/total):0}%"></span></span></div>
@@ -4515,10 +4474,6 @@ function togglePreDepartureBag(orderId){
   preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,
     {composition_version:pd.composition_version,checked:true}),
     {checkingOrderId:Number(orderId)});
-}
-function calculatePreDepartureRoute(retry){
-  if(!courierPreDeparture.pre_departure)return;
-  preDepartureAction(()=>preDeparturePost('/route',{retry:retry===true}));
 }
 function ackPreDeparture(){
   const pd=courierPreDeparture.pre_departure;if(!pd)return;
@@ -4604,18 +4559,22 @@ function renderCourierMyRoute(){
   const el=$('courierMyRoute');if(!el)return;
   const r=courierPreDeparture.route;
   if(!r||r.dispatch_status!=='ON_ROAD'){el.innerHTML='';return}
-  const changed=r.stops.filter(s=>s.changed_unacked);
-  const ack=r.ack_required?`<div class="pd-alert"><b>Rota atualizada pelo admin</b>${changed.length?`Endereço alterado: ${changed.map(s=>escapeHtml(s.order_number)).join(', ')}. `:''}Consulte as alterações somente com a moto parada, em local seguro.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`:'';
-  const stops=r.stops.map(s=>routeStopHtml({order_number:s.order_number,customer_name:s.customer_name,address_text:s.address?.text||'',navigation:s.navigation,platform:s.platform,external_order_id:s.external_order_id,incident:s.incident},
-    {position:s.sequence,state:s.state,next:false,showNav:s.state==='PENDING'&&!r.ack_required,changed:s.changed_unacked,deferred:s.is_deferred})).join('');
-  const deferred=r.stops.filter(s=>s.state==='PENDING'&&s.is_deferred);
-  const incidentHint=deferred.length?'<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes, mesmo após autorização do caixa.</div>':'';
-  const pendingHint=r.counts.pending>0&&!r.stops.some(s=>s.is_next)?'<div class="incident-alert">Nenhuma próxima parada liberada. Aguarde orientação do caixa.</div>':'';
-  const offlineHint=(!navigator.onLine||!courierRouteFresh)?'<div class="incident-alert">Rota não atualizada: esta é a última rota carregada e pode estar desatualizada. Não registre ocorrências ou confirme entregas sem resposta do servidor. Reconecte e confirme a versão da rota com o caixa.</div>':'';
-  const extra=(r.extra_orders||[]).length?`<div class="route-hint">Fora da sequência (incluído pelo admin): ${r.extra_orders.map(x=>escapeHtml(x.order_number)).join(', ')}</div>`:'';
-  el.innerHTML=`<section class="my-route"><div class="my-route-kicker">Minha rota</div><h2>${r.counts.delivered} de ${r.counts.total} entregue(s)</h2>
-    <div class="my-route-meta">Os pedidos podem ser entregues em qualquer ordem. Confirme cada um no próprio card da aba Rota.</div>
-    ${ack}${offlineHint}${incidentHint}<div class="route-stops">${stops}</div>${pendingHint}${extra}${r.ack_required?'<div class="route-hint">A navegação volta depois do Ciente.</div>':''}</section>`;
+  // Operation notices remain accessible, but there is no computed itinerary
+  // or duplicate list of deliveries. Each order is already visible in Rota.
+  const changed=(r.stops||[]).filter(s=>s.changed_unacked);
+  const ack=r.ack_required
+    ? `<div class="pd-alert"><b>Endereço atualizado pelo caixa</b>${changed.length?'Pedido(s): '+changed.map(s=>escapeHtml(s.order_number)).join(', ')+'. ':''}Confira a alteração com a moto parada.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`
+    : '';
+  const deferred=(r.stops||[]).filter(s=>s.state==='PENDING'&&s.is_deferred);
+  const incidentHint=deferred.length
+    ? '<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes após orientação do caixa.</div>'
+    : '';
+  const offlineHint=(!navigator.onLine||!courierRouteFresh)
+    ? '<div class="incident-alert">Pedidos não atualizados. Não confirme entregas sem resposta do servidor. Reconecte e consulte o caixa.</div>'
+    : '';
+  el.innerHTML=ack||incidentHint||offlineHint
+    ? `<section class="my-route">${ack}${incidentHint}${offlineHint}</section>`
+    : '';
 }
 async function ackCourierRoute(dispatchId,version){
   try{
@@ -6262,32 +6221,29 @@ function renderPreDepartureAdmin(){
   renderIncidentAdmin(st);
   const flag=(key,title,desc)=>`<div class="pd-flag"><b>${title}</b><p class="small muted">${desc}</p><span class="pd-flag-state ${s[key]?'on':'off'}">${s[key]?'LIGADA':'DESLIGADA'}</span><button type="button" class="btn ${s[key]?'outline':'primary'}" data-flag="${key}" data-value="${s[key]?'false':'true'}" onclick="togglePreDepartureFlag(this.dataset.flag,this.dataset.value==='true')">${s[key]?'Desligar':'Ligar'}</button></div>`;
   $('preDepartureFlags').innerHTML=renderPreDepartureScope(st)+flag('pre_departure','Conferência de sacolas','O motoboy confere cada sacola antes da saída definitiva.')+
-    flag('route_planner','Sequência automática','Melhor ordem de até 5 entregas pelas vias, sem trânsito ao vivo. Depende da conferência e da chave do serviço de rotas.')+
-    flag('address_correction','Correção de endereço','O admin corrige o endereço operacional antes e durante a rota.');
+    flag('address_correction','Correção de endereço','O caixa pode corrigir o endereço de um pedido sem alterar a ordem de entrega.');
   const origin=st.store_origin;
-  const providerLabel={openrouteservice:'openrouteservice (gratuito, OpenStreetMap)',google:'Google Routes'}[s.route_provider]||'não configurado (falta a chave no Render)';
-  const originLabel=origin?`${origin.source==='ADMIN_CONFIRMED'?'confirmado no mapa pelo admin':origin.source==='LONGE_ZONE'?'da zona LONGE':'localizado pelo serviço de rotas'} · ${Number(origin.latitude).toFixed(5)}, ${Number(origin.longitude).toFixed(5)}`:'ainda não confirmado';
-  const num=(id,label,v,step,min,max)=>`<label>${label}<input id="${id}" type="number" step="${step}" min="${min}" max="${max}" value="${escapeHtml(String(v??''))}"></label>`;
-  $('preDepartureParams').innerHTML=`<div class="pd-admin-search"><span class="small"><b>Serviço de rotas:</b> ${escapeHtml(providerLabel)}</span><span class="small"><b>Ponto de partida (loja):</b> ${escapeHtml(originLabel)}</span><button type="button" class="btn outline" onclick="openStoreOriginFix()">Conferir local da loja</button></div><div class="pd-params">
-    ${num('pdAlpha','α · peso da duração (por min)',p.alpha,'0.1',0,10)}${num('pdBeta','β · peso das esperas (por min)',p.beta,'0.1',0,10)}
-    ${num('pdGamma','γ · atraso crítico (por min²)',p.gamma,'0.05',0,10)}${num('pdLimit','L · limite de espera (min)',p.wait_limit_minutes,'1',5,240)}
-    ${num('pdStop','Parada por entrega (min)',p.stop_minutes,'0.5',0,15)}
-    <label>Retorno à loja<select id="pdReturn"><option value="false" ${p.include_return?'':'selected'}>Não entra na duração</option><option value="true" ${p.include_return?'selected':''}>Entra na duração</option></select></label>
-    ${num('pdTtl','Pré-saída parada expira em (min)',s.ttl_minutes,'1',10,240)}
-    <button type="button" class="btn outline" onclick="savePreDepartureParams()">Salvar parâmetros</button></div>`;
+  // Keep only dispatch TTL and store reference for address validation. The
+  // route provider, weights and permutation controls are not part of plantão.
+  const originLabel=origin
+    ? `${origin.source==='ADMIN_CONFIRMED'?'Confirmada pelo caixa':'Local da loja registrado'} · ${Number(origin.latitude).toFixed(5)}, ${Number(origin.longitude).toFixed(5)}`
+    : 'ainda não confirmado';
+  $('preDepartureParams').innerHTML=`<div class="pd-admin-search"><span class="small"><b>Local da loja:</b> ${escapeHtml(originLabel)}</span><button type="button" class="btn outline" onclick="openStoreOriginFix()">Conferir local da loja</button></div>
+    <div class="pd-params"><label>Expiração da pré-saída (min)<input id="pdTtl" type="number" min="10" max="240" step="1" value="${Number(s.ttl_minutes)||45}"></label>
+    <button type="button" class="btn outline" onclick="savePreDepartureTtl()">Salvar expiração</button></div>`;
   const open=st.pre_departures||[];
   $('preDepartureOpen').innerHTML=`<div class="small muted"><b>Pré-saídas abertas (${open.length})</b></div>`+(open.map(pd=>`<div class="pd-admin-item">
-      <div class="pd-admin-item-head"><b>${escapeHtml(pd.courier?.name||'Motoboy')}</b><span class="badge ${pd.status==='BLOCKED'?'red':pd.status==='ROUTE_READY'?'green':'gray'}">${escapeHtml(PD_STATUS_LABEL[pd.status]||pd.status)}</span><span class="small muted">${pd.counts.checked}/${pd.counts.total} sacolas · rota ${escapeHtml(PD_ROUTE_LABEL[pd.route_status]||pd.route_status)}${pd.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
+      <div class="pd-admin-item-head"><b>${escapeHtml(pd.courier?.name||'Motoboy')}</b><span class="badge ${pd.status==='BLOCKED'?'red':pd.status==='ROUTE_READY'?'green':'gray'}">${escapeHtml(PD_STATUS_LABEL[pd.status]||pd.status)}</span><span class="small muted">${pd.counts.checked}/${pd.counts.total} sacolas${pd.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
       ${pd.blocked_reason?`<div class="msg err" style="margin-top:8px">${escapeHtml(pd.blocked_reason.message||pd.blocked_reason.code||'Bloqueada')}</div>`:''}
-      <div class="pd-admin-orders">${pd.orders.map(o=>`<div class="pd-admin-order"><b>${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span><span class="small muted">${o.checked?'conferida':'pendente'}${o.sequence?` · ${Number(o.sequence)}ª entrega`:''}${o.address_override?` · endereço v${Number(o.address_override.version)}`:''}</span><span class="small">${escapeHtml(o.address?.text||'sem endereço')}</span>${addressFixButton(o.platform,o.external_order_id)}</div>`).join('')}</div>
-      <div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminRecalcPreDeparture(this.dataset.id)">Recalcular rota</button><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminPreDepartureSequence(this.dataset.id)">Definir sequência (exceção)</button><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminCancelPreDeparture(this.dataset.id)">Cancelar</button></div>
+      <div class="pd-admin-orders">${pd.orders.map(o=>`<div class="pd-admin-order"><b>${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span><span class="small muted">${o.checked?'conferida':'pendente'}${o.address_override?` · endereço v${Number(o.address_override.version)}`:''}</span><span class="small">${escapeHtml(o.address?.text||'sem endereço')}</span>${addressFixButton(o.platform,o.external_order_id)}</div>`).join('')}</div>
+      <div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(pd.id)}" onclick="adminCancelPreDeparture(this.dataset.id)">Cancelar pré-saída</button></div>
     </div>`).join('')||'<div class="empty">Nenhuma pré-saída aberta.</div>');
   const routes=st.routes||[];
-  $('preDepartureRoutes').innerHTML=`<div class="small muted"><b>Rotas em andamento com sequência (${routes.length})</b></div>`+(routes.map(r=>`<div class="pd-admin-item">
-      <div class="pd-admin-item-head"><b>${escapeHtml(r.courier_name||'Motoboy')}</b><span class="badge ${r.route_status==='NEEDS_ADMIN'?'red':'gray'}">Saída #${Number(r.dispatch_id)} · versão ${Number(r.route_version)}</span><span class="small muted">${r.counts.delivered}/${r.counts.total} entregues${r.ack_required?' · aguardando Ciente do motoboy':''}${r.route_status==='NEEDS_ADMIN'?' · recálculo precisa do admin':''}</span></div>
-      <div class="pd-admin-orders">${r.stops.map(x=>`<div class="pd-admin-order"><b>${Number(x.sequence)}ª ${escapeHtml(x.order_number)}</b><span>${escapeHtml(x.platform_label)}</span><span class="small muted">${x.state==='DELIVERED'?'entregue':x.state==='CANCELLED'?'cancelado':x.is_next?'próxima':'pendente'}${x.address_override?` · endereço v${Number(x.address_override.version)}`:''}</span><span class="small">${escapeHtml(x.address?.text||'')}</span>${x.state==='PENDING'?addressFixButton(x.platform,x.external_order_id):addressFixButton(x.platform,x.external_order_id,'Ocorrência')}</div>`).join('')}</div>
-      <div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="adminRecalcRoute(this.dataset.id)">Recalcular pendentes</button><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="adminResequenceRoute(this.dataset.id)">Reordenar pendentes (exceção)</button></div>
-    </div>`).join('')||'<div class="empty">Nenhuma rota em andamento com sequência.</div>');
+  $('preDepartureRoutes').innerHTML=`<div class="small muted"><b>Saídas em andamento (${routes.length})</b></div>`+(routes.map(r=>`<div class="pd-admin-item">
+      <div class="pd-admin-item-head"><b>${escapeHtml(r.courier_name||'Motoboy')}</b><span class="badge ${r.route_status==='NEEDS_ADMIN'?'red':'gray'}">Saída #${Number(r.dispatch_id)}</span><span class="small muted">${r.counts.delivered}/${r.counts.total} entregues${r.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
+      <div class="pd-admin-orders">${r.stops.map(x=>`<div class="pd-admin-order"><b>${escapeHtml(x.order_number)}</b><span>${escapeHtml(x.platform_label)}</span><span class="small muted">${x.state==='DELIVERED'?'entregue':x.state==='CANCELLED'?'cancelado':'pendente'}${x.address_override?` · endereço v${Number(x.address_override.version)}`:''}</span><span class="small">${escapeHtml(x.address?.text||'')}</span>${x.state==='PENDING'?addressFixButton(x.platform,x.external_order_id):addressFixButton(x.platform,x.external_order_id,'Ocorrência')}</div>`).join('')}</div>
+      
+    </div>`).join('')||'<div class="empty">Nenhuma saída em andamento.</div>');
 }
 function preDepartureReason(text){
   const reason=prompt(text);
@@ -6304,44 +6260,15 @@ async function togglePreDepartureFlag(flag,value){
   const reason=preDepartureReason(`${value?'Ligar':'Desligar'} este recurso. Motivo (fica na Auditoria):`);if(!reason)return;
   await preDepartureAdminCall('/api/admin/pre-departure/settings',{method:'PUT',payload:{flags:{[flag]:value},reason}});
 }
-async function savePreDepartureParams(){
-  const reason=preDepartureReason('Motivo da alteração dos parâmetros (fica na Auditoria):');if(!reason)return;
-  const params={alpha:Number($('pdAlpha').value),beta:Number($('pdBeta').value),gamma:Number($('pdGamma').value),wait_limit_minutes:Number($('pdLimit').value),stop_minutes:Number($('pdStop').value),include_return:$('pdReturn').value==='true'};
-  await preDepartureAdminCall('/api/admin/pre-departure/settings',{method:'PUT',payload:{params,ttl_minutes:Number($('pdTtl').value),reason}},'Parâmetros salvos. Valem para os próximos cálculos.');
+async function savePreDepartureTtl(){
+  const reason=preDepartureReason('Motivo da alteração da expiração da pré-saída (Auditoria):');if(!reason)return;
+  await preDepartureAdminCall('/api/admin/pre-departure/settings',{
+    method:'PUT',payload:{ttl_minutes:Number($('pdTtl').value),reason}
+  },'Prazo de expiração atualizado.');
 }
-function adminRecalcPreDeparture(id){preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/route`,{})}
 async function adminCancelPreDeparture(id){
   const reason=preDepartureReason('Cancelar a pré-saída e liberar os pedidos. Motivo:');if(!reason)return;
   await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/cancel`,{payload:{reason}});
-}
-async function adminPreDepartureSequence(id){
-  const pd=(preDepartureAdminState?.pre_departures||[]).find(x=>Number(x.id)===Number(id));if(!pd)return;
-  const listed=pd.orders.map((o,i)=>`${i+1} = ${o.order_number}`).join('\n');
-  const typed=prompt(`Exceção do admin: defina a ordem das entregas usando os números abaixo, separados por vírgula (ex.: 2,1,3). Deixe vazio para manter a ordem digitada.\n\n${listed}`);
-  if(typed===null)return;
-  let sequence=null;
-  if(typed.trim()){
-    const idx=typed.split(/[,\s]+/).filter(Boolean).map(Number);
-    if(idx.length!==pd.orders.length||new Set(idx).size!==idx.length||idx.some(n=>!pd.orders[n-1]))return alert('Use cada número uma vez.');
-    sequence=idx.map(n=>pd.orders[n-1].id);
-  }
-  const reason=preDepartureReason('Motivo da exceção (o motoboy precisará dar Ciente):');if(!reason)return;
-  await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/sequence`,{payload:{sequence,reason}});
-}
-async function adminRecalcRoute(id){
-  const reason=preDepartureReason('Recalcular as entregas pendentes. Motivo:');if(!reason)return;
-  await preDepartureAdminCall(`/api/admin/dispatches/${Number(id)}/route/recalculate`,{payload:{reason}});
-}
-async function adminResequenceRoute(id){
-  const route=(preDepartureAdminState?.routes||[]).find(x=>Number(x.dispatch_id)===Number(id));if(!route)return;
-  const pending=route.stops.filter(x=>x.state==='PENDING');
-  if(!pending.length)return alert('Não há entregas pendentes.');
-  const typed=prompt(`Nova ordem das entregas pendentes (ex.: 2,1,3):\n\n${pending.map((x,i)=>`${i+1} = ${x.order_number}`).join('\n')}`);
-  if(!typed)return;
-  const idx=typed.split(/[,\s]+/).filter(Boolean).map(Number);
-  if(idx.length!==pending.length||new Set(idx).size!==idx.length||idx.some(n=>!pending[n-1]))return alert('Use cada número uma vez.');
-  const reason=preDepartureReason('Motivo da exceção (o motoboy precisará dar Ciente):');if(!reason)return;
-  await preDepartureAdminCall(`/api/admin/dispatches/${Number(id)}/route/sequence`,{method:'PUT',payload:{sequence:idx.map(n=>pending[n-1].platform+':'+pending[n-1].external_order_id),reason}});
 }
 async function lookupOrderAddress(){
   const number=$('addressLookupNumber').value.trim();if(!number)return;
