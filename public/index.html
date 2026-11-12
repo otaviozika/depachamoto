@@ -6256,8 +6256,11 @@ function renderPreDepartureAdmin(){
   $('preDepartureRoutes').innerHTML=`<div class="small muted"><b>Saídas em andamento (${routes.length})</b></div>`+(routes.map(r=>`<div class="pd-admin-item">
       <div class="pd-admin-item-head"><b>${escapeHtml(r.courier_name||'Motoboy')}</b><span class="badge ${r.route_status==='NEEDS_ADMIN'?'red':'gray'}">Saída #${Number(r.dispatch_id)}</span><span class="small muted">${r.counts.delivered}/${r.counts.total} entregues${r.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
       <div class="pd-admin-orders">${r.stops.map(x=>`<div class="pd-admin-order"><b>${escapeHtml(x.order_number)}</b><span>${escapeHtml(x.platform_label)}</span><span class="small muted">${x.state==='DELIVERED'?'entregue':x.state==='CANCELLED'?'cancelado':'pendente'}${x.address_override?` · endereço v${Number(x.address_override.version)}`:''}</span><span class="small">${escapeHtml(x.address?.text||'')}</span>${x.state==='PENDING'?addressFixButton(x.platform,x.external_order_id):addressFixButton(x.platform,x.external_order_id,'Ocorrência')}</div>`).join('')}</div>
-      
+      ${r.stops.filter(x=>x.state==='PENDING').length>1
+        ? `<div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="openManualRouteEditor(this.dataset.id)">Orientar ordem das entregas</button></div>`
+        : ''}
     </div>`).join('')||'<div class="empty">Nenhuma saída em andamento.</div>');
+  renderManualRouteEditor();
 }
 function preDepartureReason(text){
   const reason=prompt(text);
@@ -6283,6 +6286,84 @@ async function savePreDepartureTtl(){
 async function adminCancelPreDeparture(id){
   const reason=preDepartureReason('Cancelar a pré-saída e liberar os pedidos. Motivo:');if(!reason)return;
   await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/cancel`,{payload:{reason}});
+}
+
+// Manual recommendation: only pending orders, no route solver or matrices.
+let manualRouteState=null,manualRouteBusy=false;
+function openManualRouteEditor(dispatchId){
+  const route=(preDepartureAdminState?.routes||[]).find(x=>Number(x.dispatch_id)===Number(dispatchId));
+  if(!route)return alert('Saída não encontrada. Atualize o painel.');
+  const pending=route.stops.filter(x=>x.state==='PENDING');
+  if(pending.length<2)return alert('É preciso ter pelo menos duas entregas pendentes.');
+  manualRouteState={
+    dispatchId:Number(dispatchId),routeVersion:Number(route.route_version),
+    original:pending.map(x=>x.platform+':'+x.external_order_id),
+    stops:pending.map(x=>({
+      key:x.platform+':'+x.external_order_id,order_number:x.order_number,
+      platform_label:x.platform_label,address:x.address?.text||''
+    })),reason:''
+  };
+  renderManualRouteEditor();
+  $('manualRouteEditor')?.scrollIntoView?.({behavior:'smooth',block:'nearest'});
+}
+function closeManualRouteEditor(){
+  if(manualRouteBusy)return;
+  manualRouteState=null;
+  renderManualRouteEditor();
+}
+function renderManualRouteEditor(){
+  const el=$('manualRouteEditor');if(!el)return;
+  const st=manualRouteState;
+  el.classList.toggle('hidden',!st);
+  if(!st){el.innerHTML='';return}
+  el.innerHTML=`<div class="section-head"><div><b>Orientar entregas — saída #${st.dispatchId}</b>
+    <div class="small muted">Use as setas para priorizar pedidos. Sem cálculo automático e sem ordem obrigatória.</div></div>
+    <button class="btn outline" type="button" ${manualRouteBusy?'disabled':''} onclick="closeManualRouteEditor()">Fechar</button></div>
+    <div class="pd-admin-orders">${st.stops.map((o,i)=>`<div class="pd-admin-order">
+      <b>${i+1}. ${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span>
+      <span class="small">${escapeHtml(o.address)}</span>
+      <div class="pd-admin-actions">
+        <button type="button" class="btn outline" aria-label="Subir ${escapeHtml(o.order_number)}" ${i===0||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${i},-1)">↑</button>
+        <button type="button" class="btn outline" aria-label="Descer ${escapeHtml(o.order_number)}" ${i===st.stops.length-1||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${i},1)">↓</button>
+      </div></div>`).join('')}</div>
+    <label>Motivo da orientação (obrigatório)<textarea id="manualRouteReason" rows="2" maxlength="300" placeholder="Ex.: pedido antigo com prioridade">${escapeHtml(st.reason)}</textarea></label>
+    <div class="pd-admin-actions"><button type="button" class="btn primary" ${manualRouteBusy?'disabled':''} onclick="saveManualRouteEdit()">${manualRouteBusy?'Salvando...':'Enviar orientação ao motoboy'}</button></div>
+    <div id="manualRouteMsg" class="small muted">O motoboy receberá um aviso e deverá tocar em Ciente. A entrega permanece livre.</div>`;
+}
+function moveManualRouteStop(i,delta){
+  if(!manualRouteState||manualRouteBusy)return;
+  const j=i+delta;
+  if(j<0||j>=manualRouteState.stops.length)return;
+  manualRouteState.reason=$('manualRouteReason')?.value||'';
+  [manualRouteState.stops[i],manualRouteState.stops[j]]=[manualRouteState.stops[j],manualRouteState.stops[i]];
+  renderManualRouteEditor();
+}
+async function saveManualRouteEdit(){
+  const st=manualRouteState;
+  if(!st||manualRouteBusy)return;
+  const reason=String($('manualRouteReason')?.value||'').trim();
+  if(reason.length<5)return message('manualRouteMsg','Informe o motivo da orientação (mínimo de 5 caracteres).','err');
+  const keys=st.stops.map(x=>x.key);
+  if(keys.every((k,i)=>k===st.original[i])){
+    return message('manualRouteMsg','Mude pelo menos uma posição para enviar a orientação.','err');
+  }
+  manualRouteBusy=true;st.reason=reason;renderManualRouteEditor();
+  try{
+    await api(`/api/admin/dispatches/${st.dispatchId}/route/sequence`,{
+      method:'PUT',body:JSON.stringify({sequence:keys,reason,expected_route_version:st.routeVersion})
+    });
+    manualRouteState=null;
+    await loadPreDepartureAdmin();
+  }catch(err){
+    if(['ROUTE_VERSION_CONFLICT','SEQUENCE_INVALID','ROUTE_NOT_ACTIVE'].includes(err.code)){
+      manualRouteState=null;
+      await loadPreDepartureAdmin();
+      alert('Os pedidos mudaram enquanto você editava. Confira o painel atualizado e refaça a orientação.');
+    }else{
+      manualRouteBusy=false;renderManualRouteEditor();
+      message('manualRouteMsg',err.message||'Não foi possível enviar a orientação.','err');
+    }
+  }finally{manualRouteBusy=false}
 }
 async function lookupOrderAddress(){
   const number=$('addressLookupNumber').value.trim();if(!number)return;
