@@ -211,7 +211,7 @@ async function fullFlow(courierId, orders) {
     steps.push(`${pd.counts.checked}/${pd.counts.total} ${pd.status}`);
     assert.equal(pd.counts.checked, i + 1);
     assert.equal(pd.status, i + 1 < orders.length ? "PARTIALLY_CHECKED" : "CHECKED");
-    assert.equal(pd.can_dispatch, false);
+    assert.equal(pd.can_dispatch, i + 1 === orders.length);
   }
   const routed = await route(courierId, pd);
   assert.equal(routed.status, 200, JSON.stringify(routed.body));
@@ -256,6 +256,82 @@ for (const n of [1, 2, 3, 4, 5]) {
     return `${steps.join(" → ")} → ROUTE_READY (${pd.route.evaluated} sequência(s)) → saída ${dispatch.id} com ${stops.length} parada(s)`;
   });
 }
+
+
+await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(41,'Motoboy 41','m41','x','courier',true,'APPROVED'),(42,'Motoboy 42','m42','x','courier',true,'APPROVED'),(43,'Motoboy 43','m43','x','courier',true,'APPROVED')");
+
+await scenario("O1", "Cinco entregas saem sem matriz, com todas as sacolas conferidas e em ordem livre", async () => {
+  const orders=[
+    await ifood(9800,at(0,700)),await anota(9801,at(80,950)),
+    await ifood(9802,at(130,1800)),await anota(9803,at(200,1100)),
+    await ifood(9804,at(300,2600))
+  ];
+  const oldMatrix=google.matrix,oldGeocode=google.geocode;
+  google.down=true;
+  try{
+    let pd=(await createPd(41,orders)).body.pre_departure;
+    assert.equal(pd.can_dispatch,false);
+    pd=await checkAll(41,pd);
+    assert.equal(pd.status,"CHECKED");
+    assert.equal(pd.can_dispatch,true);
+    assert.equal(pd.route,null);
+    const first=await depart(41,pd);
+    assert.equal(first.status,201,JSON.stringify(first.body));
+    const dispatch=first.body.dispatch;
+    const replay=await depart(41,pd);
+    assert.equal(replay.status,200,JSON.stringify(replay.body));
+    assert.equal(replay.body.duplicate,true);
+    assert.equal(await count("SELECT COUNT(*)::int c FROM dispatches WHERE courier_id=41"),1);
+    const stops=await stopsOf(dispatch.id);
+    assert.equal(stops.length,5);
+    const saved=(await query("SELECT route_status FROM dispatch_routes WHERE dispatch_id=$1",[dispatch.id])).rows[0];
+    assert.equal(saved.route_status,"DISABLED");
+    assert.equal(google.matrix,oldMatrix);
+    assert.equal(google.geocode,oldGeocode);
+    const last=stops[4];
+    if(last.platform==="anotaai"){
+      await query("INSERT INTO anotaai_delivery_confirmations(anotaai_order_id,dispatch_id,courier_id,confirmed_at) VALUES($1,$2,41,NOW())",[last.external_order_id,dispatch.id]);
+    }else{
+      await query("INSERT INTO ifood_delivery_confirmations(ifood_order_id,dispatch_id,courier_id,status,verified_at) VALUES($1,$2,41,'VERIFIED',NOW())",[last.external_order_id,dispatch.id]);
+    }
+    const ongoing=(await getState(41)).route;
+    assert.equal(ongoing.counts.delivered,1);
+    assert.equal(ongoing.counts.pending,4);
+    assert.equal(ongoing.stops[4].state,"DELIVERED");
+    assert.equal(await count("SELECT COUNT(*)::int c FROM pre_departure_events WHERE dispatch_id=$1 AND event='ROUTE_SEQUENCE_DEVIATION'",[dispatch.id]),0);
+    return "5/5 sacolas → saída sem roteirizador externo → 5 cartões, 5ª entrega confirmada primeiro → 4 pendentes; replay idempotente";
+  }finally{google.down=false;}
+});
+
+await scenario("O2", "Conferência parcial continua bloqueada sem rota obrigatória",async()=>{
+  const orders=[await ifood(9810,at(0,650)),await anota(9811,at(120,700))];
+  let pd=(await createPd(42,orders)).body.pre_departure;
+  let attempt=await depart(42,pd);
+  assert.equal(attempt.status,409);assert.equal(attempt.body.code,"PRE_DEPARTURE_CHECK_PENDING");
+  pd=(await call("POST /api/courier/pre-departures/:id/orders/:orderId/check", {user:courier(42),params:{id:String(pd.id),orderId:String(pd.orders[0].id)},body:{composition_version:pd.composition_version}})).body.pre_departure;
+  attempt=await depart(42,pd);
+  assert.equal(attempt.status,409);assert.equal(attempt.body.code,"PRE_DEPARTURE_CHECK_PENDING");
+  pd=await checkAll(42,pd);
+  assert.equal(pd.can_dispatch,true);
+  attempt=await depart(42,pd);
+  assert.equal(attempt.status,201,JSON.stringify(attempt.body));
+  return "0/2 e 1/2 sacolas bloqueiam; 2/2 liberam saída sem cálculo";
+});
+
+await scenario("O3", "Falha no cálculo opcional não impede saída com sacolas verificadas",async()=>{
+  const orders=[await ifood(9820,at(20,1100)),await ifood(9821,at(90,1350))];
+  let pd=await checkAll(43,(await createPd(43,orders)).body.pre_departure);
+  google.down=true;
+  try{
+    pd=(await route(43,pd)).body.pre_departure;
+    assert.equal(pd.route_status,"NEEDS_ADMIN");
+    assert.equal(pd.status,"CHECKED");
+    assert.equal(pd.can_dispatch,true);
+    const sent=await depart(43,pd);
+    assert.equal(sent.status,201,JSON.stringify(sent.body));
+    return "roteador fora do ar → erro informativo, não bloqueio; entrega autorizada sem matriz";
+  }finally{google.down=false;}
+});
 
 await scenario(6, "Tentativa de adicionar um sexto pedido", async () => {
   const orders = []; for (let i = 0; i < 6; i++) orders.push(await ifood(1100 + i, at(i * 50, 1200)));
@@ -435,8 +511,8 @@ await scenario(21, "Falha no serviço de roteirização", async () => {
   const r = await route(18, pd);
   google.down = false;
   pd = r.body.pre_departure;
-  assert.equal(pd.status, "BLOCKED"); assert.equal(pd.route_status, "NEEDS_ADMIN"); assert.equal(pd.route, null);
-  assert.equal((await depart(18, pd)).status, 409);
+  assert.equal(pd.status, "CHECKED"); assert.equal(pd.route_status, "NEEDS_ADMIN"); assert.equal(pd.route, null);
+  assert.equal(pd.can_dispatch,true,"falha no cálculo opcional não pode bloquear a saída");
   // Chave ausente: um processo novo (a chave é lida ao subir o servidor).
   google.configured = false;
   const notConfigured = await makeService().computeRoute(pd.id, { force: true });
@@ -449,7 +525,7 @@ await scenario(21, "Falha no serviço de roteirização", async () => {
   const sent = await depart(18, pd);
   assert.equal(sent.status, 201);
   assert.ok(audits.some(a => a[1] === "PRE_DEPARTURE_ADMIN_SEQUENCE"));
-  return `Google indisponível → BLOCKED/NEEDS_ADMIN sem tempos inventados e saída bloqueada; sem chave → ${notConfigured.route_error.code}; exceção do admin com motivo (auditada) + Ciente do motoboy → saída ${sent.body.dispatch.id}`;
+  return `Serviço de rota indisponível → CHECKED/NEEDS_ADMIN com despacho liberado; sem chave → ${notConfigured.route_error.code}; ajuste do admin auditado + Ciente → saída ${sent.body.dispatch.id}`;
 });
 
 await scenario(22, "Endereço incompleto ou ambíguo", async () => {
@@ -811,7 +887,7 @@ await scenario("S3", "Permissões e transições validadas no backend", async ()
   assert.ok(courierRoutes.every(([, h]) => h.includes(auth) && h.includes(courierOnly)));
   assert.equal(canTransition("DISPATCHED", "AWAITING_CHECK"), false);
   assert.equal(canTransition("CANCELLED", "ROUTE_READY"), false);
-  assert.equal(canTransition("CHECKED", "DISPATCHED"), false, "só ROUTE_READY despacha");
+  assert.equal(canTransition("CHECKED", "DISPATCHED"), true, "conferência completa basta; rota opcional");
   const o = await ifood(3600, at(170, 1000));
   const pd = (await createPd(40, [o])).body.pre_departure;
   await service.cancel({ actorUserId: 40, courierId: 40, id: pd.id });
