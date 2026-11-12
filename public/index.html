@@ -2227,6 +2227,8 @@ let courierPreDeparture={enabled:{pre_departure:false,route_planner:false},incid
 // Cached routes remain visible when disconnected; only a successful server refresh marks them fresh.
 let courierRouteFresh=true;
 let preDepartureBusy=false;
+let preDepartureCheckingId=null;
+let preDepartureMutationEpoch=0;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
 
@@ -4332,11 +4334,15 @@ async function loadCourierDeliveries(){
 // pelo mesmo POST /api/courier/depart, que recebe só o id da pré-saída.
 async function loadCourierPreDeparture(){
   if(!me||me.role!=='courier')return courierPreDeparture;
+  const startedAtEpoch=preDepartureMutationEpoch;
   try{
-    courierPreDeparture=await api('/api/courier/pre-departure');
+    const fresh=await api('/api/courier/pre-departure');
+    // Ignore a GET that began before an in-flight bag confirmation.
+    if(preDepartureBusy||startedAtEpoch!==preDepartureMutationEpoch)return courierPreDeparture;
+    courierPreDeparture=fresh;
     courierRouteFresh=true;
   }catch(err){
-    // Do not hide stale-route banner simply because navigator.onLine became true.
+    if(preDepartureBusy||startedAtEpoch!==preDepartureMutationEpoch)return courierPreDeparture;
     courierRouteFresh=false;
     renderCourierMyRoute();
     return courierPreDeparture;
@@ -4448,13 +4454,19 @@ function renderPreDeparture(){
   const total=pd.counts.total,checked=pd.counts.checked,allChecked=checked===total,blocked=pd.status==='BLOCKED';
   const ack=pd.ack_required?`<div class="pd-alert"><b>O admin alterou um endereço</b>Confira o endereço destacado. A conferência das sacolas continua valendo.<button type="button" class="btn primary" ${preDepartureBusy?'disabled':''} onclick="ackPreDeparture()">Ciente</button></div>`:'';
   const block=blocked?`<div class="pd-alert blocked"><b>Aguardando o admin</b>${escapeHtml(pd.blocked_reason?.message||'Pré-saída bloqueada.')}${pd.route_error?.retryable?`<button type="button" class="btn outline" ${preDepartureBusy?'disabled':''} onclick="calculatePreDepartureRoute(true)">Tentar calcular de novo</button>`:''}</div>`:'';
-  const bags=pd.orders.map(o=>`<div class="pd-bag ${o.checked?'checked':''}">
-      <div class="pd-bag-head"><span class="pd-bag-number">${escapeHtml(o.order_number)}</span><span class="delivery-platform-logo ${o.platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(o.platform_label)}</span><span class="pd-bag-state">${o.checked?'Conferida':'Pendente'}</span></div>
+  const bags=pd.orders.map(o=>{
+    const saving=preDepartureCheckingId===Number(o.id);
+    const label=o.checked?'Conferida':saving?'Salvando confirmação…':'Pendente';
+    // A confirmed bag cannot be unchecked by a second tap on the same control.
+    // To correct a real mistake, use the existing "Trocar este pedido" action.
+    return `<div class="pd-bag ${o.checked?'checked':''}">
+      <div class="pd-bag-head"><span class="pd-bag-number">${escapeHtml(o.order_number)}</span><span class="delivery-platform-logo ${o.platform==='ifood'?'ifood':'anotaai'}">${escapeHtml(o.platform_label)}</span><span class="pd-bag-state">${label}</span></div>
       ${o.customer_name?`<div class="pd-bag-meta">Cliente: ${escapeHtml(o.customer_name)}</div>`:''}
       ${o.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin</div>':''}
-      <label class="pd-check"><input type="checkbox" ${o.checked?'checked':''} ${preDepartureBusy?'disabled':''} onchange="togglePreDepartureBag(${Number(o.id)},this.checked)"><span>Confirmo que a comanda corresponde à sacola.</span></label>
-      <button type="button" class="pd-link" onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
-    </div>`).join('');
+      <label class="pd-check"><input type="checkbox" ${o.checked?'checked':''} ${o.checked||preDepartureBusy?'disabled':''} onchange="togglePreDepartureBag(${Number(o.id)})"><span>Confirmo que a comanda corresponde à sacola.</span></label>
+      <button type="button" class="pd-link" ${preDepartureBusy?'disabled':''} onclick="replacePreDepartureOrder(${Number(o.id)})">Trocar este pedido</button>
+    </div>`;
+  }).join('');
   const footer=pd.route_valid&&pd.route&&allChecked
     ? preDepartureRouteHtml(pd)+`<div class="pd-actions"><button type="button" class="btn primary" ${pd.can_dispatch&&!preDepartureBusy?'':'disabled'} onclick="confirmPreDepartureDeparture()">🛵 CONFIRMAR SAÍDA</button></div>`
     : `<div class="pd-actions"><button type="button" class="btn primary" ${allChecked&&!blocked&&!preDepartureBusy?'':'disabled'} onclick="calculatePreDepartureRoute(false)">CONFIRMAR SACOLAS E CALCULAR ROTA</button>${allChecked?'':`<div class="small muted">Confira ${total-checked} sacola(s) pendente(s) para liberar.</div>`}</div>`;
@@ -4465,17 +4477,25 @@ function renderPreDeparture(){
     <div id="preDepartureMsg"></div>
     <button type="button" class="pd-cancel" onclick="cancelPreDeparture()">Cancelar pré-saída e liberar os pedidos</button>`;
 }
-async function preDepartureAction(request){
+async function preDepartureAction(request,{checkingOrderId=null}={}){
   if(preDepartureBusy)return false;
-  preDepartureBusy=true;renderPreDeparture();
+  preDepartureBusy=true;
+  preDepartureCheckingId=checkingOrderId;
+  preDepartureMutationEpoch++;
+  renderPreDeparture();
   try{
     const d=await request();
     if(d?.pre_departure)courierPreDeparture.pre_departure=PRE_DEPARTURE_OPEN.includes(d.pre_departure.status)?d.pre_departure:null;
-    preDepartureBusy=false;renderPreDeparture();
+    preDepartureBusy=false;
+    preDepartureCheckingId=null;
+    renderPreDeparture();
     return true;
   }catch(err){
     preDepartureBusy=false;
-    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND'].includes(err.code))await loadCourierPreDeparture();
+    preDepartureCheckingId=null;
+    // On connection errors the server might have saved the confirmation.
+    // Reload from the server rather than telling the courier to tap again.
+    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND','NETWORK_ERROR'].includes(err.code))await loadCourierPreDeparture();
     else renderPreDeparture();
     message('preDepartureMsg',err.message,'err');
     return false;
@@ -4485,9 +4505,14 @@ function preDeparturePost(path,body={}){
   const pd=courierPreDeparture.pre_departure;
   return api(`/api/courier/pre-departures/${Number(pd.id)}${path}`,{method:'POST',body:JSON.stringify(body)});
 }
-function togglePreDepartureBag(orderId,checked){
+function togglePreDepartureBag(orderId){
   const pd=courierPreDeparture.pre_departure;if(!pd)return;
-  preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,{composition_version:pd.composition_version,checked:checked===true}));
+  const row=pd.orders.find(o=>Number(o.id)===Number(orderId));
+  // Confirm once, never accidentally undo; ignore double taps and stale UI.
+  if(!row||row.checked||preDepartureBusy){renderPreDeparture();return}
+  preDepartureAction(()=>preDeparturePost(`/orders/${Number(orderId)}/check`,
+    {composition_version:pd.composition_version,checked:true}),
+    {checkingOrderId:Number(orderId)});
 }
 function calculatePreDepartureRoute(retry){
   if(!courierPreDeparture.pre_departure)return;
