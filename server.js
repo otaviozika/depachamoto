@@ -11744,7 +11744,7 @@ app.get("/api/admin/dispatches/:id/route", auth, adminOnly, serviceRoute(async (
 }));
 
 app.put("/api/admin/dispatches/:id/route/sequence", auth, adminOnly, serviceRoute(async (req, res) => {
-  res.json({ route: await preDepartureService.adminResequenceRoute({ adminId: req.session.user.id, dispatchId: routeId(req.params.id), sequence: req.body?.sequence, reason: req.body?.reason }) });
+  res.json({ route: await preDepartureService.adminResequenceRoute({ adminId: req.session.user.id, dispatchId: routeId(req.params.id), sequence: req.body?.sequence, reason: req.body?.reason, expectedRouteVersion: req.body?.expected_route_version }) });
 }));
 
 app.post("/api/admin/dispatches/:id/route/recalculate", auth, adminOnly, serviceRoute(async (req, res) => {

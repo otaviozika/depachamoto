@@ -333,6 +333,60 @@ await scenario("O3", "Falha no cálculo opcional não impede saída com sacolas 
   }finally{google.down=false;}
 });
 
+await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(144,'Motoboy 144','m144','x','courier',true,'APPROVED')");
+await scenario("O4", "Caixa orienta a ordem manualmente; não bloqueia confirmação livre nem aceita tela antiga", async()=>{
+  const orders=[await ifood(9830,at(30,700)),await anota(9831,at(80,950)),await ifood(9832,at(150,1100))];
+  let pd=await checkAll(144,(await createPd(144,orders)).body.pre_departure);
+  const out=await depart(144,pd);
+  assert.equal(out.status,201,JSON.stringify(out.body));
+  const id=Number(out.body.dispatch.id);
+  let route=await service.dispatchRouteView(id);
+  assert.equal(route.route_status,"DISABLED");
+  const oldVersion=route.route_version;
+  const keys=route.stops.map(x=>x.platform+":"+x.external_order_id).reverse();
+  const newRoute=await service.adminResequenceRoute({
+    adminId:1,dispatchId:id,sequence:keys,reason:"Pedido antigo requer prioridade",
+    expectedRouteVersion:oldVersion
+  });
+  assert.equal(newRoute.route_status,"ADMIN");
+  assert.equal(newRoute.route_version,oldVersion+1);
+  assert.equal(newRoute.ack_required,true);
+  assert.deepEqual(newRoute.stops.map(x=>x.platform+":"+x.external_order_id),keys);
+  assert.equal(newRoute.last_change.cause,"ADMIN_RESEQUENCE");
+  await assert.rejects(
+    service.adminResequenceRoute({
+      adminId:1,dispatchId:id,sequence:keys.reverse(),reason:"Tela antiga da equipe",
+      expectedRouteVersion:oldVersion
+    }),
+    err=>err.code==="ROUTE_VERSION_CONFLICT"
+  );
+  const acknowledged=await service.acknowledgeRoute({
+    courierId:144,dispatchId:id,routeVersion:newRoute.route_version
+  });
+  assert.equal(acknowledged.ack_required,false);
+  // Complete an order that is NOT first in the suggested order.
+  const last=acknowledged.stops[acknowledged.stops.length-1];
+  if(last.platform==="ifood"){
+    await query("INSERT INTO ifood_delivery_confirmations(ifood_order_id,dispatch_id,courier_id,status,verified_at) VALUES($1,$2,144,'VERIFIED',NOW())",[last.external_order_id,id]);
+  }else{
+    await query("INSERT INTO anotaai_delivery_confirmations(anotaai_order_id,dispatch_id,courier_id,confirmed_at) VALUES($1,$2,144,NOW())",[last.external_order_id,id]);
+  }
+  route=await service.dispatchRouteView(id);
+  assert.equal(route.counts.delivered,1);
+  assert.equal(route.stops.at(-1).state,"DELIVERED");
+  const logged=await count("SELECT COUNT(*)::int c FROM pre_departure_events WHERE dispatch_id=$1 AND event='ADMIN_RESEQUENCE'",[id]);
+  assert.equal(logged,1);
+  await query("UPDATE dispatches SET status='RELEASED' WHERE id=$1",[id]);
+  await assert.rejects(
+    service.adminResequenceRoute({
+      adminId:1,dispatchId:id,sequence:keys,reason:"Tentativa depois do encerramento",
+      expectedRouteVersion:newRoute.route_version
+    }),
+    err=>err.code==="ROUTE_NOT_ACTIVE"
+  );
+  return "ordem manual com versão e motivo; Ciente obrigatório; entrega fora da ordem sugerida; edição antiga/saída encerrada rejeitadas";
+});
+
 await scenario(6, "Tentativa de adicionar um sexto pedido", async () => {
   const orders = []; for (let i = 0; i < 6; i++) orders.push(await ifood(1100 + i, at(i * 50, 1200)));
   const six = await createPd(7, orders);

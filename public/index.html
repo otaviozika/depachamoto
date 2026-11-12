@@ -1300,6 +1300,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           <div id="deliveryIncidentAdmin" class="pd-admin-list" aria-live="polite"></div>
           <div id="preDepartureOpen" class="pd-admin-list"></div>
           <div id="preDepartureRoutes" class="pd-admin-list"></div>
+          <div id="manualRouteEditor" class="card hidden" aria-live="polite"></div>
         </div>
         <div class="analytics-grid">
           <div class="section">
@@ -1908,9 +1909,9 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       </div>
       <div id="courierRouteIdle" class="card courier-route-idle hidden"><div class="courier-eyebrow">Minha operação</div><h2>Nenhuma entrega em rota</h2><p>Você pode iniciar uma nova saída.</p><button type="button" class="btn primary" onclick="activateCourierTab('home',null,true)">Iniciar nova saída</button></div>
       <div id="courierRouteFocus"></div>
+      <div id="courierMyRoute" aria-live="polite"></div>
       <details id="courierRouteAdvanced" class="courier-route-disclosure hidden"><summary>Detalhes da operação</summary>
       <div id="activeDispatch"></div>
-      <div id="courierMyRoute"></div>
       </details>
       <div id="courierDeliveriesCard"><div id="courierDeliveriesList" class="delivery-list"></div></div>
       <details class="courier-route-disclosure courier-history-card"><summary>Histórico de saídas</summary><div class="table-wrap"><table class="table"><thead><tr><th>Pedido(s)</th><th>Saída</th><th>Status</th></tr></thead><tbody id="myHistory"></tbody></table></div></details>
@@ -4452,13 +4453,20 @@ async function preDepartureAction(request,{checkingOrderId=null}={}){
     renderPreDeparture();
     return true;
   }catch(err){
+    // An uncertain mobile response may still mean a successful server save.
+    const attemptedOrderId=preDepartureCheckingId;
     preDepartureBusy=false;
     preDepartureCheckingId=null;
-    // On connection errors the server might have saved the confirmation.
-    // Reload from the server rather than telling the courier to tap again.
-    if(['PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED','PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND','NETWORK_ERROR'].includes(err.code))await loadCourierPreDeparture();
+    const needsRefresh=attemptedOrderId!==null||[
+      'PRE_DEPARTURE_VERSION_CONFLICT','PRE_DEPARTURE_CLOSED',
+      'PRE_DEPARTURE_ORDER_NOT_FOUND','PRE_DEPARTURE_NOT_FOUND','NETWORK_ERROR'
+    ].includes(err.code);
+    if(needsRefresh)await loadCourierPreDeparture();
     else renderPreDeparture();
-    message('preDepartureMsg',err.message,'err');
+    const confirmed=attemptedOrderId!==null && courierPreDeparture?.pre_departure?.orders?.some(
+      o=>Number(o.id)===Number(attemptedOrderId)&&o.checked===true);
+    if(confirmed)return true;
+    message('preDepartureMsg',err.message||'Não foi possível salvar a conferência. Confira a conexão antes de tentar novamente.','err');
     return false;
   }
 }
@@ -4559,21 +4567,27 @@ function renderCourierMyRoute(){
   const el=$('courierMyRoute');if(!el)return;
   const r=courierPreDeparture.route;
   if(!r||r.dispatch_status!=='ON_ROAD'){el.innerHTML='';return}
-  // Operation notices remain accessible, but there is no computed itinerary
-  // or duplicate list of deliveries. Each order is already visible in Rota.
-  const changed=(r.stops||[]).filter(s=>s.changed_unacked);
-  const ack=r.ack_required
-    ? `<div class="pd-alert"><b>Endereço atualizado pelo caixa</b>${changed.length?'Pedido(s): '+changed.map(s=>escapeHtml(s.order_number)).join(', ')+'. ':''}Confira a alteração com a moto parada.<button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`
+  const manual=r.last_change?.cause==='ADMIN_RESEQUENCE';
+  const pending=(r.stops||[]).filter(x=>x.state==='PENDING');
+  const changed=(r.stops||[]).filter(x=>x.changed_unacked);
+  const priority=manual&&pending.length
+    ? `<div class="pd-alert"><b>Ordem sugerida pelo caixa</b><div>${pending.map(x=>escapeHtml(x.order_number)).join(' → ')}</div><div class="small">Sugestão apenas. Confirme qualquer entrega na ordem realizada.</div></div>`
     : '';
-  const deferred=(r.stops||[]).filter(s=>s.state==='PENDING'&&s.is_deferred);
+  const ack=r.ack_required
+    ? `<div class="pd-alert"><b>${manual?'Nova orientação do caixa':'Endereço atualizado pelo caixa'}</b>
+      ${!manual&&changed.length?'Pedido(s): '+changed.map(x=>escapeHtml(x.order_number)).join(', ')+'. ':''}
+      Confira a alteração com a moto parada.
+      <button type="button" class="btn primary" onclick="ackCourierRoute(${Number(r.dispatch_id)},${Number(r.route_version)})">Ciente</button></div>`
+    : '';
+  const deferred=pending.filter(x=>x.is_deferred);
   const incidentHint=deferred.length
-    ? '<div class="incident-alert approved">Pedido(s) '+deferred.map(s=>escapeHtml(s.order_number)).join(', ')+' seguem pendentes após orientação do caixa.</div>'
+    ? '<div class="incident-alert approved">Pedido(s) '+deferred.map(x=>escapeHtml(x.order_number)).join(', ')+' seguem pendentes após orientação do caixa.</div>'
     : '';
   const offlineHint=(!navigator.onLine||!courierRouteFresh)
     ? '<div class="incident-alert">Pedidos não atualizados. Não confirme entregas sem resposta do servidor. Reconecte e consulte o caixa.</div>'
     : '';
-  el.innerHTML=ack||incidentHint||offlineHint
-    ? `<section class="my-route">${ack}${incidentHint}${offlineHint}</section>`
+  el.innerHTML=ack||priority||incidentHint||offlineHint
+    ? `<section class="my-route">${ack}${priority}${incidentHint}${offlineHint}</section>`
     : '';
 }
 async function ackCourierRoute(dispatchId,version){
@@ -6242,8 +6256,11 @@ function renderPreDepartureAdmin(){
   $('preDepartureRoutes').innerHTML=`<div class="small muted"><b>Saídas em andamento (${routes.length})</b></div>`+(routes.map(r=>`<div class="pd-admin-item">
       <div class="pd-admin-item-head"><b>${escapeHtml(r.courier_name||'Motoboy')}</b><span class="badge ${r.route_status==='NEEDS_ADMIN'?'red':'gray'}">Saída #${Number(r.dispatch_id)}</span><span class="small muted">${r.counts.delivered}/${r.counts.total} entregues${r.ack_required?' · aguardando Ciente do motoboy':''}</span></div>
       <div class="pd-admin-orders">${r.stops.map(x=>`<div class="pd-admin-order"><b>${escapeHtml(x.order_number)}</b><span>${escapeHtml(x.platform_label)}</span><span class="small muted">${x.state==='DELIVERED'?'entregue':x.state==='CANCELLED'?'cancelado':'pendente'}${x.address_override?` · endereço v${Number(x.address_override.version)}`:''}</span><span class="small">${escapeHtml(x.address?.text||'')}</span>${x.state==='PENDING'?addressFixButton(x.platform,x.external_order_id):addressFixButton(x.platform,x.external_order_id,'Ocorrência')}</div>`).join('')}</div>
-      
+      ${r.stops.filter(x=>x.state==='PENDING').length>1
+        ? `<div class="pd-admin-actions"><button type="button" class="btn outline" data-id="${Number(r.dispatch_id)}" onclick="openManualRouteEditor(this.dataset.id)">Orientar ordem das entregas</button></div>`
+        : ''}
     </div>`).join('')||'<div class="empty">Nenhuma saída em andamento.</div>');
+  renderManualRouteEditor();
 }
 function preDepartureReason(text){
   const reason=prompt(text);
@@ -6269,6 +6286,84 @@ async function savePreDepartureTtl(){
 async function adminCancelPreDeparture(id){
   const reason=preDepartureReason('Cancelar a pré-saída e liberar os pedidos. Motivo:');if(!reason)return;
   await preDepartureAdminCall(`/api/admin/pre-departures/${Number(id)}/cancel`,{payload:{reason}});
+}
+
+// Manual recommendation: only pending orders, no route solver or matrices.
+let manualRouteState=null,manualRouteBusy=false;
+function openManualRouteEditor(dispatchId){
+  const route=(preDepartureAdminState?.routes||[]).find(x=>Number(x.dispatch_id)===Number(dispatchId));
+  if(!route)return alert('Saída não encontrada. Atualize o painel.');
+  const pending=route.stops.filter(x=>x.state==='PENDING');
+  if(pending.length<2)return alert('É preciso ter pelo menos duas entregas pendentes.');
+  manualRouteState={
+    dispatchId:Number(dispatchId),routeVersion:Number(route.route_version),
+    original:pending.map(x=>x.platform+':'+x.external_order_id),
+    stops:pending.map(x=>({
+      key:x.platform+':'+x.external_order_id,order_number:x.order_number,
+      platform_label:x.platform_label,address:x.address?.text||''
+    })),reason:''
+  };
+  renderManualRouteEditor();
+  $('manualRouteEditor')?.scrollIntoView?.({behavior:'smooth',block:'nearest'});
+}
+function closeManualRouteEditor(){
+  if(manualRouteBusy)return;
+  manualRouteState=null;
+  renderManualRouteEditor();
+}
+function renderManualRouteEditor(){
+  const el=$('manualRouteEditor');if(!el)return;
+  const st=manualRouteState;
+  el.classList.toggle('hidden',!st);
+  if(!st){el.innerHTML='';return}
+  el.innerHTML=`<div class="section-head"><div><b>Orientar entregas — saída #${st.dispatchId}</b>
+    <div class="small muted">Use as setas para priorizar pedidos. Sem cálculo automático e sem ordem obrigatória.</div></div>
+    <button class="btn outline" type="button" ${manualRouteBusy?'disabled':''} onclick="closeManualRouteEditor()">Fechar</button></div>
+    <div class="pd-admin-orders">${st.stops.map((o,i)=>`<div class="pd-admin-order">
+      <b>${i+1}. ${escapeHtml(o.order_number)}</b><span>${escapeHtml(o.platform_label)}</span>
+      <span class="small">${escapeHtml(o.address)}</span>
+      <div class="pd-admin-actions">
+        <button type="button" class="btn outline" aria-label="Subir ${escapeHtml(o.order_number)}" ${i===0||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},-1)">↑</button>
+        <button type="button" class="btn outline" aria-label="Descer ${escapeHtml(o.order_number)}" ${i===st.stops.length-1||manualRouteBusy?'disabled':''} onclick="moveManualRouteStop(${Number(i)},1)">↓</button>
+      </div></div>`).join('')}</div>
+    <label>Motivo da orientação (obrigatório)<textarea id="manualRouteReason" rows="2" maxlength="300" placeholder="Ex.: pedido antigo com prioridade">${escapeHtml(st.reason)}</textarea></label>
+    <div class="pd-admin-actions"><button type="button" class="btn primary" ${manualRouteBusy?'disabled':''} onclick="saveManualRouteEdit()">${manualRouteBusy?'Salvando...':'Enviar orientação ao motoboy'}</button></div>
+    <div id="manualRouteMsg" class="small muted">O motoboy receberá um aviso e deverá tocar em Ciente. A entrega permanece livre.</div>`;
+}
+function moveManualRouteStop(i,delta){
+  if(!manualRouteState||manualRouteBusy)return;
+  const j=i+delta;
+  if(j<0||j>=manualRouteState.stops.length)return;
+  manualRouteState.reason=$('manualRouteReason')?.value||'';
+  [manualRouteState.stops[i],manualRouteState.stops[j]]=[manualRouteState.stops[j],manualRouteState.stops[i]];
+  renderManualRouteEditor();
+}
+async function saveManualRouteEdit(){
+  const st=manualRouteState;
+  if(!st||manualRouteBusy)return;
+  const reason=String($('manualRouteReason')?.value||'').trim();
+  if(reason.length<5)return message('manualRouteMsg','Informe o motivo da orientação (mínimo de 5 caracteres).','err');
+  const keys=st.stops.map(x=>x.key);
+  if(keys.every((k,i)=>k===st.original[i])){
+    return message('manualRouteMsg','Mude pelo menos uma posição para enviar a orientação.','err');
+  }
+  manualRouteBusy=true;st.reason=reason;renderManualRouteEditor();
+  try{
+    await api(`/api/admin/dispatches/${st.dispatchId}/route/sequence`,{
+      method:'PUT',body:JSON.stringify({sequence:keys,reason,expected_route_version:st.routeVersion})
+    });
+    manualRouteState=null;
+    await loadPreDepartureAdmin();
+  }catch(err){
+    if(['ROUTE_VERSION_CONFLICT','SEQUENCE_INVALID','ROUTE_NOT_ACTIVE'].includes(err.code)){
+      manualRouteState=null;
+      await loadPreDepartureAdmin();
+      alert('Os pedidos mudaram enquanto você editava. Confira o painel atualizado e refaça a orientação.');
+    }else{
+      manualRouteBusy=false;renderManualRouteEditor();
+      message('manualRouteMsg',err.message||'Não foi possível enviar a orientação.','err');
+    }
+  }finally{manualRouteBusy=false}
 }
 async function lookupOrderAddress(){
   const number=$('addressLookupNumber').value.trim();if(!number)return;
@@ -6309,13 +6404,32 @@ async function openAddressFix(platform,externalId){
       <div class="form" style="margin-top:10px"><label>Ocorrência<textarea id="afOccurrence" rows="3" maxlength="500"></textarea></label><button type="button" class="btn primary" onclick="saveAddressOccurrence()">Registrar ocorrência</button></div>`;
   $('addressFixBody').innerHTML=`<div class="address-compare">${addressFixBox('Original (plataforma)',a.original)}${addressFixBox(a.version?`Vigente (versão ${Number(a.version)})`:'Vigente',a.current)}</div>${body}${history}`;
   $('addressFixModal').style.display='grid';
+  // A saved map pin must correspond to the address currently in the form.
+  for(const id of ['afStreet','afNumber','afNeighborhood','afCity','afState','afPostal']){
+    $(id)?.addEventListener('input',invalidateAddressFixLocation);
+  }
 }
 function addressFixFields(){
   return {street:$('afStreet').value,number:$('afNumber').value,complement:$('afComplement').value,neighborhood:$('afNeighborhood').value,
     city:$('afCity').value,state:$('afState').value,postal_code:$('afPostal').value,reference:$('afReference').value};
 }
+function addressFixLocationSignature(fields){
+  return ['street','number','neighborhood','city','state','postal_code'].map(
+    k=>String(fields?.[k]||'').trim().toLowerCase()).join('|');
+}
+function invalidateAddressFixLocation(){
+  if(!addressFixState||addressFixState.mode==='store')return;
+  if(addressFixState.location_signature===addressFixLocationSignature(addressFixFields()))return;
+  addressFixState.point=null;
+  addressFixState.location_source=null;
+  if($('addressFixSave'))$('addressFixSave').disabled=true;
+  message('addressFixMsg','Endereço alterado. Localize e confira novamente o ponto no mapa antes de salvar.','');
+}
 async function showAddressFixPoint(point,source){
   addressFixState.point=point;addressFixState.location_source=source;
+  if(addressFixState.mode!=='store'){
+    addressFixState.location_signature=addressFixLocationSignature(addressFixFields());
+  }
   const el=$('addressFixMap');el.classList.remove('hidden');
   const L=await loadLeaflet();
   if(!addressFixMap){
@@ -6332,11 +6446,22 @@ async function showAddressFixPoint(point,source){
   $('addressFixSave').disabled=false;
 }
 async function geocodeAddressFix(){
+  const fields=addressFixFields();
+  const requested=addressFixLocationSignature(fields);
+  const current=addressFixState;
   try{
-    const d=await api('/api/admin/orders/address/geocode',{method:'POST',body:JSON.stringify({fields:addressFixFields()})});
+    const d=await api('/api/admin/orders/address/geocode',{method:'POST',body:JSON.stringify({fields})});
+    if(current!==addressFixState||requested!==addressFixLocationSignature(addressFixFields())){
+      message('addressFixMsg','O endereço mudou durante a consulta. Localize novamente.','');
+      return;
+    }
     message('addressFixMsg',d.location.warning||`Localizado a ${(d.location.distance_from_store_meters/1000).toFixed(1).replace('.',',')} km da loja (em linha reta). Confira o ponto no mapa.`,d.location.warning?'err':'ok');
     await showAddressFixPoint({latitude:d.location.latitude,longitude:d.location.longitude},'GOOGLE');
   }catch(err){
+    if(current!==addressFixState||requested!==addressFixLocationSignature(addressFixFields())){
+      message('addressFixMsg','Endereço mudou. Localize novamente.','');
+      return;
+    }
     const cur=addressFixState?.current;
     const start=cur?.latitude!=null&&cur?.longitude!=null?{latitude:cur.latitude,longitude:cur.longitude}:{latitude:-23.62446,longitude:-46.55491};
     message('addressFixMsg',`${err.message} Arraste o marcador até o local correto.`,'err');
@@ -6345,6 +6470,10 @@ async function geocodeAddressFix(){
 }
 async function saveAddressFix(){
   const a=addressFixState;if(!a?.point)return;
+  if(a.location_signature!==addressFixLocationSignature(addressFixFields())){
+    invalidateAddressFixLocation();
+    return message('addressFixMsg','Confira novamente o ponto no mapa para esse endereço.','err');
+  }
   const reason=$('afReason').value.trim();
   if(reason.length<5)return message('addressFixMsg','Informe o motivo da alteração (mínimo de 5 caracteres).','err');
   $('addressFixSave').disabled=true;
