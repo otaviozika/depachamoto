@@ -9,7 +9,7 @@ const section=(start,next)=>{
   assert.ok(i>0&&j>i, "expected UI function "+start);
   return html.slice(i,j).trim();
 };
-const toggle=section("function togglePreDepartureBag(orderId){","function calculatePreDepartureRoute(retry){");
+const toggle=section("function togglePreDepartureBag(orderId){","function ackPreDeparture(){");
 const render=section("function renderPreDeparture(){","async function preDepartureAction(request,");
 const action=section("async function preDepartureAction(request,","function preDeparturePost(path,body={}){");
 const refresh=section("async function loadCourierPreDeparture(){","const INCIDENT_LABELS=");
