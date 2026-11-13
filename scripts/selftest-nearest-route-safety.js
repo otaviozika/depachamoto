@@ -42,13 +42,13 @@ const end = html.indexOf("function courierDeliveryCustomerHtml(", start);
 assert.ok(start >= 0 && end > start);
 const context = vm.createContext({ URLSearchParams });
 vm.runInContext(html.slice(start, end), context);
-check("Waze recebe coordenadas exatas calculadas, mesmo com endereço completo", () => {
+check("Waze e Maps recebem endereço numerado mesmo quando a rota tem pino", () => {
   const nav = { latitude: -23.62446, longitude: -46.55491, address: "Rua Fictícia, 5", address_complete: true, prefer_coordinates: true };
   const waze = new URL(context.buildWazeUrl(nav));
-  assert.equal(waze.searchParams.get("ll"), "-23.62446,-46.55491");
-  assert.equal(waze.searchParams.get("q"), null);
+  assert.equal(waze.searchParams.get("q"), "Rua Fictícia, 5");
+  assert.equal(waze.searchParams.get("ll"), null);
   const maps = new URL(context.buildGoogleMapsUrl(nav));
-  assert.equal(maps.searchParams.get("destination"), "-23.62446,-46.55491");
+  assert.equal(maps.searchParams.get("destination"), "Rua Fictícia, 5");
 });
 check("navegação legada mantém compatibilidade com endereço; pino inválido cai em fallback", () => {
   const legacy = new URL(context.buildWazeUrl({ address: "Rua Fictícia, 5", address_complete: true }));
@@ -59,8 +59,8 @@ check("navegação legada mantém compatibilidade com endereço; pino inválido 
 check("nenhum botão antigo de mapa fica ativo antes do Ciente", () => {
   const section = html.slice(html.indexOf("function courierDeliveryRow(x){"), html.indexOf("async function loadCourierDeliveries()", html.indexOf("function courierDeliveryRow(x){")));
   assert.match(section, /activeRoute\?\.ack_required===true/);
-  assert.match(section, /navBlocked\?[^\n]*courierDeliveryNavigationButtons\(routeNavigation\)/);
-  assert.match(section, /activeStop\?\.navigation\?\.prefer_coordinates===true/);
+  assert.match(section, /navBlocked\?[^\n]*courierDeliveryNavigationButtons\(x\)/);
+  assert.match(section, /courierDeliveryNavigationButtons\(x\)/);
 });
 check("tempo viário e pino exato são a base da rota operacional", () => {
   const service = fs.readFileSync(new URL("../lib/pre-departure-service.js", import.meta.url), "utf8");
@@ -102,7 +102,7 @@ check("cinco destinos têm 120 rotas analisadas e limite temporal verificado", (
   assert.ok(r.extra_minutes<=r.max_extra_minutes+1e-9);
 });
 
-check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => {
+check("card antigo navega ao endereço numerado e bloqueia sem Ciente", () => {
   const start = html.indexOf("function courierDeliveryRow(x){");
   const end = html.indexOf("async function loadCourierDeliveries()", start);
   const cardSource = html.slice(start, end);
@@ -120,15 +120,15 @@ check("card antigo também navega ao pino da rota e bloqueia sem Ciente", () => 
     courierDeliveryDetailsHtml: () => "",
     courierDeliveryCopyButton: () => "",
     courierDeliveryPaymentHtml: () => "",
-    courierDeliveryNavigationButtons: x => "DESTINO:" + (x.navigation?.latitude ?? "SEM_PINO")
+    courierDeliveryNavigationButtons: x => "DESTINO:" + (x.navigation?.address ?? "SEM_ENDEREÇO")
   });
   vm.runInContext(cardSource, ctx);
   const order = { order_id: "order-x", display_id: "100", platform: "ifood",
-    navigation: { address: "Rua Original", address_complete: true }, can_confirm: false };
+    navigation: { address: "Rua Original, 5", address_complete: true }, can_confirm: false };
   const enabled = ctx.courierDeliveryRow(order);
-  assert.match(enabled, /DESTINO:-23\.62446/);
+  assert.match(enabled, /DESTINO:Rua Original, 5/);
   ctx.courierPreDeparture.route.stops[0].is_next=false;
-  assert.match(ctx.courierDeliveryRow(order), /DESTINO:-23\.62446/, "qualquer entrega pode abrir Waze e Maps, independentemente da sequência");
+  assert.match(ctx.courierDeliveryRow(order), /DESTINO:Rua Original, 5/, "qualquer entrega pode abrir Waze e Maps, independentemente da sequência");
   ctx.courierPreDeparture.route.stops[0].is_next=true;
   ctx.courierPreDeparture.route.ack_required = true;
   const blocked = ctx.courierDeliveryRow(order);

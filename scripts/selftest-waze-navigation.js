@@ -12,6 +12,9 @@ function include(source, start, end) {
 }
 include(server, 'function parseJsonPayload(', 'function normalizeDeliveryCode(');
 include(html, 'function courierNavigationTarget(', 'function courierDeliveryCustomerHtml(');
+context.courierDeliveryWazeButton=x=>context.buildWazeUrl(x.navigation);
+context.courierDeliveryGoogleMapsButton=x=>context.buildGoogleMapsUrl(x.navigation);
+include(html, 'function courierDeliveryNavigationButtons(', 'function courierDeliveryRow(');
 const base = {
   streetName: 'Rua de Teste', streetNumber: '100', neighborhood: 'Centro',
   city: 'São Caetano do Sul', state: 'SP', country: 'BR', postalCode: '09550000',
@@ -93,6 +96,12 @@ for (const destination of [null, {}, { latitude: null, longitude: null },
 }
 links({ latitude: -23.61, longitude: -46.56, source: 'coordinates' }, '-23.61,-46.56', true);
 links({ address: 'Rua A & B, 12, São André, SP', latitude: 999, longitude: 999 }, 'Rua A & B, 12, São André, SP');
+const routePin={address:'Rua Teste, 123, São Caetano do Sul, SP',address_complete:true,latitude:-23.61,longitude:-46.56,prefer_coordinates:true};
+links(routePin,routePin.address);
+const buttons=context.courierDeliveryNavigationButtons({navigation:{address:'Rua Teste',latitude:-23.61,longitude:-46.56,prefer_coordinates:true},address_parts:{street:'Rua Teste',number:'123',neighborhood:'Centro',city:'São Caetano do Sul',state:'SP'}});
+assert.match(buttons,/q=Rua\+Teste%2C\+123%2C\+Centro%2C\+S%C3%A3o\+Caetano/);
+assert.match(buttons,/destination=Rua\+Teste%2C\+123%2C\+Centro%2C\+S%C3%A3o\+Caetano/);
+tests++;
 assert.match(html, /x\?\.navigation/);
 assert.match(server, /navigation: buildIfoodDeliveryDestination\(row\.payload\)/);
 assert.match(server, /navigation: buildAnotaAiDeliveryDestination\(row\.payload\)/);
