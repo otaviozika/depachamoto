@@ -4064,8 +4064,8 @@ function courierNavigationTarget(destination){
   const lat=numeric(rawLat),lng=numeric(rawLng);
   const validPin=Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&(lat!==0||lng!==0);
   const coordinates=validPin?lat+','+lng:null;
-  // O mesmo pino usado na matriz DEVE abrir no Waze/Maps. O endereço fica visível no card.
-  if(destination.prefer_coordinates===true&&coordinates)return {coordinates};
+  // A busca textual preserva o número da casa; o pino da matriz pode apontar
+  // para o centro da rua. Use coordenadas apenas sem endereço pesquisável.
   if(address&&(destination.source==='address'||destination.address_complete===true))return {address};
   if(coordinates)return {coordinates};
   return address?{address}:null;
@@ -4218,8 +4218,17 @@ function courierDeliveryGoogleMapsButton(x){
 }
 
 function courierDeliveryNavigationButtons(x){
-  const waze=courierDeliveryWazeButton(x);
-  const maps=courierDeliveryGoogleMapsButton(x);
+  const parts=x?.address_parts||{};
+  const street=String(parts.street||'').trim(),number=String(parts.number||'').trim();
+  const current=String(x?.navigation?.address||'').trim();
+  // Alguns pedidos têm número no card, mas o destino recebido traz só a rua.
+  // A versão corrigida pelo admin já é completa e não deve ser reconstruída.
+  const needsNumber=street&&number&&x?.navigation?.address_complete!==true&&
+    !new RegExp('(?:^|\\D)'+number.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:\\D|$)').test(current);
+  const address=needsNumber?[street,number,parts.neighborhood,[parts.city,parts.state].filter(Boolean).join(' - ')].filter(Boolean).join(', '):current;
+  const destination=needsNumber?{...x,navigation:{...x.navigation,address,source:'address'}}:x;
+  const waze=courierDeliveryWazeButton(destination);
+  const maps=courierDeliveryGoogleMapsButton(destination);
   if(!waze&&!maps)return '';
   return '<div class="delivery-navigation">'+waze+maps+'</div>';
 }
@@ -4236,9 +4245,6 @@ function courierDeliveryRow(x){
   const activeStop=(activeRoute?.stops||[]).find(s=>s.platform===platform&&String(s.external_order_id)===String(x.order_id));
   // Em rota ativa, o atalho legado so abre a proxima parada autorizada.
   const navBlocked=awaitingAck; // Any dispatched order may be visited; only an unacknowledged address update blocks navigation.
-  // Mesmo no card legado, navegar ao pino da nova rota, nunca ao endereço textual divergente.
-  const routeNavigation=activeStop?.navigation?.prefer_coordinates===true
-    ? {...x,navigation:activeStop.navigation} : x;
   const btn=canConfirm
     ? (platform==='anotaai'
       ? `<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||"")})'>✅ Confirmar entrega</button>`
@@ -4260,7 +4266,7 @@ function courierDeliveryRow(x){
     ${courierDeliveryCopyButton(x)}
     ${courierDeliveryPaymentHtml(x)}
     ${canConfirm&&x.message?`<div class="small">${escapeHtml(x.message)}</div>`:''}
-    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Navegação temporariamente indisponível: confirme a alteração do endereço com Ciente.</div>':courierDeliveryNavigationButtons(routeNavigation)}${btn}</div>
+    <div class="delivery-actions">${typeof incidentActionHtml==='function'?incidentActionHtml(activeStop):''}${navBlocked?'<div class="delivery-address-changed">Navegação temporariamente indisponível: confirme a alteração do endereço com Ciente.</div>':courierDeliveryNavigationButtons(x)}${btn}</div>
     ${!canConfirm&&x.message?`<div class="small delivery-card-finished-note">${escapeHtml(x.message)}</div>`:''}
   </div>`;
 }
@@ -4271,7 +4277,6 @@ function courierFocusOrder(x,stop){
   const address=[street,number].filter(Boolean).join(', ');
   const route=courierPreDeparture?.route;
   const blocked=route?.ack_required===true;
-  const navigation=stop?.navigation?.prefer_coordinates?{...x,navigation:stop.navigation}:x;
   const platform=String(x.platform||'ifood').toLowerCase();
   const confirm=x.can_confirm===true?(platform==='anotaai'
     ?`<button type="button" class="btn success" onclick='confirmAnotaAiDelivery(${JSON.stringify(x.order_id)},${JSON.stringify(x.display_id||x.local_order_number||'')})'>Confirmar entrega</button>`
@@ -4279,7 +4284,7 @@ function courierFocusOrder(x,stop){
   return `<div class="courier-focus-card"><div class="courier-eyebrow">${stop?.is_next===true?'Próxima entrega':'Entrega em rota'}</div><h2>Pedido #${display}</h2><div class="courier-focus-address">${escapeHtml(address||'Endereço no detalhe do pedido')}</div>
     ${x.address_override?'<div class="delivery-address-changed">Endereço corrigido pelo admin. Confira os detalhes.</div>':''}
     ${courierDeliveryPaymentHtml(x)}
-    ${blocked?'<div class="delivery-address-changed">Navegação bloqueada até confirmar a alteração do endereço.</div>':courierDeliveryNavigationButtons(navigation)}
+    ${blocked?'<div class="delivery-address-changed">Navegação bloqueada até confirmar a alteração do endereço.</div>':courierDeliveryNavigationButtons(x)}
     <div class="delivery-actions">${confirm}${typeof incidentActionHtml==='function'?incidentActionHtml(stop):''}</div>
     <details class="courier-focus-detail"><summary>Ver detalhes do pedido</summary>${courierDeliveryRow(x)}</details></div>`;
 }
