@@ -145,8 +145,8 @@ function courierDeliveryNavigationButtons(x){
 
 const oldActions = '<div class="delivery-actions">${courierDeliveryWazeButton(x)}${btn}</div>';
 const newActions = '<div class="delivery-actions">${courierDeliveryNavigationButtons(x)}${btn}</div>';
-// A nova "Minha Rota" pode usar a navegação alinhada ao pino com bloqueio de Ciente.
-const approvedRouteActions = 'courierDeliveryNavigationButtons(routeNavigation)';
+// O card atual pode bloquear a navegação até o Ciente e usar o endereço vigente.
+const approvedRouteActions = 'navBlocked?';
 if (html.includes(oldActions)) {
   html = html.replace(oldActions, newActions);
 } else if (!html.includes(newActions) && !(html.includes(approvedRouteActions) && html.includes('function courierDeliveryNavigationButtons(x){'))) {
