@@ -10,7 +10,7 @@ const end = html.indexOf("\nlet courierActiveDispatch=null;", begin);
 assert.ok(begin !== -1 && end > begin, "Fluxo de reconciliação ausente");
 const confirmationFunctions = html.slice(begin, end);
 
-async function simulate({ code = "123456", post, deliveries, refreshFails = false }) {
+async function simulate({ code = "123456", post, deliveries, refreshFails = false, extraSubmits = 0 }) {
   const output = [];
   const fields = { deliveryConfirmCode: { value: code }, deliveryConfirmBtn: { disabled: false } };
   const target = { orderId: "order-fixture", displayId: "1234" };
@@ -37,7 +37,9 @@ async function simulate({ code = "123456", post, deliveries, refreshFails = fals
   };
   vm.runInNewContext(confirmationFunctions +
     "\nglobalThis.__submit = submitDeliveryConfirmation;", context);
-  await context.__submit({ preventDefault() {} });
+  const requests = [context.__submit({ preventDefault() {} })];
+  for (let n = 0; n < extraSubmits; n++) requests.push(context.__submit({ preventDefault() {} }));
+  await Promise.all(requests);
   return { output, fields, posts, getRequests };
 }
 
@@ -50,6 +52,32 @@ test("POST accepted: failed dashboard refresh is not a code error", async () => 
   assert.equal(s.posts, 1);
   assert.ok(s.output.some(x => x.type === "ok"));
   assert.ok(!s.output.some(x => x.type === "err"));
+});
+
+
+test("five rapid taps cause exactly one iFood verification call", async () => {
+  const s = await simulate({
+    extraSubmits: 4,
+    post: async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return { message: "Código aceito pelo iFood." };
+    },
+    deliveries: () => ({ current: [] })
+  });
+  assert.equal(s.posts, 1);
+  assert.ok(s.output.some(x => x.type === "ok"));
+  assert.equal(s.fields.deliveryConfirmBtn.disabled, true,
+    "after a successful POST the button must remain locked until the modal closes");
+});
+
+test("after a failed validation the button can be used once more", async () => {
+  const s = await simulate({
+    post: () => { throw Object.assign(new Error("Código incorreto"), { code: "DELIVERY_CODE_INVALID", status: 422 }); },
+    deliveries: () => ({ current: [{ order_id: "order-fixture", state: "FAILED" }] })
+  });
+  assert.equal(s.posts, 1);
+  assert.equal(s.fields.deliveryConfirmBtn.disabled, false);
+  assert.equal(s.fields.deliveryConfirmCode.value, "123456");
 });
 
 test("422 followed by CONCLUDED is reconciled without another POST", async () => {
