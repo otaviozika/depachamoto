@@ -7527,8 +7527,10 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
     });
   } catch (err) {
     const status = Number(err?.statusCode || 0);
-    const userCodeError = status === 400 || status === 422;
+    const rejectedByIfood = status === 400 || status === 422;
 
+    // A synchronização pode concluir o pedido enquanto a chamada de código
+    // ainda está em andamento. Nunca rebaixe CONCLUDED/VERIFIED para FAILED.
     await pool.query(`
       UPDATE ifood_delivery_confirmations
       SET status='FAILED',
@@ -7536,24 +7538,61 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
           last_http_status=$2,
           last_error=$3,
           updated_at=NOW()
-      WHERE ifood_order_id=$1
+      WHERE ifood_order_id=$1 AND status='PROCESSING'
     `, [
       row.order_id,
       status || null,
-      userCodeError
-        ? "Código não validado pelo iFood."
+      rejectedByIfood
+        ? "iFood não validou a solicitação; conferir estado do pedido."
         : ifoodSafeError(err)
     ]);
+
+    // Um HTTP 422 pode significar código já verificado ou estado alterado.
+    // O estado confirmado do pedido, e não o erro HTTP isolado, é a verdade.
+    const latest = (await pool.query(`
+      SELECT o.status AS order_status,c.status AS confirmation_status
+      FROM ifood_orders o
+      LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
+      WHERE o.order_id=$1
+    `, [row.order_id])).rows[0];
+    const alreadyConcluded = ["CONCLUDED","DELIVERED"].includes(
+      canonicalIfoodOrderStatus(latest?.order_status)
+    ) || ["VERIFIED","CONCLUDED"].includes(
+      String(latest?.confirmation_status || "").toUpperCase()
+    );
+    if (alreadyConcluded) {
+      await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
+      return res.json({
+        ok: true,
+        verified: true,
+        concluded: ["CONCLUDED","DELIVERED"].includes(canonicalIfoodOrderStatus(latest?.order_status)) ||
+          String(latest?.confirmation_status || "").toUpperCase() === "CONCLUDED",
+        already_confirmed: true,
+        message: "Esta entrega já consta como confirmada no iFood.",
+        order: { order_id: row.order_id, display_id: row.display_id }
+      });
+    }
 
     emitRealtime("delivery:changed", {
       courier_id: req.session.user.id,
       order_id: row.order_id
     });
 
-    if (userCodeError) {
+    if (rejectedByIfood) {
+      // Resposta 400/422 não prova, sozinha, erro de digitação.
+      // Só instruímos nova conferência do código se a API informar isso.
+      const details = [
+        err?.ifoodBody?.message,
+        err?.ifoodBody?.error?.message,
+        typeof err?.ifoodBody?.error === "string" ? err.ifoodBody.error : "",
+        err?.message
+      ].filter(Boolean).join(" ");
+      const clearlyWrongCode = /invalid delivery code|incorrect (?:delivery )?code|verification failed.{0,50}code does not match|código (?:inválido|incorreto)/i.test(details);
       return res.status(422).json({
-        error: "Código incorreto. Confira com o cliente e tente novamente.",
-        code: "DELIVERY_CODE_INVALID"
+        error: clearlyWrongCode
+          ? "Código incorreto. Confira com o cliente e tente novamente."
+          : "O iFood não concluiu a confirmação agora. Verifique se o pedido já foi concluído antes de reenviar o código.",
+        code: clearlyWrongCode ? "DELIVERY_CODE_INVALID" : "IFOOD_VERIFY_REJECTED"
       });
     }
 
@@ -7566,7 +7605,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
 
     if (status === 429 || status >= 500 || status === 0) {
       return res.status(503).json({
-        error: "Não foi possível confirmar agora porque o iFood está indisponível. Tente novamente em instantes.",
+        error: "Não foi possível confirmar agora porque o iFood está indisponível. Confira o status antes de tentar novamente.",
         code: "IFOOD_TEMPORARY_ERROR"
       });
     }
