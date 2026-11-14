@@ -16,7 +16,7 @@
     "selftest:payments": "node scripts/selftest-payments.js",
     "selftest:payment-drive": "node scripts/selftest-payment-drive.js",
     "selftest:pix": "node scripts/selftest-pix.js",
-    "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js",
+    "selftest:delivery-confirmation": "node scripts/selftest-delivery-confirmation.js && node scripts/selftest-ifood-code-reconciliation.js",
     "selftest:wallboard": "node scripts/selftest-wallboard.js",
     "selftest:dashboard-theme": "node scripts/selftest-dashboard-theme.js",
     "selftest:session-expiry": "node scripts/selftest-session-expiry.js",
