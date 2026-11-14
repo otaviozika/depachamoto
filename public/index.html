@@ -4629,45 +4629,105 @@ function openDeliveryConfirmModal(orderId,displayId){
   deliveryConfirmationTarget={orderId:String(orderId||''),displayId:String(displayId||'')};
   $('deliveryConfirmOrderLabel').textContent='Pedido #'+String(displayId||'').replace(/^#/,'');
   $('deliveryConfirmCode').value='';
+  $('deliveryConfirmBtn').disabled=false;
   message('deliveryConfirmMsg','','');
   $('deliveryConfirmModal').style.display='grid';
   setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
 }
 
 function closeDeliveryConfirmModal(){
+  $('deliveryConfirmBtn').disabled=false;
   $('deliveryConfirmModal').style.display='none';
   deliveryConfirmationTarget=null;
   message('deliveryConfirmMsg','','');
+}
+
+// O iFood pode concluir a entrega enquanto um POST retorna erro ou perde conexão.
+// Neste caso, consultar o status SEM reenviar o código evita falsas falhas.
+async function reconcileIfoodDeliveryConfirmation(orderId, maxChecks=3){
+  const wanted=String(orderId||'');
+  for(let attempt=0;attempt<maxChecks;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,1000*attempt));
+    try{
+      const deliveries=await api('/api/courier/ifood/deliveries');
+      const all=[...(deliveries.current||[]),...(deliveries.pending||[]),...(deliveries.completed||[])];
+      const item=all.find(x=>String(x.order_id)===wanted);
+      const state=String(item?.state||'').toUpperCase();
+      const confirmation=String(item?.confirmation_status||'').toUpperCase();
+      if(['VERIFIED','CONCLUDED'].includes(state)||['VERIFIED','CONCLUDED'].includes(confirmation)){
+        return true;
+      }
+    }catch{
+      // Falha no GET nunca significa entrega confirmada.
+    }
+  }
+  return false;
+}
+
+async function refreshCourierAfterDeliveryConfirmation(){
+  // A confirmação é uma operação independente da atualização da interface.
+  // Uma falha de refresh não pode apagar o sucesso já devolvido pelo servidor.
+  try{
+    await loadCourier();
+  }catch{
+    await loadCourierDeliveries().catch(()=>{});
+  }
 }
 
 async function submitDeliveryConfirmation(e){
   e.preventDefault();
   if(!deliveryConfirmationTarget)return;
 
+  const orderId=String(deliveryConfirmationTarget.orderId||'');
   const code=String($('deliveryConfirmCode').value||'').replace(/\D/g,'');
   if(!/^\d{4,8}$/.test(code)){
     return message('deliveryConfirmMsg','Digite o código do cliente usando somente 4 a 8 números.','err');
   }
 
   const btn=$('deliveryConfirmBtn');
+  if(btn.disabled)return;
   btn.disabled=true;
   message('deliveryConfirmMsg','Enviando confirmação ao iFood...','');
+  let confirmationAccepted=false;
 
   try{
-    const d=await api(`/api/courier/ifood/orders/${encodeURIComponent(deliveryConfirmationTarget.orderId)}/verify-delivery`,{
-      method:'POST',
-      body:JSON.stringify({code})
-    });
+    let result;
+    try{
+      result=await api(`/api/courier/ifood/orders/${encodeURIComponent(orderId)}/verify-delivery`,{
+        method:'POST',
+        body:JSON.stringify({code})
+      });
+    }catch(err){
+      const shouldReconcile=err.code!=='DELIVERY_CODE_FORMAT'&&err.code!=='DELIVERY_NOT_ASSIGNED';
+      message('deliveryConfirmMsg','Conferindo o status da entrega antes de solicitar outra tentativa...','');
+      const confirmed=shouldReconcile&&await reconcileIfoodDeliveryConfirmation(
+        orderId,err.code==='DELIVERY_CODE_INVALID'?1:3
+      );
+      if(!confirmed){
+        const uncertain=err.code==='NETWORK_ERROR';
+        message('deliveryConfirmMsg',uncertain
+          ? 'Conexão interrompida. Não foi possível saber se o código chegou ao iFood. Confira o status antes de reenviar.'
+          : (err.message||'O iFood não confirmou o código. Confira o status da entrega e tente novamente.'),
+          'err');
+        await loadCourierDeliveries().catch(()=>{});
+        return;
+      }
+      result={message:'A entrega já consta como confirmada no iFood.'};
+    }
 
-    message('deliveryConfirmMsg',d.message||'Entrega confirmada.','ok');
-    $('deliveryConfirmCode').value='';
-    await loadCourier();
-    setTimeout(()=>closeDeliveryConfirmModal(),1100);
-  }catch(err){
-    message('deliveryConfirmMsg',err.message,'err');
-    await loadCourierDeliveries().catch(()=>{});
+    confirmationAccepted=true;
+    if(String(deliveryConfirmationTarget?.orderId||'')===orderId){
+      message('deliveryConfirmMsg',result.message||'Entrega confirmada.','ok');
+      $('deliveryConfirmCode').value='';
+    }
+    await refreshCourierAfterDeliveryConfirmation();
+    setTimeout(()=>{
+      if(String(deliveryConfirmationTarget?.orderId||'')===orderId)closeDeliveryConfirmModal();
+    },1100);
   }finally{
-    btn.disabled=false;
+    // Uma confirmação aceita não pode disparar outra tentativa enquanto a
+    // mensagem de sucesso ainda estiver visível. O modal reabilita ao fechar.
+    if(!confirmationAccepted)btn.disabled=false;
   }
 }
 

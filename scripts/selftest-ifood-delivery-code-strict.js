@@ -15,7 +15,8 @@ const route = server.slice(start, server.indexOf("\n}));", start));
 const iCall = route.indexOf("/verifyDeliveryCode`");
 const iFalse = route.indexOf("if (explicitValid === false)");
 const iStrict = route.indexOf("if (explicitValid !== true)");
-const iVerified = route.indexOf("SET status='VERIFIED'");
+const safeVerifiedUpdate = "SET status=CASE WHEN status='CONCLUDED' THEN status ELSE 'VERIFIED' END";
+const iVerified = route.indexOf(safeVerifiedUpdate);
 const strictBlock = route.slice(iStrict, iVerified);
 
 const checks = {
@@ -23,10 +24,11 @@ const checks = {
   verdictOnlyFromBooleans: route.includes('typeof body?.valid === "boolean" ? body.valid :') && route.includes('typeof body?.success === "boolean" ? body.success :'),
   rejectsExplicitFalse: iFalse > iCall,
   strictGuardExists: iStrict > iFalse,
-  verifiedOnlyAfterStrictGuard: iVerified > iStrict && route.indexOf("SET status='VERIFIED'", iVerified + 1) === -1,
+  verifiedOnlyAfterStrictGuard: iVerified > iStrict && route.indexOf(safeVerifiedUpdate, iVerified + 1) === -1 && !route.includes("SET status='VERIFIED'"),
+  concludedNeverDowngraded: route.includes(safeVerifiedUpdate) && route.includes("WHERE ifood_order_id=$1 AND status='PROCESSING'"),
   strictGuardDoesNotConfirm: strictBlock.includes("SET status='FAILED'") && strictBlock.includes("return res.status(503)") && strictBlock.includes('"IFOOD_VERIFY_UNCONFIRMED"'),
   strictGuardIsAudited: strictBlock.includes('"IFOOD_DELIVERY_CODE_UNCONFIRMED_RESPONSE"'),
-  wrongCodeHttpErrorsStillInvalid: route.includes("const userCodeError = status === 400 || status === 422;"),
+  wrongCodeHttpErrorsDistinguished: route.includes("const rejectedByIfood = status === 400 || status === 422;") && route.includes("const clearlyWrongCode =") && route.includes('code: clearlyWrongCode ? "DELIVERY_CODE_INVALID" : "IFOOD_VERIFY_REJECTED"'),
   formatCheckedBeforeIfood: route.indexOf("validDeliveryCode(deliveryCode)") > 0 && route.indexOf("validDeliveryCode(deliveryCode)") < iCall,
   onlyAssignedCourier: route.includes("AND d.courier_id=$2"),
   singleFlightClaim: route.includes("status IN ('PENDING','FAILED')") && route.includes("SET status='PROCESSING'")
