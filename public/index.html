@@ -4629,12 +4629,14 @@ function openDeliveryConfirmModal(orderId,displayId){
   deliveryConfirmationTarget={orderId:String(orderId||''),displayId:String(displayId||'')};
   $('deliveryConfirmOrderLabel').textContent='Pedido #'+String(displayId||'').replace(/^#/,'');
   $('deliveryConfirmCode').value='';
+  $('deliveryConfirmBtn').disabled=false;
   message('deliveryConfirmMsg','','');
   $('deliveryConfirmModal').style.display='grid';
   setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
 }
 
 function closeDeliveryConfirmModal(){
+  $('deliveryConfirmBtn').disabled=false;
   $('deliveryConfirmModal').style.display='none';
   deliveryConfirmationTarget=null;
   message('deliveryConfirmMsg','','');
@@ -4686,6 +4688,7 @@ async function submitDeliveryConfirmation(e){
   if(btn.disabled)return;
   btn.disabled=true;
   message('deliveryConfirmMsg','Enviando confirmação ao iFood...','');
+  let confirmationAccepted=false;
 
   try{
     let result;
@@ -4712,6 +4715,7 @@ async function submitDeliveryConfirmation(e){
       result={message:'A entrega já consta como confirmada no iFood.'};
     }
 
+    confirmationAccepted=true;
     if(String(deliveryConfirmationTarget?.orderId||'')===orderId){
       message('deliveryConfirmMsg',result.message||'Entrega confirmada.','ok');
       $('deliveryConfirmCode').value='';
@@ -4721,7 +4725,9 @@ async function submitDeliveryConfirmation(e){
       if(String(deliveryConfirmationTarget?.orderId||'')===orderId)closeDeliveryConfirmModal();
     },1100);
   }finally{
-    btn.disabled=false;
+    // Uma confirmação aceita não pode disparar outra tentativa enquanto a
+    // mensagem de sucesso ainda estiver visível. O modal reabilita ao fechar.
+    if(!confirmationAccepted)btn.disabled=false;
   }
 }
 
