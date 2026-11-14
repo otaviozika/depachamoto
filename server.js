@@ -7427,7 +7427,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
             last_error='Código não validado pelo iFood.',
             last_response=$3,
             updated_at=NOW()
-        WHERE ifood_order_id=$1
+        WHERE ifood_order_id=$1 AND status='PROCESSING'
       `, [row.order_id,response.status,JSON.stringify(body || {})]);
 
       return res.status(422).json({
@@ -7445,7 +7445,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
             last_error='Resposta do iFood sem confirmação explícita do código.',
             last_response=$3,
             updated_at=NOW()
-        WHERE ifood_order_id=$1
+        WHERE ifood_order_id=$1 AND status='PROCESSING'
       `, [row.order_id,response.status,JSON.stringify(body ?? null)]);
 
       await auditBestEffort(
@@ -7474,7 +7474,7 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
 
     await pool.query(`
       UPDATE ifood_delivery_confirmations
-      SET status='VERIFIED',
+      SET status=CASE WHEN status='CONCLUDED' THEN status ELSE 'VERIFIED' END,
           processing_started_at=NULL,
           last_http_status=$2,
           last_error=NULL,
