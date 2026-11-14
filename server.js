@@ -7410,6 +7410,9 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
       }
     );
 
+    // Só confirma quando o iFood diz EXPLICITAMENTE que o código é válido
+    // (documentação: 200 {"valid": true}). Qualquer outra resposta de sucesso
+    // (corpo vazio, 202 "ACCEPTED", "valid" como texto) NÃO dá baixa na entrega.
     const explicitValid =
       typeof body?.valid === "boolean" ? body.valid :
       typeof body?.success === "boolean" ? body.success :
@@ -7430,6 +7433,42 @@ app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly
       return res.status(422).json({
         error: "Código incorreto. Confira com o cliente e tente novamente.",
         code: "DELIVERY_CODE_INVALID"
+      });
+    }
+
+    if (explicitValid !== true) {
+      await pool.query(`
+        UPDATE ifood_delivery_confirmations
+        SET status='FAILED',
+            processing_started_at=NULL,
+            last_http_status=$2,
+            last_error='Resposta do iFood sem confirmação explícita do código.',
+            last_response=$3,
+            updated_at=NOW()
+        WHERE ifood_order_id=$1
+      `, [row.order_id,response.status,JSON.stringify(body ?? null)]);
+
+      await auditBestEffort(
+        req.session.user.id,
+        "IFOOD_DELIVERY_CODE_UNCONFIRMED_RESPONSE",
+        "ifood_order",
+        row.order_id,
+        {
+          display_id: row.display_id || null,
+          dispatch_id: row.dispatch_id,
+          http_status: response.status,
+          body_type: body === null ? "empty" : Array.isArray(body) ? "array" : typeof body
+        }
+      );
+
+      emitRealtime("delivery:changed", {
+        courier_id: req.session.user.id,
+        order_id: row.order_id
+      });
+
+      return res.status(503).json({
+        error: "O iFood não confirmou o código. A entrega continua pendente: tente novamente em instantes e, se persistir, avise o administrador.",
+        code: "IFOOD_VERIFY_UNCONFIRMED"
       });
     }
 
