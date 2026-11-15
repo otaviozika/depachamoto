@@ -22,19 +22,22 @@ function deferred(){
 
 function harness({
   post=async()=>({verified:true}),status=async()=>({state:"RECONCILING"}),
-  refresh=async()=>{},code="1234",timers="fast", oldHtml
+  refresh=async()=>{},help=async()=>({ok:true,message:"Caixa avisado."}),code="1234",timers="fast", oldHtml
 }={}){
   const fields={
     deliveryConfirmCode:{value:code,focus(){}},deliveryConfirmBtn:{disabled:false},
-    deliveryConfirmOrderLabel:{},deliveryConfirmModal:{style:{display:"grid"}}
+    deliveryConfirmOrderLabel:{},deliveryConfirmModal:{style:{display:"grid"}},
+    deliveryConfirmHelp:{classList:new Set(["hidden"])}
   };
-  const results={messages:[],posts:0,gets:[],refreshes:0,closedAt:null};
+  fields.deliveryConfirmHelp.classList.remove=fields.deliveryConfirmHelp.classList.delete;
+  const results={messages:[],posts:0,helpRequests:[],gets:[],refreshes:0,closedAt:null};
   let statusTimer;
   const context=vm.createContext({
     deliveryConfirmationTarget:{orderId:"first",displayId:"101"},courierDeliveryFeedbackTimer:null,
     activeIfoodConfirmationRequests:new Set(),uncertainIfoodConfirmations:new Set(),confirmedIfoodDeliveries:new Set(),
     $:id=>fields[id],AbortController,message:(id,text,type)=>results.messages.push({id,text,type}),
     api:async(url,options)=>{
+      if(url.endsWith("/help")){results.helpRequests.push({url,body:options.body});return help();}
       if(options?.method==="POST"){
         results.posts++;
         return post(url);
@@ -49,7 +52,7 @@ function harness({
     loadCourier:refresh,loadCourierDeliveries:async()=>{},
     setTimeout:(fn,ms)=>{
       if(ms===4000){statusTimer=fn;return fn;}
-      if([3500,5000,28000,80].includes(ms))return;
+      if([3500,4500,5000,28000,80].includes(ms))return;
       if(timers==="real")return setTimeout(fn,ms);
       queueMicrotask(fn);
     },
@@ -62,10 +65,11 @@ function harness({
     const closeOriginal=closeDeliveryConfirmModal;
     closeDeliveryConfirmModal=()=>{markClose();closeOriginal()};
     globalThis.submit=submitDeliveryConfirmation;
+    globalThis.askHelp=typeof requestIfoodConfirmationHelp==="function"?requestIfoodConfirmationHelp:null;
     globalThis.open=openDeliveryConfirmModal;
     globalThis.close=closeDeliveryConfirmModal;
   `,Object.assign(context,{markClose:()=>{results.closedAt??=performance.now()}}));
-  return {fields,results,submit:()=>context.submit({preventDefault(){}}),open:context.open,close:context.close,checkAutomatically:()=>statusTimer?.()};
+  return {fields,results,submit:()=>context.submit({preventDefault(){}}),help:context.askHelp,open:context.open,close:context.close,checkAutomatically:()=>statusTimer?.()};
 }
 
 test("success closes the modal before dashboard completion, including dashboard failure",async()=>{
@@ -154,6 +158,23 @@ test("explicit invalid code is shown and can be edited",async()=>{
   assert.equal(h.results.messages.at(-1).text,"Código incorreto");
   assert.equal(h.fields.deliveryConfirmCode.value,"1234");
   assert.equal(h.fields.deliveryConfirmBtn.disabled,false);
+});
+
+test("repeated generic rejection offers help and only a changed code can be sent after two rejections",async()=>{
+  const h=harness({post:async()=>{throw Object.assign(Error("Recusado"),{code:"IFOOD_VERIFY_REJECTED"})}});
+  await h.submit();
+  assert.equal(h.fields.deliveryConfirmHelp.classList.has("hidden"),false);
+  await h.submit();
+  await h.submit();
+  assert.equal(h.results.posts,2);
+  h.fields.deliveryConfirmCode.value="4321";
+  await h.submit();
+  assert.equal(h.results.posts,3);
+  await h.help();
+  assert.equal(h.fields.deliveryConfirmModal.style.display,"none");
+  assert.equal(h.results.helpRequests.length,1);
+  assert.equal(h.results.helpRequests[0].body,undefined);
+  assert.match(h.results.messages.at(-1).text,/Caixa avisado/);
 });
 
 test("definitive HTTP 400 shows the provider rejection and unlocks the code without a second request",async()=>{

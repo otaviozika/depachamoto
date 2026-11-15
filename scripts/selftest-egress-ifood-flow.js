@@ -17,7 +17,7 @@ let queryCount=0;
 const query=async(sql,args=[])=>{queryCount++;const r=await db.query(sql,args);return {...r,rowCount:r.affectedRows??r.rows.length};};
 await query("INSERT INTO users(id,name,username,password_hash,role) VALUES(1,'Admin','admin','synthetic','admin'),(2,'A','a','synthetic','courier'),(3,'B','b','synthetic','courier')");
 let mode='valid',apiCalls=0,gate=null,seq=0,tests=0,externalBlocked=false,benchmark=false;
-const events=[];
+const events=[],helpNotices=new Map();
 const context=deliveryContext(source,query);
 Object.assign(context,{
   touchPresence:async()=>{},markConfirmedIncident:async()=>0,ifoodConfigured:()=>true,ifoodMerchantAllowed:id=>id==='synthetic-shop',IFOOD_ORDER_BASE:'https://ifood.test.invalid',
@@ -34,6 +34,7 @@ const service=createIfoodDeliveryConfirmation({
   isConfigured:()=>true, isMerchantAllowed:id=>id==='synthetic-shop', normalizeCode:String,
   assertExternalMutationAllowed:()=>{if(externalBlocked)throw Error('STAGING_SAFE_MODE')},
   emitRealtime:context.emitRealtime, onEffectsReady(){},
+  notifyCourierHelp:async notice=>{if(!helpNotices.has(notice.uniqueKey))helpNotices.set(notice.uniqueKey,notice);},
   verifyCode:async(id,code)=>{
     apiCalls++;
     if(benchmark)await wait(20);
@@ -64,6 +65,22 @@ try {
     assert.equal((await verify(await fixture({merchant:'other'}))).code,403);assert.equal((await verify(await fixture({by:'IFOOD'}))).code,409);
     assert.equal((await verify(await fixture({status:'CANCELLED'}))).code,409);assert.equal((await verify(await fixture({hours:49}))).code,404);
     assert.equal((await verify(await fixture({status:'CONFIRMED',link:'PENDING'}))).code,409);assert.equal(apiCalls,before);
+  });
+  await test('cashier help is restricted to owned active orders, deduplicates alerts and does not call iFood',async()=>{
+    const f=await fixture(),before=apiCalls;
+    const help={handler:service.requestHelp};
+    assert.equal((await verify(f,help)).code,409);
+    await query("UPDATE dispatches SET status='ON_ROAD' WHERE id=$1",[f.dispatch]);
+    assert.equal((await verify(f,{...help,courier:3})).code,404);
+    assert.equal((await verify(f,help)).code,200);
+    assert.equal((await verify(f,help)).code,200);
+    assert.equal(helpNotices.size,1);
+    assert.equal([...helpNotices.values()][0].dispatchId,f.dispatch);
+    assert.equal(apiCalls,before);
+    assert.equal((await verify(f,{check:true})).body.verified,false);
+    await query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id=$1",[f.id]);
+    assert.equal((await verify(f,help)).body.verified,true);
+    assert.equal(helpNotices.size,1);
   });
   await test('invalid code can retry, valid code emits only to its courier, and replay is idempotent',async()=>{
     const f=await fixture();assert.equal((await verify(f,{code:'9999'})).code,422);events.length=0;
