@@ -15,7 +15,7 @@ test("legacy iFood success responses confirm unless the provider explicitly reje
     [202, {}, "VERIFIED"],
     [202, {success:false}, "INVALID"],
     [400, {error:"Invalid delivery code"}, "INVALID"],
-    [400, {success:false}, "UNCERTAIN"],
+    [400, {success:false}, "REJECTED"],
     [401, {valid:true}, "AUTH"],
     [409, {valid:true}, "INELIGIBLE"],
     [412, {}, "INELIGIBLE"],
