@@ -2481,6 +2481,8 @@ async function fetchIfood(url, options = {}, timeoutMs = 12000) {
   if (!response.ok) {
     const err = new Error(`iFood HTTP ${response.status}`);
     err.statusCode = response.status;
+    const requestId = response.headers.get("x-ifood-request-id") || response.headers.get("x-request-id");
+    if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId || "")) err.ifoodRequestId = requestId;
     err.ifoodBody = typeof body === "string" ? body.slice(0, 300) : body;
     throw err;
   }
