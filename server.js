@@ -5108,7 +5108,8 @@ async function createNotification({
   message,
   courierId = null,
   dispatchId = null,
-  uniqueKey = null
+  uniqueKey = null,
+  push = true
 }) {
   if (type === "TIME_ATTENTION" && !(await notificationEnabled("notify_attention"))) return null;
   if (type === "TIME_DELAYED" && !(await notificationEnabled("notify_delayed"))) return null;
@@ -5125,7 +5126,7 @@ async function createNotification({
   const notification = q.rows[0] || null;
   if (notification) {
     emitRealtime("notification:new", notification);
-    sendPushToAdmins(notification).catch(err => {
+    if (push) sendPushToAdmins(notification).catch(err => {
       console.error("Web Push error:", err?.message || err);
     });
   }
@@ -7317,11 +7318,15 @@ const ifoodDeliveryConfirmation = createIfoodDeliveryConfirmation({
   ),
   emitRealtime,
   onEffectsReady:scheduleIfoodDeliveryEffects,
+  notifyCourierHelp:notice => createNotification({...notice,push:!STAGING_SAFE_MODE}),
   logTiming:sample => console.info("IFOOD_DELIVERY_TIMING",JSON.stringify(sample))
 });
 
 app.get("/api/courier/ifood/orders/:orderId/confirmation", auth, courierOnly,
   asyncRoute(ifoodDeliveryConfirmation.status));
+
+app.post("/api/courier/ifood/orders/:orderId/confirmation/help", auth, courierOnly, deliveryIncidentLimiter,
+  asyncRoute(ifoodDeliveryConfirmation.requestHelp));
 
 app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly, deliveryCodeLimiter,
   asyncRoute(ifoodDeliveryConfirmation.verify));
