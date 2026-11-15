@@ -4648,14 +4648,14 @@ function setIfoodConfirmationMode(target,statusOnly){
   button.disabled=activeIfoodConfirmationRequests.has(target.orderId);
 }
 
-function scheduleIfoodStatusCheck(target){
+function scheduleIfoodStatusCheck(target,delay=4000){
   clearTimeout(target.statusTimer);
   if(!target.statusOnly||(target.automaticChecks||0)>=10)return;
   target.statusTimer=setTimeout(()=>{
     if(deliveryConfirmationTarget!==target||!target.statusOnly)return;
     target.automaticChecks=(target.automaticChecks||0)+1;
     runIfoodConfirmation(target);
-  },4000);
+  },delay);
 }
 
 function openDeliveryConfirmModal(orderId,displayId,statusOnly=false){
@@ -4667,7 +4667,7 @@ function openDeliveryConfirmModal(orderId,displayId,statusOnly=false){
   setIfoodConfirmationMode(deliveryConfirmationTarget,statusOnly||uncertainIfoodConfirmations.has(orderId));
   message('deliveryConfirmMsg',deliveryConfirmationTarget.statusOnly?'Aguardando atualização do iFood.':'','');
   $('deliveryConfirmModal').style.display='grid';
-  if(deliveryConfirmationTarget.statusOnly)scheduleIfoodStatusCheck(deliveryConfirmationTarget);
+  if(deliveryConfirmationTarget.statusOnly)scheduleIfoodStatusCheck(deliveryConfirmationTarget,0);
   else setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
 }
 
