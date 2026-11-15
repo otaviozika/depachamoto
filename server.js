@@ -4018,10 +4018,8 @@ function deliveryConfirmationLabel(status, orderStatus) {
 
 function courierDeliveryUiState(row) {
   const orderStatus = canonicalIfoodOrderStatus(row.order_status);
-  // Existing HTTP 400s were stored as RECONCILING by the previous release.
-  const rejected = row.confirmation_last_error === "IFOOD_VERIFY_REJECTED" ||
-    (row.confirmation_status === "RECONCILING" && row.confirmation_http_status === 400);
-  const confirmationStatus = rejected ? "FAILED" : deliveryConfirmationLabel(row.confirmation_status, row.order_status);
+  const confirmationStatus = deliveryConfirmationLabel(row.confirmation_status, row.order_status);
+  const rejected = row.confirmation_last_error === "IFOOD_VERIFY_REJECTED";
   const dispatchStatus = String(row.ifood_dispatch_status || "").trim().toUpperCase();
 
   if (["CONCLUDED","DELIVERED"].includes(orderStatus) || confirmationStatus === "CONCLUDED") {
@@ -4106,7 +4104,7 @@ async function getCourierIfoodDeliveries(courierId) {
       l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
       d.departed_at,d.status AS dispatch_status,
       c.status AS confirmation_status,c.attempts AS confirmation_attempts,
-      c.last_error AS confirmation_last_error,c.last_http_status AS confirmation_http_status,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at
+      c.last_error AS confirmation_last_error,c.verified_at,c.concluded_at,c.updated_at AS confirmation_updated_at
     FROM ifood_dispatch_links l
     JOIN ifood_orders o ON o.order_id=l.ifood_order_id
     JOIN dispatches d ON d.id=l.dispatch_id
