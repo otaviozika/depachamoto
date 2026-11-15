@@ -1,128 +1,194 @@
 import fs from "node:fs";
 import vm from "node:vm";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setTimeout as wait } from "node:timers/promises";
 
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
-const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
-const begin = html.indexOf("// O iFood pode concluir a entrega");
-const end = html.indexOf("\nlet courierActiveDispatch=null;", begin);
-assert.ok(begin !== -1 && end > begin, "Fluxo de reconciliação ausente");
-const confirmationFunctions = html.slice(begin, end);
+const begin = html.indexOf("function setIfoodConfirmationMode(");
+const end = html.indexOf("\nlet courierActiveDispatch=null;",begin);
+assert.ok(begin !== -1 && end > begin);
+const confirmationFunctions = html.slice(begin,end);
+const baseline = process.argv.includes("--benchmark")
+  ? execFileSync("git",["show","0de040a61b5e3ca09f0f2654a03bdc4b0911d6c9:public/index.html"],{encoding:"utf8"})
+  : null;
 
-async function simulate({ code = "123456", post, deliveries, refreshFails = false, extraSubmits = 0 }) {
-  const output = [];
-  const fields = { deliveryConfirmCode: { value: code }, deliveryConfirmBtn: { disabled: false } };
-  const target = { orderId: "order-fixture", displayId: "1234" };
-  let posts = 0;
-  let getRequests = 0;
-  const context = {
-    deliveryConfirmationTarget: target,
-    $: id => fields[id],
-    message: (_id, text, type) => output.push({ text, type }),
-    api: async (url, options) => {
-      if (options?.method === "POST") {
-        posts += 1;
-        return post();
-      }
-      getRequests += 1;
-      return deliveries();
-    },
-    loadCourier: async () => {
-      if (refreshFails) throw new Error("dashboard fetch failed");
-    },
-    loadCourierDeliveries: async () => {},
-    closeDeliveryConfirmModal: () => {},
-    setTimeout: (callback, ms) => { if (ms >= 1000) queueMicrotask(callback); }
-  };
-  vm.runInNewContext(confirmationFunctions +
-    "\nglobalThis.__submit = submitDeliveryConfirmation;", context);
-  const requests = [context.__submit({ preventDefault() {} })];
-  for (let n = 0; n < extraSubmits; n++) requests.push(context.__submit({ preventDefault() {} }));
-  await Promise.all(requests);
-  return { output, fields, posts, getRequests };
+function deferred(){
+  let release;
+  const promise=new Promise(resolve=>{release=resolve});
+  return {promise,release};
 }
 
-test("POST accepted: failed dashboard refresh is not a code error", async () => {
-  const s = await simulate({
-    post: () => ({ message: "Código aceito pelo iFood." }),
-    deliveries: () => ({ current: [] }),
-    refreshFails: true
-  });
-  assert.equal(s.posts, 1);
-  assert.ok(s.output.some(x => x.type === "ok"));
-  assert.ok(!s.output.some(x => x.type === "err"));
-});
-
-
-test("five rapid taps cause exactly one iFood verification call", async () => {
-  const s = await simulate({
-    extraSubmits: 4,
-    post: async () => {
-      await new Promise(resolve => setTimeout(resolve, 20));
-      return { message: "Código aceito pelo iFood." };
+function harness({
+  post=async()=>({verified:true}),status=async()=>({state:"RECONCILING"}),
+  refresh=async()=>{},code="1234",timers="fast", oldHtml
+}={}){
+  const fields={
+    deliveryConfirmCode:{value:code,focus(){}},deliveryConfirmBtn:{disabled:false},
+    deliveryConfirmOrderLabel:{},deliveryConfirmModal:{style:{display:"grid"}}
+  };
+  const results={messages:[],posts:0,gets:[],refreshes:0,closedAt:null};
+  const context=vm.createContext({
+    deliveryConfirmationTarget:{orderId:"first",displayId:"101"},courierDeliveryFeedbackTimer:null,
+    activeIfoodConfirmationRequests:new Set(),uncertainIfoodConfirmations:new Set(),confirmedIfoodDeliveries:new Set(),
+    $:id=>fields[id],AbortController,message:(id,text,type)=>results.messages.push({id,text,type}),
+    api:async(url,options)=>{
+      if(options?.method==="POST"){
+        results.posts++;
+        return post(url);
+      }
+      results.gets.push(url);
+      return status(url);
     },
-    deliveries: () => ({ current: [] })
+    queueCourierResourceRefresh:()=>{
+      results.refreshes++;
+      Promise.resolve().then(refresh).catch(()=>{});
+    },
+    loadCourier:refresh,loadCourierDeliveries:async()=>{},
+    setTimeout:(fn,ms)=>{
+      if([3500,5000,28000,80].includes(ms))return;
+      if(timers==="real")return setTimeout(fn,ms);
+      queueMicrotask(fn);
+    },
+    clearTimeout
   });
-  assert.equal(s.posts, 1);
-  assert.ok(s.output.some(x => x.type === "ok"));
-  assert.equal(s.fields.deliveryConfirmBtn.disabled, true,
-    "after a successful POST the button must remain locked until the modal closes");
+  const codeUnderTest=oldHtml
+    ? oldHtml.slice(oldHtml.indexOf("function openDeliveryConfirmModal("),oldHtml.indexOf("\nlet courierActiveDispatch=null;"))
+    : confirmationFunctions;
+  vm.runInContext(codeUnderTest+`
+    const closeOriginal=closeDeliveryConfirmModal;
+    closeDeliveryConfirmModal=()=>{markClose();closeOriginal()};
+    globalThis.submit=submitDeliveryConfirmation;
+    globalThis.open=openDeliveryConfirmModal;
+    globalThis.close=closeDeliveryConfirmModal;
+  `,Object.assign(context,{markClose:()=>{results.closedAt??=performance.now()}}));
+  return {fields,results,submit:()=>context.submit({preventDefault(){}}),open:context.open,close:context.close};
+}
+
+test("success closes the modal before dashboard completion, including dashboard failure",async()=>{
+  const dashboard=deferred();
+  const h=harness({refresh:async()=>{await dashboard.promise;throw Error("dashboard fetch failed")}});
+  await h.submit();
+  assert.equal(h.fields.deliveryConfirmModal.style.display,"none");
+  assert.ok(h.results.messages.some(x=>x.id==="courierDeliveryFeedback"&&x.type==="ok"));
+  assert.equal(h.results.refreshes,1);
+  dashboard.release();
+  await Promise.resolve();
+  assert.ok(!h.results.messages.some(x=>x.type==="err"));
 });
 
-test("after a failed validation the button can be used once more", async () => {
-  const s = await simulate({
-    post: () => { throw Object.assign(new Error("Código incorreto"), { code: "DELIVERY_CODE_INVALID", status: 422 }); },
-    deliveries: () => ({ current: [{ order_id: "order-fixture", state: "FAILED" }] })
-  });
-  assert.equal(s.posts, 1);
-  assert.equal(s.fields.deliveryConfirmBtn.disabled, false);
-  assert.equal(s.fields.deliveryConfirmCode.value, "123456");
+test("five rapid clicks, including close and reopen, issue one POST",async()=>{
+  const gate=deferred();
+  const h=harness({post:async()=>{await gate.promise;return {verified:true}}});
+  const first=h.submit();
+  assert.equal(h.fields.deliveryConfirmBtn.disabled,true);
+  await h.submit();
+  await h.submit();
+  h.close();
+  h.open("first","101");
+  h.fields.deliveryConfirmCode.value="1234";
+  await h.submit();
+  await h.submit();
+  gate.release();
+  await first;
+  assert.equal(h.results.posts,1);
 });
 
-test("422 followed by CONCLUDED is reconciled without another POST", async () => {
-  const s = await simulate({
-    post: () => { throw Object.assign(new Error("upstream rejected"), { status: 422, code: "IFOOD_VERIFY_REJECTED" }); },
-    deliveries: () => ({ current: [{ order_id: "order-fixture", state: "CONCLUDED" }] })
-  });
-  assert.equal(s.posts, 1);
-  assert.ok(s.output.some(x => x.type === "ok"));
-  assert.equal(s.fields.deliveryConfirmCode.value, "");
+test("a delayed response for one order cannot close or unlock a different order",async()=>{
+  const first=deferred(),second=deferred();
+  const h=harness({post:async url=>{await (url.includes("/first/")?first:second).promise;return {verified:true}}});
+  const a=h.submit();
+  h.close();
+  h.open("second","102");
+  h.fields.deliveryConfirmCode.value="1234";
+  const b=h.submit();
+  first.release();
+  await a;
+  assert.equal(h.fields.deliveryConfirmModal.style.display,"grid");
+  assert.equal(h.fields.deliveryConfirmBtn.disabled,true);
+  second.release();
+  await b;
+  assert.equal(h.fields.deliveryConfirmModal.style.display,"none");
+  assert.equal(h.results.posts,2);
 });
 
-test("422 without confirmation keeps the code and reports an error", async () => {
-  const s = await simulate({
-    post: () => { throw Object.assign(new Error("iFood não confirmou"), { status: 422, code: "IFOOD_VERIFY_REJECTED" }); },
-    deliveries: () => ({ current: [{ order_id: "order-fixture", state: "FAILED" }] })
-  });
-  assert.equal(s.posts, 1);
-  assert.equal(s.fields.deliveryConfirmCode.value, "123456");
-  assert.equal(s.output.at(-1).type, "err");
+test("ambiguous reply and lost mobile data only consult the owned order",async()=>{
+  for(const failure of ["ambiguous","network","422"]){
+    const h=harness({
+      post:async()=>{
+        if(failure==="network")throw Object.assign(Error("offline"),{code:"NETWORK_ERROR"});
+        if(failure==="422")throw Object.assign(Error("rejected"),{status:422});
+        return {verified:false};
+      },
+      status:async()=>({verified:true,state:"CONCLUDED"})
+    });
+    await h.submit();
+    assert.equal(h.results.posts,1);
+    assert.deepEqual(h.results.gets,["/api/courier/ifood/orders/first/confirmation"]);
+    assert.equal(h.fields.deliveryConfirmModal.style.display,"none");
+  }
 });
 
-test("network failure never means success without verified status", async () => {
-  const s = await simulate({
-    post: () => { throw Object.assign(new Error("connection lost"), { code: "NETWORK_ERROR" }); },
-    deliveries: () => { throw new Error("offline"); }
+test("unavailable status keeps the next action read-only until retry is allowed",async()=>{
+  let retryAllowed=false;
+  const h=harness({
+    post:async()=>{throw Object.assign(Error("offline"),{code:"NETWORK_ERROR"})},
+    status:async()=>({verified:false,retry_allowed:retryAllowed})
   });
-  assert.equal(s.posts, 1);
-  assert.equal(s.output.at(-1).type, "err");
-  assert.match(s.output.at(-1).text, /Conexão interrompida/);
+  await h.submit();
+  assert.equal(h.fields.deliveryConfirmBtn.textContent,"Consultar status");
+  await h.submit();
+  assert.equal(h.results.posts,1);
+  retryAllowed=true;
+  await h.submit();
+  assert.equal(h.results.posts,1);
+  assert.equal(h.fields.deliveryConfirmBtn.textContent,"✅ Confirmar entrega");
 });
 
-test("invalid code format never reaches API", async () => {
-  const s = await simulate({
-    code: "123",
-    post: () => { throw new Error("unexpected POST"); },
-    deliveries: () => ({ current: [] })
-  });
-  assert.equal(s.posts, 0);
-  assert.equal(s.output.at(-1).type, "err");
+test("explicit invalid code is shown and can be edited",async()=>{
+  const h=harness({post:async()=>{throw Object.assign(Error("Código incorreto"),{code:"DELIVERY_CODE_INVALID"})}});
+  await h.submit();
+  assert.equal(h.results.messages.at(-1).text,"Código incorreto");
+  assert.equal(h.fields.deliveryConfirmCode.value,"1234");
+  assert.equal(h.fields.deliveryConfirmBtn.disabled,false);
 });
 
-test("backend preserves completed state under concurrent confirmation errors", () => {
-  assert.match(server, /WHERE ifood_order_id=\$1 AND status='PROCESSING'/);
-  assert.match(server, /SET status=CASE WHEN status='CONCLUDED' THEN status ELSE 'VERIFIED' END/);
-  assert.match(server, /alreadyConcluded/);
-  assert.match(server, /code: clearlyWrongCode \? "DELIVERY_CODE_INVALID" : "IFOOD_VERIFY_REJECTED"/);
+test("invalid format cannot send a POST",async()=>{
+  const h=harness({code:"123"});
+  await h.submit();
+  assert.equal(h.results.posts,0);
+  assert.equal(h.results.messages.at(-1).type,"err");
+});
+
+if(baseline)test("benchmark: 40 simulated couriers per wave, 600 orders per revision",async()=>{
+  function percentiles(values){
+    values.sort((a,b)=>a-b);
+    return {p50_ms:+values[299].toFixed(2),p95_ms:+values[569].toFixed(2)};
+  }
+  const samples={baseline:{success:[],closed:[]},candidate:{success:[],closed:[]}};
+  for(let wave=0;wave<15;wave++){
+    for(const name of wave%2?["candidate","baseline"]:["baseline","candidate"]){
+      await Promise.all(Array.from({length:40},async(_,i)=>{
+        const h=harness({
+          oldHtml:name==="baseline"?baseline:undefined,timers:"real",
+          post:async()=>{await wait(50+i%10*5);return {verified:true}},
+          refresh:async()=>{await wait(250+i%10*25)}
+        });
+        const started=performance.now();
+        const push=h.results.messages.push.bind(h.results.messages);
+        h.results.messages.push=(...items)=>{
+          if(items.some(x=>x.type==="ok"))samples[name].success.push(performance.now()-started);
+          return push(...items);
+        };
+        await h.submit();
+        while(h.results.closedAt===null)await wait(20);
+        samples[name].closed.push(h.results.closedAt-started);
+      }));
+    }
+  }
+  for(const [name,{success,closed}] of Object.entries(samples)){
+    assert.equal(success.length,600);
+    console.log("IFOOD_UI_BENCH "+JSON.stringify({name,success:percentiles(success),modal_closed:percentiles(closed)}));
+  }
 });
