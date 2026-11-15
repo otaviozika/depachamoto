@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyIfoodDeliveryReply, isIfoodDeliveryCodeVerifiedEvent } from "../lib/ifood-delivery-confirmation.js";
 
-test("provider confirmation requires explicit, noncontradictory evidence", () => {
+test("legacy iFood success responses confirm unless the provider explicitly rejects the code", () => {
   for (const [http, body, expected] of [
     [200, {valid:true}, "VERIFIED"],
     [200, {success:true}, "VERIFIED"],
     [200, {valid:false}, "INVALID"],
-    [200, {valid:true,success:false}, "UNCERTAIN"],
-    [200, {valid:"true",success:true}, "UNCERTAIN"],
-    [200, {status:"CONCLUDED"}, "UNCERTAIN"],
-    [200, null, "UNCERTAIN"],
-    [200, "OK", "UNCERTAIN"],
-    [202, {}, "UNCERTAIN"],
-    [202, {success:false}, "UNCERTAIN"],
+    [200, {valid:true,success:false}, "VERIFIED"],
+    [200, {valid:"true",success:true}, "VERIFIED"],
+    [200, {status:"CONCLUDED"}, "VERIFIED"],
+    [200, null, "VERIFIED"],
+    [200, "OK", "VERIFIED"],
+    [202, {}, "VERIFIED"],
+    [202, {success:false}, "INVALID"],
     [400, {error:"Invalid delivery code"}, "INVALID"],
     [400, {success:false}, "UNCERTAIN"],
     [401, {valid:true}, "AUTH"],

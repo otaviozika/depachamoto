@@ -4617,19 +4617,25 @@ async function ackCourierRoute(dispatchId,version){
   }
 }
 
+const anotaAiConfirmationsInFlight=new Set();
 async function confirmAnotaAiDelivery(orderId,displayId){
+  if(anotaAiConfirmationsInFlight.has(orderId))return;
   const label=String(displayId||'').replace(/^#/,'');
   if(!window.confirm(`Confirmar que o pedido #${label} do Anota AI foi entregue ao cliente?`))return;
+  anotaAiConfirmationsInFlight.add(orderId);
   try{
     const d=await api(`/api/courier/anotaai/orders/${encodeURIComponent(orderId)}/confirm-delivery`,{
       method:'POST',
       body:JSON.stringify({})
     });
-    alert(d.message||'Entrega Anota AI confirmada.');
-    await loadCourier();
+    message('courierDeliveryFeedback',d.message||'Entrega Anota AI confirmada.','ok');
+    clearTimeout(courierDeliveryFeedbackTimer);
+    courierDeliveryFeedbackTimer=setTimeout(()=>message('courierDeliveryFeedback','',''),5000);
   }catch(err){
-    alert(err.message||'Não foi possível confirmar a entrega Anota AI.');
-    await loadCourierDeliveries().catch(()=>{});
+    message('courierDeliveryFeedback',err.message||'Não foi possível confirmar a entrega Anota AI.','err');
+  }finally{
+    anotaAiConfirmationsInFlight.delete(orderId);
+    queueCourierResourceRefresh({dashboard:true,deliveries:true});
   }
 }
 
