@@ -1,6 +1,7 @@
 import fs from "fs";
 
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const verification = fs.readFileSync(new URL('../lib/ifood-delivery-confirmation.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const shifts = fs.readFileSync(new URL("../lib/operational-shift.js", import.meta.url), "utf8");
 const lateShiftTransform = fs.readFileSync(new URL("./apply-late-shift-dispatch.js", import.meta.url), "utf8");
@@ -16,7 +17,7 @@ const checks = [
   ["Manual iFood sync is blocked from remote access", /syncIfoodOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
   ["Manual Anota AI sync is blocked from remote access", /syncAnotaAiOnce\([\s\S]{0,260}STAGING_SAFE_MODE/.test(server)],
   ["iFood dispatch mutation has a staging guard", server.includes('assertExternalMutationAllowed("despacho de pedido no iFood")')],
-  ["iFood delivery-code mutation has a staging guard", server.includes('assertExternalMutationAllowed("verificação de código de entrega no iFood")')],
+  ["iFood delivery-code mutation has a staging guard", verification.includes('assertExternalMutationAllowed("verificação de código de entrega no iFood")') && server.includes('  assertExternalMutationAllowed,')],
   ["iFood confirm and cancellation mutations have staging guards", server.includes('assertExternalMutationAllowed("confirmação de pedido de teste no iFood")') && server.includes('assertExternalMutationAllowed("cancelamento de pedido no iFood")')],
   ["Anota AI finalization and linking have staging guards", server.includes('assertExternalMutationAllowed("finalização de pedido no Anota AI")') && server.includes('assertExternalMutationAllowed("vinculação de loja no Anota AI")')],
   ["Google Sheets writes have staging guards", server.includes('assertExternalMutationAllowed("envio de fechamento ao Google Planilhas")') && server.includes('assertExternalMutationAllowed("sincronização com Google Planilhas")')],

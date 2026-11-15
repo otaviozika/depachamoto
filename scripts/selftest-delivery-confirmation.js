@@ -1,6 +1,7 @@
 import fs from "fs";
 
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const verification = fs.readFileSync(new URL('../lib/ifood-delivery-confirmation.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 
 const checks = {
@@ -9,16 +10,16 @@ const checks = {
   courierListEndpoint: server.includes('/api/courier/ifood/deliveries'),
   verifyEndpoint: server.includes('/api/courier/ifood/orders/:orderId/verify-delivery'),
   officialOrderEndpoint: server.includes('/verifyDeliveryCode'),
-  ownershipCheck: server.includes("AND d.courier_id=$2"),
-  merchantDeliveryCheck: server.includes('DELIVERY_NOT_MERCHANT'),
-  codeFormat: server.includes("/^\\d{4,8}$/"),
+  ownershipCheck: verification.includes("AND d.courier_id=$2"),
+  merchantDeliveryCheck: verification.includes('DELIVERY_NOT_MERCHANT'),
+  codeFormat: verification.includes("/^\\d{4,8}$/"),
   noRawCodeInAudit: !server.includes("delivery_code: deliveryCode") && !server.includes("code: deliveryCode,"),
-  concurrencyClaim: server.includes("status='PROCESSING'") && server.includes("processing_started_at"),
+  concurrencyClaim: verification.includes("status='PROCESSING'") && verification.includes("processing_started_at"),
   rateLimit: server.includes("DELIVERY_CODE_RATE_LIMIT"),
   concludedEventSync: server.includes("SET status='CONCLUDED'"),
   courierCard: html.includes('id="courierDeliveriesCard"'),
   confirmationModal: html.includes('id="deliveryConfirmModal"'),
-  courierOnlyOwnOrders: html.includes('id="courierDeliveriesCard"') && html.includes('id="courierDeliveriesList"') && server.includes("AND d.courier_id=$2"),
+  courierOnlyOwnOrders: html.includes('id="courierDeliveriesCard"') && html.includes('id="courierDeliveriesList"') && verification.includes("AND d.courier_id=$2"),
   successText: html.includes("Confirmar entrega"),
   platformColumn: server.includes("ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'manual'"),
   platformLookupEndpoint: server.includes('/api/courier/orders/lookup'),

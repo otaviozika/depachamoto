@@ -58,7 +58,7 @@ export function frontendHarness(html,{id=2,hidden=false,holdDashboard=false,hold
   class ClockDate extends Date {static now(){return now;}}
   const context=vm.createContext({Date:ClockDate,console:{warn(){}},
     setTimeout:(fn,delay)=>{const token=++nextId;timers.set(token,{at:now+delay,fn});return token;},
-    clearTimeout:token=>timers.delete(token),document:{hidden},me:{id,role:'courier'},
+    clearTimeout:token=>timers.delete(token),document:{hidden},deliveryConfirmationTarget:null,me:{id,role:'courier'},
     $:()=>({classList:{contains:()=>false}}),socket:{on:(event,fn)=>handlers.set(event,fn)},
     loadCourier:async()=>{counts.dashboard++;times.push({kind:'dashboard',at:now});if(holdDashboard)await dashboardGate;if(failDashboard)throw new Error('Synthetic dashboard failure');},
     loadCourierDeliveries:async()=>{counts.deliveries++;times.push({kind:'deliveries',at:now});if(holdDeliveries)await deliveriesGate;},
@@ -74,9 +74,16 @@ export function frontendHarness(html,{id=2,hidden=false,holdDashboard=false,hold
 }
 export async function confirmationEvents(server,courierId) {
   const events=[];const context=vm.createContext({req:{session:{user:{id:courierId}}},row:{order_id:'synthetic'},markConfirmedIncident:async()=>0,emitRealtime:(event,body={})=>events.push({event,body:plain(body)})});
-  const from=server.indexOf('"IFOOD_DELIVERY_CODE_VERIFIED"'),at=server.indexOf('    emitRealtime("ifood:changed"',from),to=server.indexOf('    await maybeAutoMarkDispatchReturning',at);
-  assert.ok(from>=0&&at>from&&to>at);
-  await vm.runInContext('(async()=>{'+server.slice(at,to)+'})()',context);
+  if(server.includes('createIfoodDeliveryConfirmation({')){
+    const service=fs.readFileSync(new URL('../lib/ifood-delivery-confirmation.js',import.meta.url),'utf8');
+    const statement=service.split('\n').find(line=>line.includes('emitRealtime("delivery:changed"'));
+    Object.assign(context,{saved:{rows:[{courier_id:courierId}]},orderId:'synthetic'});
+    vm.runInContext(statement,context);
+  }else{
+    const from=server.indexOf('"IFOOD_DELIVERY_CODE_VERIFIED"'),at=server.indexOf('    emitRealtime("ifood:changed"',from),to=server.indexOf('    await maybeAutoMarkDispatchReturning',at);
+    assert.ok(from>=0&&at>from&&to>at);
+    await vm.runInContext('(async()=>{'+server.slice(at,to)+'})()',context);
+  }
   // This is the completion event emitted by the shared local finalization flow.
   events.push({event:'dispatch:changed',body:{courier_id:courierId,change:'COMPLETED'}});
   return events;

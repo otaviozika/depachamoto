@@ -2,6 +2,7 @@ import fs from "node:fs";
 import assert from "node:assert/strict";
 
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const verification = fs.readFileSync(new URL('../lib/ifood-delivery-confirmation.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const sw = fs.readFileSync(new URL("../public/service-worker.js", import.meta.url), "utf8");
 const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -21,7 +22,7 @@ const checks = {
   takeoutPreservedOutsideWallboard:
     server.includes("TAKEOUT/DINE_IN continuam preservados no histórico/iFood"),
   deliveryDispatchProtection:
-    server.includes("DELIVERY_NOT_MERCHANT") &&
+    verification.includes("DELIVERY_NOT_MERCHANT") &&
     server.includes("Todos os pedidos precisam estar identificados no iFood ou no Anota AI"),
   fifoPreserved:
     wallboardEndpoint.includes("ORDER BY COALESCE(o.order_created_at,o.last_event_at,o.updated_at) ASC,o.order_id ASC"),

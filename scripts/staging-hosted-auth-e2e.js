@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { recordIfoodDeliveryCodeVerifiedEvent } from "../lib/ifood-delivery-confirmation.js";
 
 const EXPECTED_DB="despachefull_incidentes_homologacao";
 const STATUS_WANTED="ON_ROAD";
@@ -265,4 +266,92 @@ export async function runHostedAuthSmoke({pool,port}) {
   }
   if(error)throw error;
   return {success:true,scenarios:completed.length};
+}
+
+export async function runHostedIfoodConfirmationSmoke({pool,port}) {
+  assertIsolated();
+  const run="stg-ifood-"+randomBytes(7).toString("hex");
+  const password=randomBytes(35).toString("base64url");
+  const hash=await bcrypt.hash(password,10);
+  const ids=[];
+  let dispatchId;
+  const base="http://127.0.0.1:"+Number(port);
+  const path="/api/courier/ifood/orders/"+run;
+  async function request(url,expected,{cookie="",body}={}){
+    const response=await fetch(base+url,{
+      method:body===undefined?"GET":"POST",
+      headers:{"content-type":"application/json","x-forwarded-proto":"https",...(cookie?{cookie}:{})},
+      body:body===undefined?undefined:JSON.stringify(body),
+      signal:AbortSignal.timeout(10000)
+    });
+    assert.equal(response.status,expected,url.replace(run,"[synthetic order]"));
+    return {data:await response.json(),cookie:(response.headers.get("set-cookie")||"").split(";")[0]};
+  }
+  try {
+    const {data:health}=await request("/api/health",200);
+    assert.equal(health.environment,"staging");
+    assert.equal(health.externalMutationsAllowed,false);
+    assert.equal(health.ifood.eventSyncEnabled,false);
+    assert.equal(health.ifood.dispatchFlagEnabled,false);
+
+    const cookies=[];
+    for(const suffix of ["owner","other"]){
+      const username=run+"-"+suffix;
+      const result=await pool.query(`
+        INSERT INTO users(name,username,role,password_hash,approval_status,active,must_change_password)
+        VALUES('Motoboy teste iFood',$1,'courier',$2,'APPROVED',true,false) RETURNING id
+      `,[username,hash]);
+      ids.push(result.rows[0].id);
+      const login=await request("/api/login",200,{body:{username,password}});
+      assert.ok(login.cookie.startsWith("connect.sid="));
+      cookies.push(login.cookie);
+    }
+    const [cookie,otherCookie]=cookies;
+    const dispatch=await pool.query(`
+      INSERT INTO dispatches(dispatch_code,order_number,courier_id) VALUES($1,$1,$2) RETURNING id
+    `,[run,ids[0]]);
+    dispatchId=dispatch.rows[0].id;
+    await pool.query(`
+      INSERT INTO ifood_orders(order_id,display_id,merchant_id,status,order_type,delivered_by,is_test)
+      VALUES($1,'0000','staging-fixture','DISPATCHED','DELIVERY','MERCHANT',true)
+    `,[run]);
+    await pool.query(`
+      INSERT INTO ifood_dispatch_links(ifood_order_id,dispatch_id,local_order_number,ifood_dispatch_status)
+      VALUES($1,$2,'#0000','DISPATCHED')
+    `,[run,dispatchId]);
+
+    await request(path+"/confirmation",401);
+    await request(path+"/confirmation",404,{cookie:otherCookie});
+    const open=await request(path+"/confirmation",200,{cookie});
+    assert.equal(open.data.verified,false);
+    assert.equal(open.data.retry_allowed,true);
+    await request(path+"/verify-delivery",409,{cookie,body:{code:"1234"}});
+    assert.equal((await pool.query("SELECT 1 FROM ifood_delivery_confirmations WHERE ifood_order_id=$1",[run])).rowCount,0);
+
+    await pool.query(`
+      INSERT INTO ifood_delivery_confirmations(ifood_order_id,dispatch_id,courier_id,status,attempts,last_attempt_at,last_http_status)
+      VALUES($1,$2,$3,'RECONCILING',1,NOW(),200)
+    `,[run,dispatchId,ids[0]]);
+    const pending=await request(path+"/confirmation",200,{cookie});
+    assert.equal(pending.data.verified,false);
+    assert.equal(pending.data.retry_allowed,false);
+    assert.equal((await request(path+"/verify-delivery",202,{cookie,body:{code:"1234"}})).data.verified,false);
+
+    await recordIfoodDeliveryCodeVerifiedEvent(pool,run,new Date());
+    const verified=await request(path+"/confirmation",200,{cookie});
+    assert.equal(verified.data.state,"VERIFIED");
+    assert.equal(verified.data.verified,true);
+    assert.equal((await request(path+"/verify-delivery",200,{cookie,body:{code:"1234"}})).data.already_confirmed,true);
+    await pool.query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id=$1",[run]);
+    assert.equal((await request(path+"/confirmation",200,{cookie})).data.state,"CONCLUDED");
+  } finally {
+    if(ids.length)await pool.query("UPDATE users SET active=false WHERE id=ANY($1::int[])",[ids]);
+    await pool.query("DELETE FROM ifood_orders WHERE order_id=$1",[run]);
+    if(dispatchId)await pool.query("DELETE FROM dispatches WHERE id=$1",[dispatchId]);
+  }
+  console.log("STAGING_IFOOD_CONFIRMATION_SMOKE_PASS",JSON.stringify({
+    isolated_health:true,authenticated_couriers:2,ownership:true,external_post_blocked:true,
+    http_200_without_evidence_pending:true,verified_event:true,idempotent_post:true,concluded:true,
+    synthetic_fixture_removed:true
+  }));
 }

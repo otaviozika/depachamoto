@@ -25,6 +25,11 @@ import { incidentEnabledForCourier, readIncidentPilotSettings, saveIncidentPilot
 import { longeUnitAmount } from "./lib/longe-zone.js";
 import { googleSheetsConfig, googleSheetsCredentialsConfigured, paymentDaySheetTitle, syncPaymentDayToGoogleSheets, syncPaymentsToGoogleSheets, testGoogleSheetsConnection } from "./lib/google-sheets.js";
 
+import {
+  ifoodDeliveryConfirmationSchema, createIfoodDeliveryConfirmation, isIfoodDeliveryCodeVerifiedEvent,
+  recordIfoodDeliveryCodeVerifiedEvent, claimIfoodDeliveryEffects, finishIfoodDeliveryEffects
+} from "./lib/ifood-delivery-confirmation.js";
+
 const { Pool } = pg;
 const PgSession = connectPg(session);
 
@@ -1036,6 +1041,7 @@ INSERT INTO ifood_sync_state(singleton)
 VALUES(1)
 ON CONFLICT(singleton) DO NOTHING;
 
+
 -- v2.1.2: corrige registros em que evento não pertencente ao ciclo
 -- principal foi salvo indevidamente como status.
 -- Usa subquery correlacionada no SET (compatível com PostgreSQL em UPDATE).
@@ -1320,6 +1326,7 @@ CREATE TABLE IF NOT EXISTS route_geocode_cache (
   computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 `);
+await pool.query(ifoodDeliveryConfirmationSchema);
 
 await pool.query(`
 INSERT INTO dispatch_orders(dispatch_id, order_number, platform)
@@ -2526,7 +2533,7 @@ async function getIfoodAccessToken(force = false) {
   return token;
 }
 
-async function ifoodApi(url, options = {}) {
+async function ifoodApi(url, options = {}, { retryUnauthorized = true } = {}) {
   let token = await getIfoodAccessToken(false);
 
   try {
@@ -2541,6 +2548,10 @@ async function ifoodApi(url, options = {}) {
     // Token expirado/revogado: uma única renovação e retry.
     if (err?.statusCode !== 401) throw err;
 
+    if (!retryUnauthorized) {
+      if (ifoodTokenCache.accessToken === token) ifoodTokenCache.expiresAt = 0;
+      throw err;
+    }
     token = await getIfoodAccessToken(true);
     return fetchIfood(url, {
       ...options,
@@ -3996,16 +4007,12 @@ function normalizeDeliveryCode(value) {
   return String(value || "").trim().replace(/\s+/g, "");
 }
 
-function validDeliveryCode(value) {
-  return /^\d{4,8}$/.test(normalizeDeliveryCode(value));
-}
-
 function deliveryConfirmationLabel(status, orderStatus) {
   const orderLifecycle = canonicalIfoodOrderStatus(orderStatus);
   if (["CONCLUDED","DELIVERED"].includes(orderLifecycle)) return "CONCLUDED";
 
   const value = String(status || "").trim().toUpperCase();
-  if (["VERIFIED","PROCESSING","FAILED","PENDING","CONCLUDED"].includes(value)) return value;
+  if (["VERIFIED","PROCESSING","RECONCILING","FAILED","PENDING","CONCLUDED"].includes(value)) return value;
   return "PENDING";
 }
 
@@ -4041,12 +4048,12 @@ function courierDeliveryUiState(row) {
     };
   }
 
-  if (confirmationStatus === "PROCESSING") {
+  if (["PROCESSING","RECONCILING"].includes(confirmationStatus)) {
     return {
-      state: "PROCESSING",
-      label: "Confirmando",
+      state: confirmationStatus,
+      label: "Aguardando confirmação do iFood",
       can_confirm: false,
-      message: "Confirmação sendo enviada ao iFood."
+      message: "O status será atualizado quando o iFood responder."
     };
   }
 
@@ -4238,19 +4245,20 @@ async function acknowledgeIfoodEvents(eventIds) {
   return unique.length;
 }
 
-async function setIfoodSyncSuccess(eventCount) {
+async function setIfoodSyncSuccess(eventCount, pollingStartedAt) {
   const count = Math.max(0, Number.parseInt(eventCount, 10) || 0);
 
   await pool.query(`
     UPDATE ifood_sync_state SET
       last_poll_at=NOW(),
       last_success_at=NOW(),
+      last_successful_poll_started_at=$2,
       last_error=NULL,
       last_error_at=NULL,
       last_event_count=$1::integer,
       total_events_received=total_events_received + ($1::integer)::bigint
     WHERE singleton=1
-  `, [count]);
+  `, [count,pollingStartedAt]);
 }
 
 async function setIfoodSyncError(err) {
@@ -4298,6 +4306,7 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
     // para validar a presença/conectividade do aplicativo na homologação e operação.
     // excludeHeartbeat=true é reservado a integrações da categoria Logística.
 
+    const pollingStartedAt = new Date().toISOString();
     const { response, body } = await ifoodApi(url.toString(), {
       headers: {
         "x-polling-merchants": merchantIds.join(",")
@@ -4348,7 +4357,11 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
 
           await pool.query(`
             UPDATE ifood_orders SET
-              status=COALESCE($2,status),
+              status=CASE
+                WHEN status IN ('CONCLUDED','DELIVERED','CANCELLED')
+                  AND $2 NOT IN ('CONCLUDED','DELIVERED','CANCELLED') THEN status
+                ELSE COALESCE($2,status)
+              END,
               last_event_code=COALESCE($3,last_event_code),
               last_event_at=COALESCE($4,last_event_at),
               updated_at=NOW()
@@ -4359,6 +4372,16 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
             eventCode,
             event.createdAt || null
           ]);
+        }
+      }
+
+      if (event.orderId && isIfoodDeliveryCodeVerifiedEvent(event) && (!event.merchantId || ifoodMerchantAllowed(event.merchantId))) {
+        const evidence = await recordIfoodDeliveryCodeVerifiedEvent(pool,String(event.orderId),event.createdAt);
+        if (evidence.rowCount) {
+          emitRealtime("delivery:changed", {
+            courier_id:evidence.rows[0].courier_id,order_id:String(event.orderId),confirmation_verified:true
+          });
+          scheduleIfoodDeliveryEffects();
         }
       }
 
@@ -4441,7 +4464,7 @@ async function syncIfoodOnce({ reason = "manual" } = {}) {
     }
 
     const acknowledged = await acknowledgeIfoodEvents(ackIds);
-    await setIfoodSyncSuccess(events.length);
+    await setIfoodSyncSuccess(events.length,pollingStartedAt);
 
     let affectedCourierIds = [];
     if (changedOrderIds.size) {
@@ -7243,376 +7266,64 @@ app.get("/api/courier/ifood/deliveries", auth, courierOnly, asyncRoute(async (re
   });
 }));
 
-app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly, deliveryCodeLimiter, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
+let ifoodDeliveryEffectsRunning = false;
 
-  if (!ifoodConfigured()) {
-    return res.status(503).json({
-      error: "A integração com o iFood não está configurada.",
-      code: "IFOOD_NOT_CONFIGURED"
-    });
-  }
-
-  const orderId = String(req.params.orderId || "").trim();
-  const deliveryCode = normalizeDeliveryCode(req.body?.code);
-
-  if (!validDeliveryCode(deliveryCode)) {
-    return res.status(400).json({
-      error: "Digite o código do cliente usando somente 4 a 8 números.",
-      code: "DELIVERY_CODE_FORMAT"
-    });
-  }
-
-  const row = (await pool.query(`
-    SELECT
-      o.order_id,o.display_id,o.merchant_id,o.status AS order_status,o.order_type,o.delivered_by,
-      l.dispatch_id,l.local_order_number,l.ifood_dispatch_status,
-      d.courier_id,d.departed_at,d.status AS dispatch_status,
-      c.status AS confirmation_status,c.attempts,c.verified_at,c.concluded_at,
-      c.processing_started_at
-    FROM ifood_dispatch_links l
-    JOIN ifood_orders o ON o.order_id=l.ifood_order_id
-    JOIN dispatches d ON d.id=l.dispatch_id
-    LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
-    WHERE l.ifood_order_id=$1
-      AND d.courier_id=$2
-      AND d.departed_at >= NOW()-INTERVAL '48 hours'
-    LIMIT 1
-  `, [orderId, req.session.user.id])).rows[0];
-
-  if (!row) {
-    return res.status(404).json({
-      error: "Essa entrega não está vinculada a você.",
-      code: "DELIVERY_NOT_ASSIGNED"
-    });
-  }
-
-  if (String(row.order_type || "").toUpperCase() !== "DELIVERY" ||
-      String(row.delivered_by || "").toUpperCase() !== "MERCHANT") {
-    return res.status(409).json({
-      error: "Esse pedido não é uma entrega própria da loja.",
-      code: "DELIVERY_NOT_MERCHANT"
-    });
-  }
-
-  if (!ifoodMerchantAllowed(row.merchant_id)) {
-    return res.status(403).json({
-      error: "Essa loja não está autorizada para operações iFood neste ambiente.",
-      code: "IFOOD_MERCHANT_BLOCKED"
-    });
-  }
-
-  const orderStatus = canonicalIfoodOrderStatus(row.order_status);
-  const confirmationStatus = deliveryConfirmationLabel(row.confirmation_status, row.order_status);
-
-  if (["CONCLUDED","DELIVERED"].includes(orderStatus) || confirmationStatus === "CONCLUDED") {
-    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
-    return res.json({
-      ok: true,
-      verified: true,
-      concluded: true,
-      already_confirmed: true,
-      message: "Essa entrega já está concluída no iFood.",
-      order: { order_id: row.order_id, display_id: row.display_id }
-    });
-  }
-
-  if (confirmationStatus === "VERIFIED") {
-    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
-    return res.json({
-      ok: true,
-      verified: true,
-      concluded: false,
-      already_confirmed: true,
-      message: "O código dessa entrega já foi validado pelo iFood.",
-      order: { order_id: row.order_id, display_id: row.display_id }
-    });
-  }
-
-  if (orderStatus === "CANCELLED") {
-    return res.status(409).json({
-      error: "Esse pedido foi cancelado no iFood.",
-      code: "DELIVERY_CANCELLED"
-    });
-  }
-
-  const dispatchStatus = String(row.ifood_dispatch_status || "").trim().toUpperCase();
-  if (
-    !["API_ACCEPTED","DISPATCHED"].includes(dispatchStatus) &&
-    orderStatus !== "DISPATCHED"
-  ) {
-    return res.status(409).json({
-      error: dispatchStatus === "FAILED"
-        ? "O despacho desse pedido está com erro no iFood. Avise o administrador."
-        : "Aguarde o iFood receber o despacho antes de confirmar a entrega.",
-      code: dispatchStatus === "FAILED" ? "IFOOD_DISPATCH_FAILED" : "IFOOD_DISPATCH_NOT_READY"
-    });
-  }
-
-  await pool.query(`
-    INSERT INTO ifood_delivery_confirmations(
-      ifood_order_id,dispatch_id,courier_id,status
-    )
-    VALUES($1,$2,$3,'PENDING')
-    ON CONFLICT(ifood_order_id) DO NOTHING
-  `, [row.order_id,row.dispatch_id,req.session.user.id]);
-
-  const claim = await pool.query(`
-    UPDATE ifood_delivery_confirmations
-    SET status='PROCESSING',
-        attempts=attempts+1,
-        processing_started_at=NOW(),
-        last_attempt_at=NOW(),
-        last_http_status=NULL,
-        last_error=NULL,
-        updated_at=NOW()
-    WHERE ifood_order_id=$1
-      AND courier_id=$2
-      AND (
-        status IN ('PENDING','FAILED')
-        OR (status='PROCESSING' AND processing_started_at < NOW()-INTERVAL '2 minutes')
-      )
-    RETURNING *
-  `, [row.order_id,req.session.user.id]);
-
-  if (!claim.rowCount) {
-    const current = (await pool.query(`
-      SELECT status,verified_at,concluded_at,processing_started_at
-      FROM ifood_delivery_confirmations
-      WHERE ifood_order_id=$1
-    `, [row.order_id])).rows[0];
-
-    if (["VERIFIED","CONCLUDED"].includes(String(current?.status || "").toUpperCase())) {
-      return res.json({
-        ok: true,
-        verified: true,
-        concluded: String(current.status).toUpperCase() === "CONCLUDED",
-        already_confirmed: true,
-        message: "Essa entrega já foi confirmada.",
-        order: { order_id: row.order_id, display_id: row.display_id }
-      });
-    }
-
-    return res.status(409).json({
-      error: "Essa confirmação já está sendo processada. Aguarde alguns segundos.",
-      code: "DELIVERY_CONFIRMATION_PROCESSING"
-    });
-  }
-
+async function runIfoodDeliveryEffects() {
+  if (ifoodDeliveryEffectsRunning) return;
+  ifoodDeliveryEffectsRunning = true;
   try {
-    assertExternalMutationAllowed("verificação de código de entrega no iFood");
-    const { response, body } = await ifoodApi(
-      `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(row.order_id)}/verifyDeliveryCode`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: deliveryCode })
+    const pending = await claimIfoodDeliveryEffects(pool);
+    await Promise.all(pending.map(async row => {
+      try {
+        await deliveryIncidentService.resolveConfirmed({
+          dispatchId:row.dispatch_id, platform:"ifood", orderId:row.ifood_order_id
+        });
+        await maybeAutoMarkDispatchReturning(row.dispatch_id, {
+          actorUserId:row.courier_id, source:"AUTO_IFOOD_VERIFIED"
+        });
+        const done = await finishIfoodDeliveryEffects(pool,row);
+        if (done.rowCount) await auditBestEffort(
+          row.courier_id, "IFOOD_DELIVERY_CODE_VERIFIED", "ifood_order", row.ifood_order_id,
+          { dispatch_id:row.dispatch_id, http_status:row.last_http_status }
+        );
+      } catch (error) {
+        // The persisted lease expires even if the process stops during recovery.
+        console.error("iFood delivery effects:",error?.code || "database_error");
       }
-    );
-
-    // Só confirma quando o iFood diz EXPLICITAMENTE que o código é válido
-    // (documentação: 200 {"valid": true}). Qualquer outra resposta de sucesso
-    // (corpo vazio, 202 "ACCEPTED", "valid" como texto) NÃO dá baixa na entrega.
-    const explicitValid =
-      typeof body?.valid === "boolean" ? body.valid :
-      typeof body?.success === "boolean" ? body.success :
-      null;
-
-    if (explicitValid === false) {
-      await pool.query(`
-        UPDATE ifood_delivery_confirmations
-        SET status='FAILED',
-            processing_started_at=NULL,
-            last_http_status=$2,
-            last_error='Código não validado pelo iFood.',
-            last_response=$3,
-            updated_at=NOW()
-        WHERE ifood_order_id=$1 AND status='PROCESSING'
-      `, [row.order_id,response.status,JSON.stringify(body || {})]);
-
-      return res.status(422).json({
-        error: "Código incorreto. Confira com o cliente e tente novamente.",
-        code: "DELIVERY_CODE_INVALID"
-      });
-    }
-
-    if (explicitValid !== true) {
-      await pool.query(`
-        UPDATE ifood_delivery_confirmations
-        SET status='FAILED',
-            processing_started_at=NULL,
-            last_http_status=$2,
-            last_error='Resposta do iFood sem confirmação explícita do código.',
-            last_response=$3,
-            updated_at=NOW()
-        WHERE ifood_order_id=$1 AND status='PROCESSING'
-      `, [row.order_id,response.status,JSON.stringify(body ?? null)]);
-
-      await auditBestEffort(
-        req.session.user.id,
-        "IFOOD_DELIVERY_CODE_UNCONFIRMED_RESPONSE",
-        "ifood_order",
-        row.order_id,
-        {
-          display_id: row.display_id || null,
-          dispatch_id: row.dispatch_id,
-          http_status: response.status,
-          body_type: body === null ? "empty" : Array.isArray(body) ? "array" : typeof body
-        }
-      );
-
-      emitRealtime("delivery:changed", {
-        courier_id: req.session.user.id,
-        order_id: row.order_id
-      });
-
-      return res.status(503).json({
-        error: "O iFood não confirmou o código. A entrega continua pendente: tente novamente em instantes e, se persistir, avise o administrador.",
-        code: "IFOOD_VERIFY_UNCONFIRMED"
-      });
-    }
-
-    await pool.query(`
-      UPDATE ifood_delivery_confirmations
-      SET status=CASE WHEN status='CONCLUDED' THEN status ELSE 'VERIFIED' END,
-          processing_started_at=NULL,
-          last_http_status=$2,
-          last_error=NULL,
-          last_response=$3,
-          verified_at=COALESCE(verified_at,NOW()),
-          updated_at=NOW()
-      WHERE ifood_order_id=$1
-    `, [row.order_id,response.status,JSON.stringify(body || { valid: true })]);
-
-    await auditBestEffort(
-      req.session.user.id,
-      "IFOOD_DELIVERY_CODE_VERIFIED",
-      "ifood_order",
-      row.order_id,
-      {
-        display_id: row.display_id || null,
-        dispatch_id: row.dispatch_id,
-        http_status: response.status
-      }
-    );
-
-    emitRealtime("ifood:changed", { courier_id: req.session.user.id });
-    emitRealtime("delivery:changed", {
-      courier_id: req.session.user.id,
-      order_id: row.order_id
-    });
-
-    await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
-    await maybeAutoMarkDispatchReturning(row.dispatch_id, {
-      actorUserId: req.session.user.id,
-      source: "AUTO_IFOOD_VERIFIED"
-    });
-
-    setImmediate(() => {
-      syncIfoodOnce({ reason: "delivery_confirmation" }).catch(err => {
-        console.error("iFood sync after delivery verification:", ifoodSafeError(err));
-      });
-    });
-
-    return res.json({
-      ok: true,
-      verified: true,
-      concluded: false,
-      message: "Código aceito pelo iFood. Entrega confirmada.",
-      order: {
-        order_id: row.order_id,
-        display_id: row.display_id
-      },
-      server_now: new Date().toISOString()
-    });
-  } catch (err) {
-    const status = Number(err?.statusCode || 0);
-    const rejectedByIfood = status === 400 || status === 422;
-
-    // A synchronização pode concluir o pedido enquanto a chamada de código
-    // ainda está em andamento. Nunca rebaixe CONCLUDED/VERIFIED para FAILED.
-    await pool.query(`
-      UPDATE ifood_delivery_confirmations
-      SET status='FAILED',
-          processing_started_at=NULL,
-          last_http_status=$2,
-          last_error=$3,
-          updated_at=NOW()
-      WHERE ifood_order_id=$1 AND status='PROCESSING'
-    `, [
-      row.order_id,
-      status || null,
-      rejectedByIfood
-        ? "iFood não validou a solicitação; conferir estado do pedido."
-        : ifoodSafeError(err)
-    ]);
-
-    // Um HTTP 422 pode significar código já verificado ou estado alterado.
-    // O estado confirmado do pedido, e não o erro HTTP isolado, é a verdade.
-    const latest = (await pool.query(`
-      SELECT o.status AS order_status,c.status AS confirmation_status
-      FROM ifood_orders o
-      LEFT JOIN ifood_delivery_confirmations c ON c.ifood_order_id=o.order_id
-      WHERE o.order_id=$1
-    `, [row.order_id])).rows[0];
-    const alreadyConcluded = ["CONCLUDED","DELIVERED"].includes(
-      canonicalIfoodOrderStatus(latest?.order_status)
-    ) || ["VERIFIED","CONCLUDED"].includes(
-      String(latest?.confirmation_status || "").toUpperCase()
-    );
-    if (alreadyConcluded) {
-      await markConfirmedIncident(row.dispatch_id,"ifood",row.order_id);
-      return res.json({
-        ok: true,
-        verified: true,
-        concluded: ["CONCLUDED","DELIVERED"].includes(canonicalIfoodOrderStatus(latest?.order_status)) ||
-          String(latest?.confirmation_status || "").toUpperCase() === "CONCLUDED",
-        already_confirmed: true,
-        message: "Esta entrega já consta como confirmada no iFood.",
-        order: { order_id: row.order_id, display_id: row.display_id }
-      });
-    }
-
-    emitRealtime("delivery:changed", {
-      courier_id: req.session.user.id,
-      order_id: row.order_id
-    });
-
-    if (rejectedByIfood) {
-      // Resposta 400/422 não prova, sozinha, erro de digitação.
-      // Só instruímos nova conferência do código se a API informar isso.
-      const details = [
-        err?.ifoodBody?.message,
-        err?.ifoodBody?.error?.message,
-        typeof err?.ifoodBody?.error === "string" ? err.ifoodBody.error : "",
-        err?.message
-      ].filter(Boolean).join(" ");
-      const clearlyWrongCode = /invalid delivery code|incorrect (?:delivery )?code|verification failed.{0,50}code does not match|código (?:inválido|incorreto)/i.test(details);
-      return res.status(422).json({
-        error: clearlyWrongCode
-          ? "Código incorreto. Confira com o cliente e tente novamente."
-          : "O iFood não concluiu a confirmação agora. Verifique se o pedido já foi concluído antes de reenviar o código.",
-        code: clearlyWrongCode ? "DELIVERY_CODE_INVALID" : "IFOOD_VERIFY_REJECTED"
-      });
-    }
-
-    if (status === 404 || status === 409 || status === 412) {
-      return res.status(409).json({
-        error: "O iFood ainda não liberou a confirmação desse pedido. Atualize e tente novamente.",
-        code: "DELIVERY_NOT_ELIGIBLE"
-      });
-    }
-
-    if (status === 429 || status >= 500 || status === 0) {
-      return res.status(503).json({
-        error: "Não foi possível confirmar agora porque o iFood está indisponível. Confira o status antes de tentar novamente.",
-        code: "IFOOD_TEMPORARY_ERROR"
-      });
-    }
-
-    throw err;
+    }));
+  } finally {
+    ifoodDeliveryEffectsRunning = false;
   }
-}));
+}
+
+function scheduleIfoodDeliveryEffects() {
+  setImmediate(() => runIfoodDeliveryEffects().catch(error => {
+    console.error("iFood delivery effects queue:",error?.code || "database_error");
+  }));
+}
+
+const ifoodDeliveryConfirmation = createIfoodDeliveryConfirmation({
+  pool,
+  canonicalStatus:canonicalIfoodOrderStatus,
+  isMerchantAllowed:ifoodMerchantAllowed,
+  isConfigured:ifoodConfigured,
+  normalizeCode:normalizeDeliveryCode,
+  assertExternalMutationAllowed,
+  verifyCode:(orderId,code) => ifoodApi(
+    `${IFOOD_ORDER_BASE}/orders/${encodeURIComponent(orderId)}/verifyDeliveryCode`,
+    { method:"POST",redirect:"error",headers:{"Content-Type":"application/json"},body:JSON.stringify({ code }) },
+    { retryUnauthorized:false }
+  ),
+  emitRealtime,
+  onEffectsReady:scheduleIfoodDeliveryEffects,
+  logTiming:sample => console.info("IFOOD_DELIVERY_TIMING",JSON.stringify(sample))
+});
+
+app.get("/api/courier/ifood/orders/:orderId/confirmation", auth, courierOnly,
+  asyncRoute(ifoodDeliveryConfirmation.status));
+
+app.post("/api/courier/ifood/orders/:orderId/verify-delivery", auth, courierOnly, deliveryCodeLimiter,
+  asyncRoute(ifoodDeliveryConfirmation.verify));
 
 app.get("/api/courier/ifood/available", auth, courierOnly, asyncRoute(async (req, res) => {
   await touchPresence(req.session.user.id, "COURIER_WEB");
@@ -13018,6 +12729,9 @@ setTimeout(() => {
 }, 8000);
 
 
+// Periodic recovery also handles jobs persisted before a restart.
+if (!STAGING_SAFE_MODE) setInterval(scheduleIfoodDeliveryEffects, 5000).unref();
+
 setInterval(() => {
   runIfoodDispatchWorkerOnce().catch(err => {
     console.error("iFood dispatch interval:", ifoodDispatchErrorText(err));
@@ -13167,11 +12881,13 @@ server.listen(port, () => {
   console.log(`DespacheFull ${VERSION} rodando na porta ${port}`);
   // Only the explicitly provisioned staging database can run authenticated synthetic tests.
   // No test endpoint, no production access, and no external provider writes.
-  if (APP_ENV === "staging" && STAGING_SAFE_MODE && process.env.STAGING_HOSTED_E2E_RUN === "yes") {
+  const hostedSmokeMode = process.env.STAGING_HOSTED_E2E_RUN;
+  if (APP_ENV === "staging" && STAGING_SAFE_MODE && ["yes","ifood-confirmation"].includes(hostedSmokeMode)) {
     setImmediate(async () => {
       try {
-        const { runHostedAuthSmoke } = await import("./scripts/staging-hosted-auth-e2e.js");
-        await runHostedAuthSmoke({ pool, port });
+        const { runHostedAuthSmoke, runHostedIfoodConfirmationSmoke } = await import("./scripts/staging-hosted-auth-e2e.js");
+        const smoke = hostedSmokeMode === "ifood-confirmation" ? runHostedIfoodConfirmationSmoke : runHostedAuthSmoke;
+        await smoke({ pool, port });
       } catch (error) {
         console.error("STAGING_HOSTED_AUTH_E2E_FAILED", String(error?.code || error?.message || "unknown").slice(0, 200));
       }
