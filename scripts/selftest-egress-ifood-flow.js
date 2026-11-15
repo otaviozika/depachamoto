@@ -42,6 +42,7 @@ const service=createIfoodDeliveryConfirmation({
     if(mode==='unavailable')throw Object.assign(Error('Synthetic outage'),{statusCode:503});
     if(mode==='timeout')throw Object.assign(Error('Synthetic timeout'),{name:'TimeoutError'});
     if(mode==='bad-request')throw Object.assign(Error('Synthetic bad request'),{statusCode:400,ifoodBody:{message:'Bad Request'}});
+    if(mode==='already-verified')throw Object.assign(Error('Synthetic reconciliation'),{statusCode:422,ifoodBody:{error:{code:'DELIVERY_CODE_ALREADY_VERIFIED'}}});
     if(mode==='rejected')throw Object.assign(Error('Synthetic rejection'),{statusCode:422});
     if(mode==='empty')return {response:{status:200},body:null};
     return {response:{status:200},body:{valid:code==='1234'}};
@@ -134,7 +135,12 @@ try {
   });
   await test('422 followed by CONCLUDED is idempotent; concurrent late 422 preserves verified state',async()=>{
     const f=await fixture(),before=apiCalls;mode='rejected';
-    assert.equal((await verify(f)).code,202);
+    const rejected=await verify(f);
+    assert.equal(rejected.code,422);
+    assert.equal(rejected.body.code,'IFOOD_VERIFY_REJECTED');
+    assert.equal((await verify(f,{check:true})).body.retry_allowed,true);
+    await query("UPDATE ifood_delivery_confirmations SET status='RECONCILING',last_response=NULL WHERE ifood_order_id=$1",[f.id]);
+    assert.equal((await verify(f,{check:true})).body.retry_allowed,true);
     await query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id=$1",[f.id]);
     assert.equal((await verify(f,{check:true})).body.state,'CONCLUDED');
     assert.equal((await verify(f)).body.concluded,true);
@@ -149,6 +155,17 @@ try {
     assert.equal((await post).body.verified,true);
     const persisted=(await query("SELECT status,last_http_status FROM ifood_delivery_confirmations WHERE ifood_order_id=$1",[race.id])).rows[0];
     assert.deepEqual(persisted,{status:'VERIFIED',last_http_status:422});
+    mode='valid';
+  });
+  await test('explicit already-validated responses reconcile instead of requesting the code again',async()=>{
+    const f=await fixture(),before=apiCalls;
+    mode='already-verified';
+    assert.equal((await verify(f)).code,202);
+    assert.equal((await verify(f,{check:true})).body.retry_allowed,false);
+    assert.equal((await verify(f)).code,202);
+    assert.equal(apiCalls,before+1);
+    await recordIfoodDeliveryCodeVerifiedEvent({query},f.id,new Date());
+    assert.equal((await verify(f,{check:true})).body.verified,true);
     mode='valid';
   });
   await test('staging guard runs before a claim or external request',async()=>{

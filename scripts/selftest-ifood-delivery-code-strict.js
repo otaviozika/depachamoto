@@ -19,9 +19,11 @@ test("legacy iFood success responses confirm unless the provider explicitly reje
     [401, {valid:true}, "AUTH"],
     [409, {valid:true}, "INELIGIBLE"],
     [412, {}, "INELIGIBLE"],
-    [422, {valid:true}, "UNCERTAIN"],
+    [422, {valid:true}, "REJECTED"],
     [422, {message:"Code already verified"}, "UNCERTAIN"],
     [422, {error:{message:"Código incorreto"}}, "INVALID"],
+    [422, {errors:[{errorCode:"INVALID_DELIVERY_CODE"}]}, "INVALID"],
+    [400, {error:{code:"DELIVERY_CODE_ALREADY_VERIFIED"}}, "UNCERTAIN"],
     [429, null, "RATE_LIMIT"],
     [500, {valid:true}, "UNCERTAIN"],
     [0, null, "UNCERTAIN"]
