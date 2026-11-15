@@ -29,6 +29,7 @@ function harness({
     deliveryConfirmOrderLabel:{},deliveryConfirmModal:{style:{display:"grid"}}
   };
   const results={messages:[],posts:0,gets:[],refreshes:0,closedAt:null};
+  let statusTimer;
   const context=vm.createContext({
     deliveryConfirmationTarget:{orderId:"first",displayId:"101"},courierDeliveryFeedbackTimer:null,
     activeIfoodConfirmationRequests:new Set(),uncertainIfoodConfirmations:new Set(),confirmedIfoodDeliveries:new Set(),
@@ -47,11 +48,12 @@ function harness({
     },
     loadCourier:refresh,loadCourierDeliveries:async()=>{},
     setTimeout:(fn,ms)=>{
+      if(ms===4000){statusTimer=fn;return fn;}
       if([3500,5000,28000,80].includes(ms))return;
       if(timers==="real")return setTimeout(fn,ms);
       queueMicrotask(fn);
     },
-    clearTimeout
+    clearTimeout(timer){if(timer===statusTimer)statusTimer=null;clearTimeout(timer)}
   });
   const codeUnderTest=oldHtml
     ? oldHtml.slice(oldHtml.indexOf("function openDeliveryConfirmModal("),oldHtml.indexOf("\nlet courierActiveDispatch=null;"))
@@ -63,7 +65,7 @@ function harness({
     globalThis.open=openDeliveryConfirmModal;
     globalThis.close=closeDeliveryConfirmModal;
   `,Object.assign(context,{markClose:()=>{results.closedAt??=performance.now()}}));
-  return {fields,results,submit:()=>context.submit({preventDefault(){}}),open:context.open,close:context.close};
+  return {fields,results,submit:()=>context.submit({preventDefault(){}}),open:context.open,close:context.close,checkAutomatically:()=>statusTimer?.()};
 }
 
 test("success closes the modal before dashboard completion, including dashboard failure",async()=>{
@@ -154,6 +156,28 @@ test("explicit invalid code is shown and can be edited",async()=>{
   assert.equal(h.fields.deliveryConfirmBtn.disabled,false);
 });
 
+test("definitive HTTP 400 shows the provider rejection and unlocks the code without a second request",async()=>{
+  const h=harness({post:async()=>{throw Object.assign(Error("O iFood recusou a solicitação."),{code:"IFOOD_VERIFY_REJECTED"})}});
+  await h.submit();
+  assert.equal(h.results.gets.length,0);
+  assert.equal(h.fields.deliveryConfirmBtn.disabled,false);
+  assert.equal(h.fields.deliveryConfirmCode.disabled,false);
+  assert.match(h.results.messages.at(-1).text,/recusou/);
+});
+
+test("a pending response is rechecked automatically without resending its code",async()=>{
+  let verified=false;
+  const h=harness({
+    post:async()=>({verified:false,state:"RECONCILING"}),
+    status:async()=>({verified,state:verified?"CONCLUDED":"RECONCILING"})
+  });
+  await h.submit();
+  verified=true;
+  h.checkAutomatically();
+  for(let i=0;i<10;i++)await Promise.resolve();
+  assert.equal(h.fields.deliveryConfirmModal.style.display,"none");
+  assert.equal(h.results.posts,1);
+});
 test("invalid format cannot send a POST",async()=>{
   const h=harness({code:"123"});
   await h.submit();
