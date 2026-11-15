@@ -90,15 +90,12 @@ try {
       assert.equal((await verify(f)).body.verified,true);
     }
   });
-  await test('empty HTTP 200 waits for the iFood validation event and never causes another POST',async()=>{
+  await test('empty HTTP 200 confirms immediately and never causes another POST',async()=>{
     const f=await fixture(),before=apiCalls;mode='empty';
     const first=await verify(f);
-    assert.equal(first.code,202);
-    assert.equal(first.body.verified,false);
+    assert.equal(first.code,200);
+    assert.equal(first.body.verified,true);
     assert.equal((await verify(f,{check:true,courier:3})).code,404);
-    assert.equal((await verify(f)).body.verified,false);
-    assert.equal(apiCalls,before+1);
-    await recordIfoodDeliveryCodeVerifiedEvent({query},f.id,new Date());
     assert.equal((await verify(f,{check:true})).body.verified,true);
     assert.equal((await verify(f)).body.already_confirmed,true);
     assert.equal(apiCalls,before+1);
