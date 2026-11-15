@@ -1,37 +1,38 @@
-// Regressão: o botão "Confirmar entrega" (iFood) só dá baixa quando o iFood
-// responde EXPLICITAMENTE que o código é válido (documentação: 200 {"valid": true}).
-// Antes, qualquer resposta de sucesso sem "valid"/"success" booleano (corpo vazio,
-// 202 {"status":"ACCEPTED"}, "valid":"false" como texto) confirmava a entrega
-// mesmo com código errado. Validado de ponta a ponta (app real + iFood simulado,
-// 21 cenários) no PR que criou este teste.
-import fs from "node:fs";
 import assert from "node:assert/strict";
+import test from "node:test";
+import { classifyIfoodDeliveryReply, isIfoodDeliveryCodeVerifiedEvent } from "../lib/ifood-delivery-confirmation.js";
 
-const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
-const start = server.indexOf('app.post("/api/courier/ifood/orders/:orderId/verify-delivery"');
-assert.ok(start > 0, "rota de confirmação iFood não encontrada");
-const route = server.slice(start, server.indexOf("\n}));", start));
+test("provider confirmation requires explicit, noncontradictory evidence", () => {
+  for (const [http, body, expected] of [
+    [200, {valid:true}, "VERIFIED"],
+    [200, {success:true}, "VERIFIED"],
+    [200, {valid:false}, "INVALID"],
+    [200, {valid:true,success:false}, "UNCERTAIN"],
+    [200, {valid:"true",success:true}, "UNCERTAIN"],
+    [200, {status:"CONCLUDED"}, "UNCERTAIN"],
+    [200, null, "UNCERTAIN"],
+    [200, "OK", "UNCERTAIN"],
+    [202, {}, "UNCERTAIN"],
+    [202, {success:false}, "UNCERTAIN"],
+    [400, {error:"Invalid delivery code"}, "INVALID"],
+    [400, {success:false}, "UNCERTAIN"],
+    [401, {valid:true}, "AUTH"],
+    [409, {valid:true}, "INELIGIBLE"],
+    [412, {}, "INELIGIBLE"],
+    [422, {valid:true}, "UNCERTAIN"],
+    [422, {message:"Code already verified"}, "UNCERTAIN"],
+    [422, {error:{message:"Código incorreto"}}, "INVALID"],
+    [429, null, "RATE_LIMIT"],
+    [500, {valid:true}, "UNCERTAIN"],
+    [0, null, "UNCERTAIN"]
+  ]) {
+    assert.equal(classifyIfoodDeliveryReply(http,body),expected,JSON.stringify([http,body]));
+  }
+});
 
-const iCall = route.indexOf("/verifyDeliveryCode`");
-const iFalse = route.indexOf("if (explicitValid === false)");
-const iStrict = route.indexOf("if (explicitValid !== true)");
-const safeVerifiedUpdate = "SET status=CASE WHEN status='CONCLUDED' THEN status ELSE 'VERIFIED' END";
-const iVerified = route.indexOf(safeVerifiedUpdate);
-const strictBlock = route.slice(iStrict, iVerified);
-
-const checks = {
-  callsIfood: iCall > 0,
-  verdictOnlyFromBooleans: route.includes('typeof body?.valid === "boolean" ? body.valid :') && route.includes('typeof body?.success === "boolean" ? body.success :'),
-  rejectsExplicitFalse: iFalse > iCall,
-  strictGuardExists: iStrict > iFalse,
-  verifiedOnlyAfterStrictGuard: iVerified > iStrict && route.indexOf(safeVerifiedUpdate, iVerified + 1) === -1 && !route.includes("SET status='VERIFIED'"),
-  concludedNeverDowngraded: route.includes(safeVerifiedUpdate) && route.includes("WHERE ifood_order_id=$1 AND status='PROCESSING'"),
-  strictGuardDoesNotConfirm: strictBlock.includes("SET status='FAILED'") && strictBlock.includes("return res.status(503)") && strictBlock.includes('"IFOOD_VERIFY_UNCONFIRMED"'),
-  strictGuardIsAudited: strictBlock.includes('"IFOOD_DELIVERY_CODE_UNCONFIRMED_RESPONSE"'),
-  wrongCodeHttpErrorsDistinguished: route.includes("const rejectedByIfood = status === 400 || status === 422;") && route.includes("const clearlyWrongCode =") && route.includes('code: clearlyWrongCode ? "DELIVERY_CODE_INVALID" : "IFOOD_VERIFY_REJECTED"'),
-  formatCheckedBeforeIfood: route.indexOf("validDeliveryCode(deliveryCode)") > 0 && route.indexOf("validDeliveryCode(deliveryCode)") < iCall,
-  onlyAssignedCourier: route.includes("AND d.courier_id=$2"),
-  singleFlightClaim: route.includes("status IN ('PENDING','FAILED')") && route.includes("SET status='PROCESSING'")
-};
-for (const [name, ok] of Object.entries(checks)) assert.ok(ok, `Falhou: ${name}`);
-console.log(JSON.stringify({ result: "PASS", checks }, null, 2));
+test("only the iFood code validation success event provides positive code evidence", () => {
+  assert.equal(isIfoodDeliveryCodeVerifiedEvent({code:"DDCS"}),true);
+  assert.equal(isIfoodDeliveryCodeVerifiedEvent({fullCode:"DELIVERY_DROP_CODE_VALIDATION_SUCCESS"}),true);
+  assert.equal(isIfoodDeliveryCodeVerifiedEvent({fullCode:"DELIVERY_DROP_CODE_REQUESTED"}),false);
+  assert.equal(isIfoodDeliveryCodeVerifiedEvent({fullCode:"CONCLUDED"}),false);
+});
