@@ -40,6 +40,7 @@ const service=createIfoodDeliveryConfirmation({
     if(gate)await gate;
     if(mode==='unavailable')throw Object.assign(Error('Synthetic outage'),{statusCode:503});
     if(mode==='timeout')throw Object.assign(Error('Synthetic timeout'),{name:'TimeoutError'});
+    if(mode==='bad-request')throw Object.assign(Error('Synthetic bad request'),{statusCode:400,ifoodBody:{message:'Bad Request'}});
     if(mode==='rejected')throw Object.assign(Error('Synthetic rejection'),{statusCode:422});
     if(mode==='empty')return {response:{status:200},body:null};
     return {response:{status:200},body:{valid:code==='1234'}};
@@ -89,6 +90,19 @@ try {
       mode='valid';
       assert.equal((await verify(f)).body.verified,true);
     }
+  });
+  await test('HTTP 400 and legacy HTTP 400 rows allow immediate manual retry without waiting for a poll',async()=>{
+    const f=await fixture(),before=apiCalls;mode='bad-request';
+    const rejected=await verify(f);
+    assert.equal(rejected.code,422);
+    assert.equal(rejected.body.code,'IFOOD_VERIFY_REJECTED');
+    assert.equal((await verify(f,{check:true})).body.retry_allowed,true);
+    assert.equal(apiCalls,before+1);
+    await query("UPDATE ifood_delivery_confirmations SET status='RECONCILING' WHERE ifood_order_id=$1",[f.id]);
+    assert.equal((await verify(f,{check:true})).body.retry_allowed,true);
+    mode='valid';
+    assert.equal((await verify(f)).body.verified,true);
+    assert.equal(apiCalls,before+2);
   });
   await test('empty HTTP 200 confirms immediately and never causes another POST',async()=>{
     const f=await fixture(),before=apiCalls;mode='empty';

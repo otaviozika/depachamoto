@@ -4641,10 +4641,21 @@ async function confirmAnotaAiDelivery(orderId,displayId){
 
 function setIfoodConfirmationMode(target,statusOnly){
   target.statusOnly=statusOnly;
+  if(!statusOnly)clearTimeout(target.statusTimer);
   $('deliveryConfirmCode').disabled=statusOnly;
   const button=$('deliveryConfirmBtn');
   button.textContent=statusOnly?'Consultar status':'✅ Confirmar entrega';
   button.disabled=activeIfoodConfirmationRequests.has(target.orderId);
+}
+
+function scheduleIfoodStatusCheck(target,delay=4000){
+  clearTimeout(target.statusTimer);
+  if(!target.statusOnly||(target.automaticChecks||0)>=10)return;
+  target.statusTimer=setTimeout(()=>{
+    if(deliveryConfirmationTarget!==target||!target.statusOnly)return;
+    target.automaticChecks=(target.automaticChecks||0)+1;
+    runIfoodConfirmation(target);
+  },delay);
 }
 
 function openDeliveryConfirmModal(orderId,displayId,statusOnly=false){
@@ -4656,10 +4667,12 @@ function openDeliveryConfirmModal(orderId,displayId,statusOnly=false){
   setIfoodConfirmationMode(deliveryConfirmationTarget,statusOnly||uncertainIfoodConfirmations.has(orderId));
   message('deliveryConfirmMsg',deliveryConfirmationTarget.statusOnly?'Aguardando atualização do iFood.':'','');
   $('deliveryConfirmModal').style.display='grid';
-  if(!deliveryConfirmationTarget.statusOnly)setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
+  if(deliveryConfirmationTarget.statusOnly)scheduleIfoodStatusCheck(deliveryConfirmationTarget,0);
+  else setTimeout(()=>$('deliveryConfirmCode')?.focus(),80);
 }
 
 function closeDeliveryConfirmModal(){
+  clearTimeout(deliveryConfirmationTarget?.statusTimer);
   $('deliveryConfirmModal').style.display='none';
   deliveryConfirmationTarget=null;
   message('deliveryConfirmMsg','','');
@@ -4704,9 +4717,12 @@ async function reconcileIfoodDeliveryConfirmation(orderId,maxChecks){
   return null;
 }
 
-async function submitDeliveryConfirmation(e){
+function submitDeliveryConfirmation(e){
   e.preventDefault();
-  const target=deliveryConfirmationTarget;
+  return runIfoodConfirmation(deliveryConfirmationTarget);
+}
+
+async function runIfoodConfirmation(target){
   if(!target)return;
   const {orderId}=target;
   if(activeIfoodConfirmationRequests.has(orderId)||confirmedIfoodDeliveries.has(orderId))return;
@@ -4716,6 +4732,7 @@ async function submitDeliveryConfirmation(e){
     return;
   }
 
+  clearTimeout(target.statusTimer);
   activeIfoodConfirmationRequests.add(orderId);
   $('deliveryConfirmBtn').disabled=true;
   const isCurrent=()=>deliveryConfirmationTarget===target;
@@ -4734,7 +4751,8 @@ async function submitDeliveryConfirmation(e){
         }
       }catch(err){
         const definitive=['DELIVERY_CODE_FORMAT','DELIVERY_NOT_ASSIGNED','DELIVERY_NOT_MERCHANT',
-          'DELIVERY_CANCELLED','IFOOD_MERCHANT_BLOCKED','IFOOD_NOT_CONFIGURED','SESSION_EXPIRED'];
+          'DELIVERY_CANCELLED','IFOOD_MERCHANT_BLOCKED','IFOOD_NOT_CONFIGURED','SESSION_EXPIRED',
+          'IFOOD_VERIFY_REJECTED'];
         if(definitive.includes(err.code)){
           show(err.message,'err');
           return;
@@ -4758,6 +4776,7 @@ async function submitDeliveryConfirmation(e){
     if(latest?.verified===true){
       acceptIfoodConfirmation(target);
     }else if(latest?.state==='CANCELLED'){
+      target.automaticChecks=10;
       show('Pedido cancelado no iFood.','err');
       queueCourierResourceRefresh({deliveries:true});
     }else if(latest?.retry_allowed===true){
@@ -4765,12 +4784,15 @@ async function submitDeliveryConfirmation(e){
       if(isCurrent())setIfoodConfirmationMode(target,false);
       show('A entrega continua pendente. Você pode tentar confirmar novamente.','');
     }else{
-      show('Aguardando confirmação do iFood. Consulte o status ou siga para outra entrega.','');
+      show((target.automaticChecks||0)>=10
+        ?'Status ainda pendente. Você pode seguir para outra entrega e avisar o caixa.'
+        :'Aguardando o iFood. O aplicativo está verificando o status automaticamente.','');
     }
   }finally{
     activeIfoodConfirmationRequests.delete(orderId);
     if(deliveryConfirmationTarget?.orderId===orderId){
       setIfoodConfirmationMode(deliveryConfirmationTarget,uncertainIfoodConfirmations.has(orderId));
+      scheduleIfoodStatusCheck(deliveryConfirmationTarget);
     }
   }
 }

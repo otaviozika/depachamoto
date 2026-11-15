@@ -4019,6 +4019,7 @@ function deliveryConfirmationLabel(status, orderStatus) {
 function courierDeliveryUiState(row) {
   const orderStatus = canonicalIfoodOrderStatus(row.order_status);
   const confirmationStatus = deliveryConfirmationLabel(row.confirmation_status, row.order_status);
+  const rejected = row.confirmation_last_error === "IFOOD_VERIFY_REJECTED";
   const dispatchStatus = String(row.ifood_dispatch_status || "").trim().toUpperCase();
 
   if (["CONCLUDED","DELIVERED"].includes(orderStatus) || confirmationStatus === "CONCLUDED") {
@@ -4072,9 +4073,9 @@ function courierDeliveryUiState(row) {
   ) {
     return {
       state: confirmationStatus === "FAILED" ? "FAILED" : "WAITING_CODE",
-      label: confirmationStatus === "FAILED" ? "Código não validado" : "Aguardando código",
+      label: rejected ? "Solicitação recusada pelo iFood" : confirmationStatus === "FAILED" ? "Código não validado" : "Aguardando código",
       can_confirm: true,
-      message: confirmationStatus === "FAILED"
+      message: rejected ? "Confira o código e tente novamente. Se continuar, avise o caixa." : confirmationStatus === "FAILED"
         ? "Confira o código com o cliente e tente novamente."
         : "Ao chegar ao cliente, peça o código/localizador para confirmar a entrega."
     };
