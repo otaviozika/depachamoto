@@ -294,6 +294,17 @@ export async function runHostedIfoodConfirmationSmoke({pool,port}) {
     assert.equal(health.ifood.eventSyncEnabled,false);
     assert.equal(health.ifood.dispatchFlagEnabled,false);
 
+    // Remove only fixtures from a previous smoke whose owner was deactivated
+    // before an interrupted cleanup. Active or real orders never match.
+    const previous=await pool.query(`
+      DELETE FROM dispatches d USING ifood_orders o,users u
+      WHERE d.dispatch_code=o.order_id AND d.courier_id=u.id AND NOT u.active
+        AND u.username=o.order_id||'-owner' AND o.is_test AND o.merchant_id='staging-fixture'
+        AND o.order_id ~ '^stg-ifood-[0-9a-f]{14}$' RETURNING o.order_id
+    `);
+    for(const row of previous.rows){
+      await pool.query("DELETE FROM ifood_orders WHERE order_id=$1",[row.order_id]);
+    }
     const cookies=[];
     for(const suffix of ["owner","other"]){
       const username=run+"-"+suffix;
@@ -346,8 +357,8 @@ export async function runHostedIfoodConfirmationSmoke({pool,port}) {
     assert.equal((await request(path+"/confirmation",200,{cookie})).data.state,"CONCLUDED");
   } finally {
     if(ids.length)await pool.query("UPDATE users SET active=false WHERE id=ANY($1::int[])",[ids]);
-    await pool.query("DELETE FROM ifood_orders WHERE order_id=$1",[run]);
     if(dispatchId)await pool.query("DELETE FROM dispatches WHERE id=$1",[dispatchId]);
+    await pool.query("DELETE FROM ifood_orders WHERE order_id=$1",[run]);
   }
   console.log("STAGING_IFOOD_CONFIRMATION_SMOKE_PASS",JSON.stringify({
     isolated_health:true,authenticated_couriers:2,ownership:true,external_post_blocked:true,
