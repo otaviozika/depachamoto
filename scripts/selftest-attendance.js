@@ -34,7 +34,7 @@ const checks = {
   daily_report_attendance: /FROM courier_attendance a/.test(dailyReport) && /checked_in_at/.test(dailyReport),
   daily_report_received_orders: /FROM ifood_orders o/.test(dailyReport),
   ui_attendance_nav: /\['attendance','Presença'\]/.test(ui) && /Presença do dia/.test(ui),
-  ui_dynamic_qr: /qrcodejs\/1\.0\.0\/qrcode\.min\.js/.test(ui) && /refreshAttendanceQr/.test(ui),
+  ui_dynamic_qr: /<script src="\/vendor\/qrcode\.min\.js"><\/script>/.test(ui) && /refreshAttendanceQr/.test(ui),
   ui_qr_login_survival: /ATTENDANCE_TOKEN_KEY/.test(ui) && /captureAttendanceTokenFromUrl/.test(ui) && /processPendingAttendanceToken/.test(ui),
   ui_in_app_qr_button: /id="attendanceScannerBtn"/.test(ui) && /openAttendanceScanner/.test(ui),
   ui_in_app_qr_camera: /id="scannerVideo"/.test(ui) && /getUserMedia/.test(ui) && /BarcodeDetector/.test(ui),
