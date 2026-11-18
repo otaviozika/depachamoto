@@ -22,6 +22,7 @@ import { buildDatabaseConfig, isTlsVerificationError, sessionTimeoutSql } from "
 import { CSP_REPORT_PATH, createCspReportStore, helmetCspReportOnly, normalizeCspReports } from "./lib/csp.js";
 import { accountCacheTtlFromEnv, createAccountCache } from "./lib/session-account-cache.js";
 import { createRequestTiming } from "./lib/request-timing.js";
+import { createAdaptiveRunner } from "./lib/adaptive-parallel.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -98,6 +99,8 @@ pool.on("error", err => {
 // Medição por requisição (tempo total, consultas e tempo de banco). Só observa.
 const requestTiming = createRequestTiming({ slowMs: Number(process.env.REQUEST_SLOW_MS || 1500) });
 pool.on("connect", client => requestTiming.instrumentClient(client));
+// Consultas independentes em paralelo só com folga no pool (ver lib/adaptive-parallel.js).
+const adaptiveQueries = createAdaptiveRunner(pool);
 
 if (databaseConfig.tlsMode === "unverified") {
   console.warn("PostgreSQL: TLS sem verificação de certificado. Defina DATABASE_SSL_VERIFY=true quando a cadeia for confiável.");
@@ -6933,28 +6936,31 @@ app.post("/api/courier/attendance/checkin", auth, courierOnly, asyncRoute(async 
   });
 }));
 app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res) => {
-  await touchPresence(req.session.user.id, "COURIER_WEB");
-  const user = await currentUser(req.session.user.id);
-  const attendanceDate = await getSPDate();
-  const attendanceView = resolveAttendanceViewShift(attendanceDate);
-  const attendanceRow = await getCourierAttendance(req.session.user.id, attendanceDate, attendanceView.shift_code);
-
-  let active = (await pool.query(`
+  const courierId = req.session.user.id;
+  // As consultas desta tela são independentes entre si: rodam em duas rodadas
+  // de até 5 em vez de uma fila de ~10 — em paralelo só quando o banco tem folga;
+  // num pico, em fila como antes. Mesmo SQL e mesma resposta.
+  // Ver scripts/selftest-courier-dashboard-parallel.js.
+  const [, user, attendanceDate, activeRow, operationalSla] = await adaptiveQueries.all([
+    () => touchPresence(courierId, "COURIER_WEB"),
+    () => currentUser(courierId),
+    () => getSPDate(),
+    () => pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,
            d.operational_stage,d.returning_at,d.returned_at,
            d.route_sla_minutes,d.return_sla_minutes,${orderArraySql("d")}
     FROM dispatches d
     WHERE d.courier_id=$1 AND d.status='ON_ROAD'
     ORDER BY d.id DESC LIMIT 1
-  `, [req.session.user.id])).rows[0] || null;
+  `, [courierId]).then(q => q.rows[0] || null),
+    () => getOperationalSlaSettings()
+  ]);
+  const attendanceView = resolveAttendanceViewShift(attendanceDate);
 
-  const operationalSla = await getOperationalSlaSettings();
-  if (active) {
-    const progressMap = await getDispatchProgressMap([active.id]);
-    active = decorateOperationalDispatches([active], progressMap, operationalSla)[0];
-  }
-
-  const stats = (await pool.query(`
+  const [attendanceRow, progressMap, stats, recent, lastFinished] = await adaptiveQueries.all([
+    () => getCourierAttendance(courierId, attendanceDate, attendanceView.shift_code),
+    () => activeRow ? getDispatchProgressMap([activeRow.id]) : null,
+    () => pool.query(`
     SELECT
       COUNT(o.id) FILTER (
         WHERE (d.departed_at AT TIME ZONE 'America/Sao_Paulo')::date =
@@ -6971,21 +6977,21 @@ app.get("/api/courier/dashboard", auth, courierOnly, asyncRoute(async (req, res)
     FROM dispatches d
     JOIN dispatch_orders o ON o.dispatch_id=d.id
     WHERE d.courier_id=$1
-  `, [req.session.user.id])).rows[0];
-
-  const recent = (await pool.query(`
+  `, [courierId]).then(q => q.rows[0]),
+    () => pool.query(`
     SELECT d.id,d.dispatch_code,d.order_number,d.departed_at,d.status,d.operational_stage,d.returning_at,d.returned_at,d.released_at,${orderArraySql("d")}
     FROM dispatches d
     WHERE d.courier_id=$1
     ORDER BY d.id DESC LIMIT 30
-  `, [req.session.user.id])).rows;
-
-  const lastFinished = (await pool.query(`
+  `, [courierId]).then(q => q.rows),
+    () => pool.query(`
     SELECT id,released_at,return_source
     FROM dispatches
     WHERE courier_id=$1 AND status='RELEASED' AND released_at IS NOT NULL
     ORDER BY released_at DESC,id DESC LIMIT 1
-  `,[req.session.user.id])).rows[0] || null;
+  `,[courierId]).then(q => q.rows[0] || null)
+  ]);
+  const active = activeRow ? decorateOperationalDispatches([activeRow], progressMap, operationalSla)[0] : null;
 
   res.json({
     active,
