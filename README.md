@@ -107,6 +107,15 @@ Regras que antes só existiam depois do `prestart` e agora estão no fonte:
 - **Limites por conexão:** consultas acima de 60 s (`DB_STATEMENT_TIMEOUT_MS`) são canceladas e transações paradas por mais de 120 s (`DB_IDLE_IN_TRANSACTION_TIMEOUT_MS`) são encerradas, liberando conexões e travas. `0` desativa. Uma conexão encerrada pelo banco não derruba mais o processo.
 - **Sessões:** toda requisição e o tempo real revalidam a conta. Admin ou motoboy desativado, removido ou com papel alterado perde o acesso na hora (antes, admin desativado mantinha a sessão por até 12 h).
 
+## Proteção contra scripts maliciosos (CSP) — modo relatório
+
+O servidor envia `Content-Security-Policy-Report-Only` (política em `lib/csp.js`). **Nada é bloqueado**: o navegador só avisa o que a política bloquearia. Os avisos chegam em `POST /api/csp-report` (público, limitado a 60/min por IP, corpo de até 16 KB, sem query string nem fragmento) e aparecem:
+
+- no log do Render, uma linha `CSP_REPORT_ONLY {...}` por violação diferente;
+- no resumo `GET /api/admin/csp-reports` (só admin), com contagem de cada violação desde o último deploy.
+
+Com o resumo vazio por alguns dias de operação normal, a política pode passar a ser aplicada de verdade em uma mudança separada. Se aparecer uma violação legítima (um recurso novo do app), inclua a origem em `lib/csp.js`.
+
 ## Estrutura do projeto
 
 - `server.js`: servidor, regras de negócio e integração com o banco.

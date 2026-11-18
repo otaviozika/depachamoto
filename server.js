@@ -19,6 +19,7 @@ import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-sh
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { installPasswordRecovery } from "./lib/password-recovery.js";
 import { buildDatabaseConfig, isTlsVerificationError, sessionTimeoutSql } from "./lib/db-config.js";
+import { CSP_REPORT_PATH, createCspReportStore, helmetCspReportOnly, normalizeCspReports } from "./lib/csp.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -114,7 +115,8 @@ const io = new Server(server);
 
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// CSP só em modo relatório: o navegador avisa o que seria bloqueado, sem bloquear nada.
+app.use(helmet({ contentSecurityPolicy: helmetCspReportOnly() }));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -12586,6 +12588,25 @@ app.get("/api/admin/audit", auth, adminOnly, asyncRoute(async (req, res) => {
 
   res.json({ rows, server_now: new Date().toISOString() });
 }));
+
+// Relatórios da CSP em modo relatório. Público (o navegador envia sem login),
+// com limite por IP, corpo pequeno e resumo deduplicado em memória.
+const cspReports = createCspReportStore();
+const cspReportLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
+app.post(CSP_REPORT_PATH, cspReportLimiter,
+  express.json({ limit: "16kb", type: ["application/csp-report", "application/reports+json", "application/json"] }),
+  (req, res) => {
+    try {
+      for (const report of normalizeCspReports(req.body)) cspReports.record(report);
+    } catch (err) {
+      console.warn("CSP report ignorado:", err?.message || err);
+    }
+    res.status(204).end();
+  });
+
+app.get("/api/admin/csp-reports", auth, adminOnly, (req, res) => {
+  res.json(cspReports.summary());
+});
 
 app.get("/api/live", (req, res) => {
   res.json({ ok: true, version: VERSION, time: new Date().toISOString() });
