@@ -114,6 +114,8 @@ O servidor envia `Content-Security-Policy-Report-Only` (política em `lib/csp.js
 - no log do Render, uma linha `CSP_REPORT_ONLY {...}` por violação diferente;
 - no resumo `GET /api/admin/csp-reports` (só admin), com contagem de cada violação desde o último deploy.
 
+Todos os scripts são servidos pelo próprio app (o gerador de QR Code fica em `public/vendor/qrcode.min.js`, qrcodejs 1.0.0, com o hash de integridade conferido em `scripts/selftest-csp-report-only.js`).
+
 Com o resumo vazio por alguns dias de operação normal, a política pode passar a ser aplicada de verdade em uma mudança separada. Se aparecer uma violação legítima (um recurso novo do app), inclua a origem em `lib/csp.js`.
 
 ## Estrutura do projeto

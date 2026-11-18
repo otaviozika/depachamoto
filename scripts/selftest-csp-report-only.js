@@ -3,6 +3,7 @@
 // deduplicados e limitados, e o resumo é exclusivo do admin.
 import fs from "node:fs";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import helmet from "helmet";
 import {
   CSP_REPORT_PATH, CSP_REPORT_ONLY_DIRECTIVES, createCspReportStore, helmetCspReportOnly, normalizeCspReports
@@ -28,7 +29,7 @@ test("helmet envia só o cabeçalho Report-Only, nunca a política aplicada", ()
 test("política cobre o que o app usa hoje", () => {
   const d = CSP_REPORT_ONLY_DIRECTIVES;
   assert.ok(d["script-src"].includes("'unsafe-inline'") && d["script-src-attr"].includes("'unsafe-inline'"), "handlers onclick e scripts inline");
-  assert.ok(d["script-src"].includes("https://cdnjs.cloudflare.com"), "biblioteca de QR Code");
+  assert.deepEqual(d["script-src"], ["'self'", "'unsafe-inline'"], "nenhum script de outro site (QR Code é servido pelo app)");
   assert.ok(d["img-src"].includes("https://tile.openstreetmap.org"), "mapa da regra LONGE");
   assert.ok(d["img-src"].includes("data:"), "QR Code gerado como imagem data:");
   assert.ok(d["style-src"].includes("https://fonts.googleapis.com") && d["font-src"].includes("https://fonts.gstatic.com"), "fontes da página Old Man");
@@ -96,6 +97,16 @@ test("servidor usa a política em modo relatório e protege o endpoint", () => {
   assert.match(route, /limit: "16kb"/, "corpo pequeno");
   assert.match(route, /res\.status\(204\)\.end\(\)/, "resposta vazia, sempre");
   assert.match(route, /app\.get\("\/api\/admin\/csp-reports", auth, adminOnly/, "resumo só para admin");
+});
+
+test("biblioteca de QR Code servida pelo app é a original (qrcodejs 1.0.0)", () => {
+  const file = fs.readFileSync(new URL("../public/vendor/qrcode.min.js", import.meta.url));
+  const sri = "sha512-" + createHash("sha512").update(file).digest("base64");
+  assert.equal(sri, "sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==", "mesmo arquivo publicado no cdnjs");
+  const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  assert.ok(html.includes('<script src="/vendor/qrcode.min.js"></script>'));
+  assert.ok(!html.includes("cdnjs.cloudflare.com"), "nenhum script carregado de outro site");
+  assert.ok(fs.existsSync(new URL("../public/vendor/qrcodejs-LICENSE.txt", import.meta.url)), "licença MIT junto");
 });
 
 console.log(JSON.stringify({ result: "PASS", feature: "csp_report_only", cases: count }));
