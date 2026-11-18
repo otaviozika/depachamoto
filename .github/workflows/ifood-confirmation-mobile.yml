@@ -15,6 +15,13 @@ jobs:
   browser-check:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    # Imagem oficial do Playwright: navegadores e dependências do sistema já
+    # instalados. Antes, "playwright install --with-deps" baixava ~130 pacotes
+    # do Ubuntu a cada execução e estourava o tempo quando o espelho estava lento.
+    # A versão da imagem precisa ser a mesma do pacote playwright abaixo.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,6 +31,5 @@ jobs:
         run: |
           npm ci
           npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium webkit
       - name: Test synthetic confirmations on Android Chromium and iPhone WebKit
         run: node scripts/smoke-ifood-confirmation-mobile.mjs
