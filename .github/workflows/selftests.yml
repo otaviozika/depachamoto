@@ -37,10 +37,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - name: Check production prestart transformations
-        run: |
-          npm run prestart
-          node --check server.js
+      - name: Syntax check
+        run: node --check server.js
       - name: Dispatch and integration regression
         run: |
           node scripts/selftest-automatic-dispatch.js

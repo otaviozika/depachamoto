@@ -74,11 +74,11 @@ ADMIN (painel Operação → "Conferência de sacolas e rotas")
 | `server.js` | Tabelas novas, endpoints, reserva e vínculo em `createDispatchTransaction`, pré-saída no `POST /api/courier/depart`, inclusão na rota bloqueada para o motoboy com a flag ligada, worker de expiração. |
 | `public/index.html` | Tela Conferir Sacolas, Minha Rota, aviso de endereço corrigido, painel do admin e modal Corrigir Endereço. |
 | `public/courier-dark.css` | Estilos das telas novas no tema escuro do motoboy (`?v=4`). |
-| `scripts/apply-late-shift-dispatch.js` | O patch de produção também aplica a janela tardia de turno na pré-saída. |
+| `lib/operational-shift.js` (`dispatchShiftAt`) | A pré-saída usa a mesma janela tardia de turno da saída (almoço até 17:59, janta até 01:59). |
 | `scripts/selftest-pre-departure.js` (novo) | Os 40 cenários obrigatórios + 3 verificações extras. |
 | `scripts/selftest-route-planner.js` (novo) | Motor e cliente da matriz. |
 | `scripts/simulate-route-planner.js` (novo) | Simulações e as 120 sequências (gera `docs/ROTEIRIZACAO_SIMULACOES.md`). |
-| `.github/workflows/selftests.yml` | O job `dispatch-flow` roda a pré-saída **depois** do prestart. |
+| `.github/workflows/selftests.yml` | O job `dispatch-flow` roda a regressão da pré-saída. |
 | `docs/` | Este documento, as simulações e os prints. |
 
 ---

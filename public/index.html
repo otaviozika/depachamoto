@@ -772,6 +772,7 @@
 
 </style>
 <link rel="stylesheet" href="/login-desktop.css?v=dark-relief-v2">
+<link rel="stylesheet" href="/password-recovery.css">
 <style id="login-approved-style">
 /* LOGIN APPROVED INLINE START */
 /* Dark relief access screen. Authentication owns visibility through .hidden. */
@@ -912,20 +913,7 @@
   #loginScreen .btn.primary{min-height:50px}
 }
 
-/* PASSWORD TOGGLE STYLES START */
-.form .password-field{position:relative;display:block;width:100%;margin-top:7px}
-.form .password-field>input{margin-top:0!important;padding-right:55px!important}
-.form .password-toggle{position:absolute;top:50%;right:7px;transform:translateY(-50%);z-index:12;display:flex;align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;padding:0;border:0;border-radius:9px;background:transparent;color:#aeb4bc;cursor:pointer;transition:color .15s ease,background .15s ease,transform .1s ease;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.form .password-toggle svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-.form .password-toggle:hover{color:#fff;background:rgba(255,255,255,.06)}
-.form .password-toggle:active{transform:translateY(-50%) scale(.92)}
-.form .password-toggle:focus-visible{outline:2px solid #ef334a!important;outline-offset:2px!important}
-.form .password-eye-closed{display:none}
-.form .password-toggle[aria-pressed="true"]{color:#ef334a}
-.form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
-.form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
-#loginScreen .form .password-field{margin-top:7px}
-/* PASSWORD TOGGLE STYLES END */
+
 
 /* Match the approved composition: one card in desktop, a separate form card on mobile. */
 #loginScreen .auth-box:has(#loginForm:not(.hidden)) #registrationNotice{display:none}
@@ -955,6 +943,78 @@
   #loginScreen .login-access-card{display:contents}
   #loginScreen .auth-box::before{background:linear-gradient(135deg,rgba(242,13,47,.8),rgba(255,255,255,.25) 65%,rgba(242,13,47,.3))}
 }
+
+
+/* PASSWORD TOGGLE STYLES START */
+.form .password-field{
+  position:relative;
+  display:block;
+  width:100%;
+  margin-top:6px;
+}
+.form .password-field>input{
+  margin-top:0!important;
+  padding-right:58px!important;
+}
+.form .password-toggle{
+  position:absolute;
+  top:50%;
+  right:8px;
+  transform:translateY(-50%);
+  z-index:12;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:42px;
+  height:42px;
+  min-width:42px;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:#aeb4bc;
+  cursor:pointer;
+  transition:color .15s ease,background .15s ease,transform .1s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.form .password-toggle svg{
+  width:22px;
+  height:22px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+.form .password-toggle:hover{
+  color:#fff;
+  background:rgba(255,255,255,.06);
+}
+.form .password-toggle:active{
+  transform:translateY(-50%) scale(.92);
+}
+.form .password-toggle:focus-visible{
+  outline:2px solid #ef334a!important;
+  outline-offset:2px!important;
+}
+.form .password-eye-closed{display:none}
+.form .password-toggle[aria-pressed="true"]{color:#ef334a}
+.form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
+.form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
+
+/* Keep the toggle aligned with the labeled access fields. */
+#loginScreen .form .password-field{margin-top:7px}
+
+@media (max-width:900px){
+  #loginScreen .form .password-toggle{
+    right:8px;
+    width:42px;
+    height:42px;
+  }
+}
+/* PASSWORD TOGGLE STYLES END */
 /* LOGIN APPROVED INLINE END */
 .staging-banner{display:none;position:sticky;top:0;z-index:99999;padding:8px 14px;text-align:center;background:#f59e0b;color:#111827;font-size:12px;font-weight:950;letter-spacing:.55px;border-bottom:1px solid rgba(0,0,0,.22)}
 body.staging-mode .staging-banner{display:block}
@@ -1068,7 +1128,81 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
 .admin-dark-modal .address-box,.admin-dark-modal .address-map{border-color:#2c333d}.admin-dark-modal .address-box b,.admin-dark-modal .address-history,.admin-dark-modal .small.muted{color:#8b98aa}
 @media(max-width:760px){.pd-admin-flags{grid-template-columns:1fr}.pd-params{grid-template-columns:repeat(2,minmax(0,1fr))}.address-compare{grid-template-columns:1fr}.address-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
-</head>
+
+<!-- GOOGLE MAPS NAV START -->
+<style id="googleMapsNavigationStyles">
+.delivery-navigation{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:8px;
+  width:100%;
+}
+.delivery-navigation .btn{
+  min-height:48px;
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:13px;
+  line-height:1.15;
+  white-space:nowrap;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.delivery-navigation .btn.waze{
+  background:#2f80ed;
+  color:#fff;
+  border:1px solid #2f80ed;
+  box-shadow:none;
+}
+.delivery-navigation .btn.google-maps{
+  background:#111827;
+  color:#f8fafc;
+  border:1px solid #475569;
+  box-shadow:none;
+}
+.delivery-navigation .btn.google-maps:hover{
+  background:#172033;
+  border-color:#64748b;
+}
+.delivery-navigation .waze-mark,
+.delivery-navigation .google-maps-mark{
+  width:27px;
+  height:27px;
+  min-width:27px;
+  border-radius:8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.delivery-navigation .waze-mark{background:#fff}
+.delivery-navigation .google-maps-mark{background:transparent}
+.delivery-navigation .waze-mark img{width:22px;height:22px;display:block;object-fit:contain}
+.delivery-navigation .google-maps-mark img{width:25px;height:25px;display:block;object-fit:contain}
+@media (max-width:390px){
+  .delivery-navigation{gap:7px}
+  .delivery-navigation .btn{
+    min-height:46px;
+    padding:9px 8px;
+    font-size:12px;
+    gap:6px;
+  }
+  .delivery-navigation .waze-mark,
+  .delivery-navigation .google-maps-mark{
+    width:24px;
+    height:24px;
+    min-width:24px;
+  }
+  .delivery-navigation .waze-mark img{width:20px;height:20px}
+  .delivery-navigation .google-maps-mark img{width:23px;height:23px}
+}
+</style>
+<!-- GOOGLE MAPS NAV END -->
+
+<style>/* payment-clean-sheet-v1 */#adminApp #paymentMonthView .payment-sheet-table{min-width:1720px;width:100%;font-size:13px}#adminApp #paymentMonthView .payment-sheet-table thead th{background:#253447!important;color:#fff!important;padding:12px 9px}#adminApp #paymentMonthView .payment-sheet-table tbody td{padding:9px 8px;border-bottom:1px solid #e2e8f0!important}#adminApp #paymentMonthView .payment-sheet-table tbody tr.sheet-paid td{background:#e6f5ea;color:#14532d}#adminApp #paymentMonthView .payment-sheet-table tbody tr.sheet-pending td{background:#fff1f0;color:#7f1d1d}#adminApp #paymentMonthView .payment-sheet-wrap{max-height:65vh;overflow:auto}#adminApp #paymentMonthView .payment-month-summary{grid-template-columns:repeat(5,minmax(0,1fr))}#adminApp #paymentMonthView .payment-month-summary .metric{font-size:clamp(16px,2vw,25px)}#adminApp #paymentMonthView .payment-sheet-table input,#adminApp #paymentMonthView .payment-sheet-table select{background:#fff;color:#111827}#adminApp #paymentMonthView .payment-sheet-table input:disabled,#adminApp #paymentMonthView .payment-sheet-table select:disabled{background:transparent}@media(max-width:850px){#adminApp #paymentMonthView .payment-month-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
+<style>/* payment-longe-v1 */#adminApp [id^="payAdjustment-"]{width:82px;text-align:center;font-weight:800}</style></head>
 <body>
 <div id="stagingBanner" class="staging-banner" role="status">
   HOMOLOGAÇÃO SEGURA <span>• banco isolado • iFood, Anota AI e Google Planilhas sem mutações externas</span>
@@ -1108,15 +1242,24 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
       <div id="authMsg"></div>
       <form id="loginForm" class="form">
         <label>Usuário<input id="loginUser" autocomplete="username" required placeholder="E-mail ou usuário"></label>
-        <label>Senha<input id="loginPass" type="password" autocomplete="current-password" required placeholder="Senha"></label>
-        <div class="login-help-row">Esqueceu a senha? Procure o administrador.</div>
+        <label>Senha<span class="password-field"><input id="loginPass" type="password" autocomplete="current-password" required placeholder="Senha"><button type="button" class="password-toggle" data-password-target="loginPass" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
+        <button type="button" class="login-help-row password-recovery-link" onclick="openPasswordRecoveryModal()">Esqueci minha senha</button>
         <button class="btn primary">Entrar</button>
       </form>
       <form id="registerForm" class="form hidden">
         <label>Nome completo<input id="regName" required placeholder="Nome completo"></label>
         <label>Usuário<input id="regUser" required placeholder="Usuário"></label>
-        <label>Senha<input id="regPass" type="password" minlength="8" required placeholder="Senha"></label>
-        <label>Confirmar senha<input id="regPass2" type="password" minlength="8" required placeholder="Confirmar senha"></label>
+        <label>Senha<span class="password-field"><input id="regPass" type="password" minlength="8" required placeholder="Senha" autocomplete="new-password"><button type="button" class="password-toggle" data-password-target="regPass" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
+        <label>Confirmar senha<span class="password-field"><input id="regPass2" type="password" minlength="8" required placeholder="Confirmar senha" autocomplete="new-password"><button type="button" class="password-toggle" data-password-target="regPass2" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label>
         <button id="registerSubmit" class="btn primary">Solicitar cadastro</button>
         <p class="small muted">A senha precisa ter pelo menos 8 caracteres. O administrador aprova o acesso.</p>
       </form>
@@ -1636,7 +1779,12 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
           </div>
         </div>
 
-        <div id="paymentDailyView">
+        <!-- payment-clean-sheet-v1 -->
+<div class="payment-view-tabs" role="tablist" aria-label="Visualização de pagamentos"><button id="paymentDailyTab" class="active" role="tab" aria-selected="true" onclick="setPaymentView('daily')">Fechamento do dia</button><button id="paymentMonthTab" role="tab" aria-selected="false" onclick="setPaymentView('month')">Planilha limpa</button></div>
+<section id="paymentMonthView" class="hidden"><div class="payment-month-toolbar"><div><h2>Planilha de pagamentos</h2><p class="muted">Selecione o mês, turno e dia para conferir os pagamentos.</p></div><div class="payment-month-filters"><label>Mês<input id="paymentMonth" type="month" onchange="loadPaymentMonth(this.value)"></label><button id="paymentMonthSave" class="btn primary" disabled onclick="saveMonthlyPayments()">Salvar alterações</button></div></div>
+<div class="cards payment-month-summary" style="margin-top:16px"><div class="card"><div class="label">Motoboys</div><div class="metric" id="monthPayCouriers">0</div></div><div class="card"><div class="label">Entregas</div><div class="metric" id="monthPayDeliveries">0</div></div><div class="card"><div class="label">Total</div><div class="metric" id="monthPayTotal">R$ 0,00</div></div><div class="card"><div class="label">Pago</div><div class="metric" id="monthPayPaid">R$ 0,00</div></div><div class="card"><div class="label">Pendente</div><div class="metric" id="monthPayPending">R$ 0,00</div></div></div>
+<div class="section payment-book" style="margin-top:18px"><div class="payment-book-head"><div class="payment-shift-tabs" role="tablist"><button id="paymentBookLunch" class="active" role="tab" aria-selected="true" onclick="setPaymentBookShift('LUNCH')">Almoço</button><button id="paymentBookDinner" role="tab" aria-selected="false" onclick="setPaymentBookShift('DINNER')">Janta</button></div><span class="muted">Dados separados por turno</span></div><div id="paymentMonthDays" class="payment-day-tabs" role="tablist"></div><div class="payment-sheet-caption"><b id="paymentSheetTitle">MOTOBOY</b><span id="paymentSheetDate"></span></div><div class="payment-sheet-wrap"><table class="table payment-sheet-table"><thead><tr><th>Motoboy</th><th>Apelido</th><th>Chave PIX</th><th>Tipo PIX</th><th>Entregas</th><th>Encosta</th><th>Gorjeta</th><th>Desconto</th><th>Forma</th><th>Pago?</th><th>Status</th><th>Total</th><th>Observações</th><th>Normais</th><th>Longas</th><th>Valor longa</th></tr></thead><tbody id="paymentMonthTable"></tbody></table></div></div><div id="paymentMonthMsg" aria-live="polite"></div></section>
+<div id="paymentDailyView">
 
         <div class="cards" style="grid-template-columns:repeat(5,1fr)">
           <div class="card"><div class="label">Motoboys</div><div id="payCouriers" class="metric">0</div></div>
@@ -1720,7 +1868,7 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
               <thead>
                 <tr>
                   <th>Motoboy</th><th>Turno</th><th title="Entregas dentro da zona de 6,7 km">Normais</th><th title="Entregas fora da zona de 6,7 km (LONGE)">Longas</th><th title="LONGE = 2x o valor por entrega">Valor longa</th><th>R$/entrega</th><th>Base</th><th>Chuva</th>
-                  <th>Gorjeta</th><th>Desconto</th><th>Ajuste</th><th>Total</th>
+                  <th>Gorjeta</th><th>Desconto</th><th title="Contagem manual (R$ 6,00 por entrega longe) para turnos sem a regra LONGE automática">LONGE manual</th><th>Total</th>
                   <th>PIX</th><th>Forma</th><th>Status</th><th>Observações</th><th>Ação</th>
                 </tr>
               </thead>
@@ -2199,9 +2347,28 @@ body.staging-mode .staging-banner span{opacity:.82;font-weight:800;letter-spacin
   </div>
 </div>
 
-<div id="adminAccountModal" class="modal admin-account-modal"><div class="modal-box admin-account-box"><div class="modal-title-row"><div><h2>Minha conta</h2><p>Informações do acesso administrativo.</p></div><button class="btn outline modal-close" type="button" onclick="closeAdminAccountModal()">×</button></div><div class="admin-account-details"><div><span>Nome</span><b id="adminAccountName">Administrador</b></div><div><span>Usuário</span><b id="adminAccountUsername">admin</b></div><div><span>Perfil</span><b>Administrador</b></div></div><div class="admin-account-actions"><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordModal()">Alterar minha senha</button></div></div></div>
+<div id="adminAccountModal" class="modal admin-account-modal"><div class="modal-box admin-account-box"><div class="modal-title-row"><div><h2>Minha conta</h2><p>Informações do acesso administrativo.</p></div><button class="btn outline modal-close" type="button" onclick="closeAdminAccountModal()">×</button></div><div class="admin-account-details"><div><span>Nome</span><b id="adminAccountName">Administrador</b></div><div><span>Usuário</span><b id="adminAccountUsername">admin</b></div><div><span>Perfil</span><b>Administrador</b></div></div><div class="admin-account-actions"><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordModal()">Alterar minha senha</button><button class="btn outline" type="button" onclick="closeAdminAccountModal();openPasswordRecoveryAdminModal()">Recuperações de senha</button></div></div></div>
 
-<div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<input id="currentPassword" type="password" required></label><label>Nova senha<input id="newPassword" type="password" minlength="8" required></label><label>Confirmar nova senha<input id="newPassword2" type="password" minlength="8" required></label><button class="btn primary">Alterar senha</button></form></div></div>
+<div id="passwordModal" class="modal"><div class="modal-box"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Alterar minha senha</h2><button class="btn outline" onclick="closePasswordModal()">×</button></div><div id="passwordMsg"></div><form id="passwordForm" class="form" style="margin-top:15px"><label>Senha atual<span class="password-field"><input id="currentPassword" type="password" autocomplete="current-password" required><button type="button" class="password-toggle" data-password-target="currentPassword" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><label>Nova senha<span class="password-field"><input id="newPassword" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="password-toggle" data-password-target="newPassword" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><label>Confirmar nova senha<span class="password-field"><input id="newPassword2" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="password-toggle" data-password-target="newPassword2" aria-label="Mostrar senha" aria-pressed="false">
+  <svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg>
+</button></span></label><button class="btn primary">Alterar senha</button></form></div></div>
+
+<!-- PASSWORD RECOVERY UI START -->
+<div id="passwordRecoveryModal" class="modal password-recovery-modal"><div class="modal-box password-recovery-box">
+  <div class="password-recovery-head"><div><h2>Recuperar acesso</h2><p>O administrador precisa autorizar a troca.</p></div><button type="button" class="btn outline" aria-label="Fechar" onclick="closePasswordRecoveryModal()">×</button></div>
+  <div id="passwordRecoveryMsg"></div>
+  <div id="passwordRecoveryRequestStep"><form id="passwordRecoveryRequestForm" class="form" onsubmit="submitPasswordRecoveryRequest(event)"><label>Usuário<input id="passwordRecoveryUsername" autocomplete="username" required placeholder="Seu usuário"></label><button class="btn primary" type="submit">Solicitar recuperação</button></form><button class="password-recovery-have-code" type="button" onclick="showPasswordRecoveryResetStep()">Já tenho o código</button></div>
+  <div id="passwordRecoveryResetStep" class="hidden"><form id="passwordRecoveryResetForm" class="form" onsubmit="submitPasswordRecoveryReset(event)"><label>Usuário<input id="passwordRecoveryResetUsername" autocomplete="username" required placeholder="Seu usuário"></label><label>Código de recuperação<input id="passwordRecoveryCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label><label>Nova senha<span class="password-field"><input id="recoveryPass" type="password" minlength="8" autocomplete="new-password" required placeholder="Nova senha"><button type="button" class="password-toggle" data-password-target="recoveryPass" aria-label="Mostrar senha" aria-pressed="false"><svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg></button></span></label><label>Confirmar nova senha<span class="password-field"><input id="recoveryPass2" type="password" minlength="8" autocomplete="new-password" required placeholder="Confirmar nova senha"><button type="button" class="password-toggle" data-password-target="recoveryPass2" aria-label="Mostrar senha" aria-pressed="false"><svg class="password-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="password-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.7"/><path d="M6.7 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.3 10.3 0 0 0 4.2-.9"/></svg></button></span></label><button class="btn primary" type="submit">Alterar minha senha</button></form><button class="password-recovery-have-code" type="button" onclick="showPasswordRecoveryRequestStep()">Voltar</button></div>
+</div></div>
+<div id="passwordRecoveryAdminModal" class="modal password-recovery-admin-modal"><div class="modal-box password-recovery-admin-box"><div class="password-recovery-head"><div><h2>Recuperações de senha</h2><p>Aprove somente depois de confirmar a identidade do motoboy.</p></div><button type="button" class="btn outline" aria-label="Fechar" onclick="closePasswordRecoveryAdminModal()">×</button></div><div id="passwordRecoveryAdminMsg"></div><div id="passwordRecoveryAdminList" class="password-recovery-list"><div class="empty">Carregando...</div></div></div></div>
+<!-- PASSWORD RECOVERY UI END -->
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
@@ -2234,6 +2401,34 @@ let preDepartureCheckingId=null;
 let preDepartureMutationEpoch=0;
 const ATTENDANCE_TOKEN_KEY='despachefull_attendance_token';
 const $=id=>document.getElementById(id);
+
+
+/* PASSWORD TOGGLE START */
+function setPasswordVisibility(button, show){
+  const input=document.getElementById(button?.dataset?.passwordTarget||'');
+  if(!input)return;
+  input.type=show?'text':'password';
+  button.setAttribute('aria-pressed',String(show));
+  button.setAttribute('aria-label',show?'Ocultar senha':'Mostrar senha');
+}
+function hideAllPasswords(){
+  document.querySelectorAll('[data-password-target]').forEach(button=>setPasswordVisibility(button,false));
+}
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-password-target]');
+  if(button){
+    event.preventDefault();
+    const input=document.getElementById(button.dataset.passwordTarget);
+    if(!input)return;
+    const show=input.type==='password';
+    setPasswordVisibility(button,show);
+    input.focus({preventScroll:true});
+    try{const end=input.value.length;input.setSelectionRange(end,end)}catch{}
+    return;
+  }
+  if(event.target.closest('#tabLogin,#tabRegister')) hideAllPasswords();
+});
+/* PASSWORD TOGGLE END */
 
 function redirectExpiredSession(){
   if(sessionRedirecting)return;
@@ -3668,7 +3863,7 @@ async function copyPix(value){
   catch{prompt('Copie a chave PIX:',value)}
 }
 function paymentRowKey(row){return `${row.courier_id}-${row.shift_code||'LEGACY'}`}
-function previewPaymentRow(key){const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row||row.locked)return;const tip=moneyNumber($(`payTip-${key}`)?.value),discount=Math.max(0,moneyNumber($(`payDiscount-${key}`)?.value)),adjustment=moneyNumber($(`payAdjustment-${key}`)?.value),rain=$(`payRain-${key}`)?.checked===true;
+function previewPaymentRow(key){const row=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!row||row.locked)return;const tip=moneyNumber($(`payTip-${key}`)?.value),discount=Math.max(0,moneyNumber($(`payDiscount-${key}`)?.value)),adjustment=Math.max(0,Number($(`payAdjustment-${key}`)?.value||0))*6,rain=$(`payRain-${key}`)?.checked===true;
   const total=Math.round((row.delivery_count*row.per_delivery+Number(row.longe_extra_amount||0)+row.base_amount+(rain?Number(paymentState.rule?.rain_bonus||0):0)+tip-discount+adjustment)*100)/100;if($(`payTotalRow-${key}`))$(`payTotalRow-${key}`).textContent=brl(total)}
 function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.summary.couriers||0;$('payDeliveries').textContent=d.summary.deliveries||0;if($('payLongeSummary'))$('payLongeSummary').textContent=[d.summary.longe?`${d.summary.longe} LONGE no pagamento`:'',d.summary.longe_test?`${d.summary.longe_test} LONGE em teste`:''].filter(Boolean).join(' • ');$('payTotal').textContent=brl(d.summary.total);$('payPaid').textContent=brl(d.summary.paid);$('payPending').textContent=brl(d.summary.pending);
   $('paymentRuleSummary').textContent=`${brl(d.rule?.per_delivery)} por entrega • Almoço ${brl(d.rule?.lunch_mon_thu)} Seg–Qui / ${brl(d.rule?.lunch_fri_sun)} Sex–Sáb • Janta ${brl(d.rule?.dinner_mon_thu)} Seg–Qui / ${brl(d.rule?.dinner_fri_sun)} Sex–Dom • Chuva +${brl(d.rule?.rain_bonus)}`;
@@ -3677,12 +3872,12 @@ function renderPayments(){const d=paymentState;$('payCouriers').textContent=d.su
     if(!row.pix_key)pix='<span class="badge gray">SEM PIX</span>';else if(pixStatus==='VERIFIED')pix=`<div class="payment-pix"><div class="pix-holder">${escapeHtml(row.pix_holder_name||'')}</div>${escapeHtml(row.pix_key)}<div><span class="badge green">VERIFICADO</span></div></div>`;else pix='<span class="badge yellow">AGUARDANDO</span>';
     return `<tr class="${lockedClass}"><td><b>${escapeHtml(row.courier_name)}</b></td><td><span class="badge ${row.shift_code==='LUNCH'?'yellow':'blue'}">${escapeHtml(row.shift_label)}</span></td><td><b>${Number(row.normal_count??row.delivery_count)}</b></td><td>${paymentLongeCell(row,key)}</td><td>${brl(row.longe_unit_amount??Number(row.per_delivery||0)*2)}</td><td>${brl(row.per_delivery)}</td><td>${brl(row.base_amount)}</td>
       <td><label><input id="payRain-${key}" type="checkbox" ${row.rain?'checked':''} ${disabled} onchange="previewPaymentRow('${key}')"> +${brl(d.rule?.rain_bonus)}</label></td>
-      <td><input id="payTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payAdjustment-${key}" class="payment-input" type="number" step="0.01" value="${Number(row.adjustment_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td>
+      <td><input id="payTip-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.tip_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payDiscount-${key}" class="payment-input" type="number" min="0" step="0.01" value="${Number(row.discount_amount||0).toFixed(2)}" ${disabled} oninput="previewPaymentRow('${key}')"></td><td><input id="payAdjustment-${key}" class="payment-input" type="number" min="0" step="1" inputmode="numeric" title="${row.longe_rule_active?'Regra LONGE ativa: corrija na coluna Longas':'R$ 6 por entrega longe'}" value="${Number(Number(row.adjustment_amount||0)/6)||0}" ${row.longe_rule_active?'disabled':''} ${disabled} oninput="previewPaymentRow('${key}')"></td>
       <td><span id="payTotalRow-${key}" class="payment-total">${brl(row.total_amount)}</span></td><td>${pix}</td><td><select id="payMethod-${key}" class="payment-select" ${disabled}>${paymentMethodOptions(row.payment_method)}</select></td><td><select id="payStatus-${key}" class="payment-select">${paymentStatusOptions(row.status)}</select></td><td><input id="payNotes-${key}" class="payment-note" maxlength="600" value="${escapeHtml(row.notes||'')}" ${disabled}></td><td><button class="btn primary" onclick="savePaymentRow('${key}')">Salvar</button></td></tr>`}).join('')||empty(17)}
 async function loadPayments(){if(!me||me.role!=='admin'||paymentActiveView!=='daily')return;const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';if($('paymentDate'))$('paymentDate').value=date;try{paymentState=await api('/api/admin/payments?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:''));renderPayments();if(paymentSheetState.month!==date.slice(0,7))loadPaymentSheetConfig(date.slice(0,7))}catch(err){$('paymentTable').innerHTML=`<tr><td colspan="17"><div class="msg err">${escapeHtml(err.message)}</div></td></tr>`}loadLongeRule().catch(()=>{})}
 async function savePaymentRule(){const payload={effective_from:$('paymentRuleEffective').value||spToday(),per_delivery:moneyNumber($('paymentPerDelivery').value),lunch_mon_thu:moneyNumber($('paymentLunchWeekday').value),lunch_fri_sun:moneyNumber($('paymentLunchWeekend').value),dinner_mon_thu:moneyNumber($('paymentDinnerWeekday').value),dinner_fri_sun:moneyNumber($('paymentDinnerWeekend').value),rain_bonus:moneyNumber($('paymentRainBonus').value)};if(!confirm(`Salvar esta regra a partir de ${payload.effective_from.split('-').reverse().join('/')}?`))return;try{const d=await api('/api/admin/payments/rules',{method:'PUT',body:JSON.stringify(payload)});message('paymentRuleMsg',d.message||'Regra salva.','ok');await loadPayments()}catch(err){message('paymentRuleMsg',err.message,'err')}}
 async function savePaymentRow(key,confirmReopen=false,confirmReviewed=false){const current=paymentState.rows.find(x=>paymentRowKey(x)===String(key));if(!current)return;const status=$(`payStatus-${key}`).value;if(current.status==='OPEN'&&status==='REVIEWED'&&!confirm(`Conferir o pagamento de ${current.shift_label}? Os valores serão congelados.`))return;if(current.status!=='PAID'&&status==='PAID'&&!confirm(`Marcar ${current.shift_label} como PAGO?`))return;if(current.status==='PAID'&&status!=='PAID'&&!confirmReopen){if(!confirm('Este turno já está PAGO. Deseja reabrir?'))return;confirmReopen=true}if(current.status==='REVIEWED'&&status==='OPEN'&&!confirmReviewed){if(!confirm('Este turno já foi CONFERIDO. Deseja reabrir para edição?'))return;confirmReviewed=true}
-  const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
+  if(!Number.isInteger(Number($(`payAdjustment-${key}`).value))||Number($(`payAdjustment-${key}`).value)<0)return alert("LONGE deve ser um número inteiro não negativo.");const payload={shift_code:current.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`).value),discount_amount:moneyNumber($(`payDiscount-${key}`).value),longe_count:Number($(`payAdjustment-${key}`).value),payment_method:$(`payMethod-${key}`).value,status,notes:$(`payNotes-${key}`).value,confirm_reopen_paid:confirmReopen,confirm_reopen_reviewed:confirmReviewed};try{await api(`/api/admin/payments/${paymentState.date}/${current.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});await loadPayments()}catch(err){if(err.code==='PAYMENT_REOPEN_CONFIRMATION'&&!confirmReopen)return savePaymentRow(key,true,confirmReviewed);if(err.code==='PAYMENT_REVIEWED_REOPEN_CONFIRMATION'&&!confirmReviewed)return savePaymentRow(key,confirmReopen,true);alert(err.message)}}
 function exportPayments(){const date=$('paymentDate')?.value||spToday(),shift=$('paymentShift')?.value||'';location.href='/api/admin/payments.csv?date='+encodeURIComponent(date)+(shift?'&shift_code='+shift:'')}
 
 function updatePaymentSheetLinks(data){
@@ -3732,7 +3927,7 @@ async function closePaymentDay(){
   try{
     for(const row of paymentState.rows){
       const key=paymentRowKey(row),status=$(`payStatus-${key}`)?.value||row.status;
-      const payload={shift_code:row.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`)?.value),discount_amount:moneyNumber($(`payDiscount-${key}`)?.value),adjustment_amount:moneyNumber($(`payAdjustment-${key}`)?.value),payment_method:$(`payMethod-${key}`)?.value||'',status,notes:$(`payNotes-${key}`)?.value||'',confirm_reopen_paid:row.status==='PAID'&&status!=='PAID',confirm_reopen_reviewed:row.status==='REVIEWED'&&status==='OPEN'};
+      if(!Number.isInteger(Number($(`payAdjustment-${key}`)?.value))||Number($(`payAdjustment-${key}`)?.value)<0)throw new Error("LONGE deve ser um número inteiro não negativo.");const payload={shift_code:row.shift_code,rain:$(`payRain-${key}`)?.checked===true,tip_amount:moneyNumber($(`payTip-${key}`)?.value),discount_amount:moneyNumber($(`payDiscount-${key}`)?.value),longe_count:Number($(`payAdjustment-${key}`)?.value),payment_method:$(`payMethod-${key}`)?.value||'',status,notes:$(`payNotes-${key}`)?.value||'',confirm_reopen_paid:row.status==='PAID'&&status!=='PAID',confirm_reopen_reviewed:row.status==='REVIEWED'&&status==='OPEN'};
       await api(`/api/admin/payments/${date}/${row.courier_id}`,{method:'PUT',body:JSON.stringify(payload)});
     }
     const result=await api('/api/admin/payments/close-day',{method:'POST',body:JSON.stringify({date,shift_code:shift})});
@@ -7315,5 +7510,6 @@ loadPublicConfig();
 
 $('transferOrderForm')?.addEventListener('submit',submitTransferOrder);
 </script>
+<script src="/password-recovery.js"></script>
 </body>
 </html>

@@ -14,9 +14,10 @@ import crypto from "crypto";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
-import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
+import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, dispatchShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
+import { installPasswordRecovery } from "./lib/password-recovery.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -6343,6 +6344,8 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
   });
 }));
 
+await installPasswordRecovery({ app, pool, asyncRoute, auth, adminOnly, audit, sessionSecret });
+
 app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -7879,7 +7882,7 @@ async function addRouteOrder(req, res, recovery) {
   }
 
   if (!completedAssignment) {
-    const routeShift = getCurrentOperationalShift();
+    const routeShift = dispatchShiftAt();
     if (!routeShift) {
       return res.status(409).json({
         error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',
@@ -8005,7 +8008,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = dispatchShiftAt();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.",
@@ -9038,7 +9041,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = dispatchShiftAt();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída manual.",
@@ -11167,7 +11170,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
   const shift=paymentShiftForRequest(date,req.body.shift_code||req.query.shift_code||null);if(date>=WORK_SHIFT_CUTOVER_DATE&&!shift)return res.status(400).json({error:'Informe o turno do pagamento.',code:'PAYMENT_SHIFT_REQUIRED'});
   const courier=(await pool.query(`SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status FROM users WHERE id=$1 AND role='courier'`,[courierId])).rows[0];if(!courier)return res.status(404).json({error:'Motoboy não encontrado.'});
   const existing=(await pool.query(`SELECT * FROM courier_payments WHERE payment_date=$1::date AND courier_id=$2 AND (($3::text IS NULL AND shift_code IS NULL) OR shift_code=$3) LIMIT 1`,[date,courierId,shift])).rows[0]||null;
-  const tip=parseMoneyValue(req.body.tip_amount,0),discount=parseMoneyValue(req.body.discount_amount,0),adjustment=parseMoneyValue(req.body.adjustment_amount,0),rain=!!req.body.rain;
+  /* payment-longe-backend-v1 */ const longeProvided=req.body.longe_count!==undefined;const longeCount=Number(req.body.longe_count);if(longeProvided&&(!Number.isSafeInteger(longeCount)||longeCount<0||longeCount>10000))return res.status(400).json({error:"LONGE deve ser um número inteiro entre 0 e 10000."});const tip=parseMoneyValue(req.body.tip_amount,0),discount=parseMoneyValue(req.body.discount_amount,0),adjustment=longeProvided?longeCount*6:parseMoneyValue(req.body.adjustment_amount,0),rain=!!req.body.rain;
   const paymentMethod=String(req.body.payment_method||'').trim().slice(0,40)||null,notes=String(req.body.notes||'').trim().slice(0,600)||null,status=String(req.body.status||'OPEN').trim().toUpperCase();
   if(!['OPEN','REVIEWED','PAID'].includes(status))return res.status(400).json({error:'Status de pagamento inválido.'});if(![tip,discount,adjustment].every(Number.isFinite)||tip<0||discount<0)return res.status(400).json({error:'Gorjeta, desconto ou ajuste inválido.'});
   if(existing?.status==='PAID'&&status!=='PAID'&&req.body.confirm_reopen_paid!==true)return res.status(409).json({error:'Este pagamento já está marcado como PAGO. Confirme explicitamente para reabrir.',code:'PAYMENT_REOPEN_CONFIRMATION'});
@@ -11326,8 +11329,8 @@ async function requirePreDepartureFlag(flag, courierId) {
 async function courierDepartureGate(courierId) {
   const user = await currentUser(courierId);
   if (user?.must_change_password) return { status: 403, body: { error: "Altere sua senha temporária antes de registrar uma saída.", code: "PASSWORD_CHANGE_REQUIRED" } };
-  // Mesma janela da saída: o prestart troca esta linha junto com a da saída (late-shift).
-  const preDepartureShift = getCurrentOperationalShift();
+  // Mesma janela da saída definitiva (almoço até 17:59, janta até 01:59).
+  const preDepartureShift = dispatchShiftAt();
   const shift = preDepartureShift;
   if (!shift) return { status: 409, body: { error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.", code: "OUTSIDE_OPERATIONAL_SHIFT" } };
   const attendance = await getCourierAttendance(courierId, shift.operational_date, shift.shift_code);

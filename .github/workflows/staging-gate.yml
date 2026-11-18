@@ -117,9 +117,6 @@ jobs:
           echo "Failed test scripts: $failed"
           test "$failed" -eq 0
 
-      - name: Apply production prestart transformations
-        run: npm run prestart
-
       - name: Start isolated staging app
         run: |
           node server.js > staging-server.log 2>&1 &

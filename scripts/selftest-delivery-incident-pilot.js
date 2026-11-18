@@ -110,12 +110,11 @@ yes(server.includes("REVOKE ALL ON TABLE dispatch_delivery_incidents FROM PUBLIC
 const preDepartureService=fs.readFileSync(path.join(root,"lib","pre-departure-service.js"),"utf8");
 yes(preDepartureService.includes('if (turningOff) updates.push(["delivery_incidents_enabled", "false"])'),"parent shutdown must disable incident pilot");
 const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"));
-yes(pkg.scripts.prestart.includes("apply-delivery-incident-pilot-ui.js"),"UI prestart enabled");
-const script=fs.readFileSync(path.join(root,"scripts","apply-delivery-incident-pilot-ui.js"),"utf8");
-yes(script.includes("adminSetIncidentPilot"),"admin UI contract validation");
-yes(script.includes("incident_feature?.enabled!==true"),"courier UI contract validation");
+yes(!pkg.scripts.prestart,"no startup source mutation");
 const html=fs.readFileSync(path.join(root,"public","index.html"),"utf8");
 yes(html.includes("function adminSetIncidentPilot(enabled)"),"admin UI wired");
+yes(html.includes('id="deliveryIncidentAdmin"'),"admin incident panel present");
+yes(html.includes("if(courierPreDeparture?.incident_feature?.enabled!==true)return alert("),"courier report gated");
 yes(html.includes("if(courierPreDeparture?.incident_feature?.enabled!==true)return ''"),"courier action gated");
 yes(html.includes("id=\\\"incidentPilotCourier\\\"".replaceAll("\\","")),"pilot dropdown present");
 console.log("PASS delivery incident pilot gate: "+checks+" checks");

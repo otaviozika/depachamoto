@@ -4,7 +4,6 @@ const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8")
 const verification = fs.readFileSync(new URL('../lib/ifood-delivery-confirmation.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const shifts = fs.readFileSync(new URL("../lib/operational-shift.js", import.meta.url), "utf8");
-const lateShiftTransform = fs.readFileSync(new URL("./apply-late-shift-dispatch.js", import.meta.url), "utf8");
 
 const checks = [
   ["Staging runtime identity exists", server.includes("const APP_ENV") && server.includes('APP_ENV === "staging"')],
@@ -28,7 +27,7 @@ const checks = [
   ["Operational clock override is restricted to staging or test", shifts.includes('appEnv === "staging"') && shifts.includes('process.env.NODE_ENV === "test"') && shifts.includes("STAGING_SAFE_MODE")],
   ["Production clock falls back to real time", shifts.includes("if (!stagingSafe || !override) return new Date();")],
   ["Nominal shift uses the controlled clock only as its default", shifts.includes("getCurrentOperationalShift(now = operationalClockNow())")],
-  ["Late dispatch transform preserves the controlled staging clock", lateShiftTransform.includes("dispatchShiftAt(value=operationalClockNow())")]
+  ["Late dispatch window preserves the controlled staging clock", shifts.includes("dispatchShiftAt(value=operationalClockNow())")]
 ];
 
 let failed = 0;

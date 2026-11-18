@@ -8,8 +8,16 @@ const inherited=resolveDispatchShift({departedAt:sp("2026-09-18T19:10:00"),exist
 assert.equal(inherited.shift_code,"LUNCH"); assert.equal(inherited.source,"EXISTING_ROUTE");
 assert.equal(resolveDispatchShift({departedAt:sp("2026-09-18T12:35:00"),recovery:true}).shift_code,"LUNCH");
 assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-20T12:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
-assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
-assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00"),recovery:true}),e=>e?.code==="RECOVERY_SHIFT_REQUIRED");
-const override=resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00"),recovery:true,recoveryShiftCode:"LUNCH"});
+// Janela de despacho: almoço aceita saídas até 17:59; janta até 01:59 do dia seguinte.
+const lateLunch=resolveDispatchShift({departedAt:sp("2026-09-18T16:00:00")});
+assert.equal(lateLunch.shift_code,"LUNCH"); assert.equal(lateLunch.operational_date,"2026-09-18");
+assert.equal(resolveDispatchShift({departedAt:sp("2026-09-18T17:59:00")}).shift_code,"LUNCH");
+assert.equal(resolveDispatchShift({departedAt:sp("2026-09-18T18:00:00")}).shift_code,"DINNER");
+const afterMidnight=resolveDispatchShift({departedAt:sp("2026-09-19T01:59:00")});
+assert.equal(afterMidnight.shift_code,"DINNER"); assert.equal(afterMidnight.operational_date,"2026-09-18");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-19T02:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T10:00:00")}),e=>e?.code==="OUTSIDE_OPERATIONAL_SHIFT");
+assert.throws(()=>resolveDispatchShift({departedAt:sp("2026-09-18T10:00:00"),recovery:true}),e=>e?.code==="RECOVERY_SHIFT_REQUIRED");
+const override=resolveDispatchShift({departedAt:sp("2026-09-18T10:00:00"),recovery:true,recoveryShiftCode:"LUNCH"});
 assert.equal(override.shift_code,"LUNCH"); assert.equal(override.source,"ADMIN_OVERRIDE");
-console.log(JSON.stringify({result:"PASS",feature:"dispatch_shift_freeze",cases:8}));
+console.log(JSON.stringify({result:"PASS",feature:"dispatch_shift_freeze",cases:13}));

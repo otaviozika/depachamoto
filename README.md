@@ -2,7 +2,7 @@
 
 Sistema de despacho para operação com administradores e motoboys, desenvolvido em Node.js, Express, PostgreSQL e Socket.IO.
 
-Versão atual: **3.6.1**
+Versão atual: **3.7.0**
 
 ## Integração Anota AI
 
@@ -90,6 +90,16 @@ A alocação cria um registro histórico concluído (`ADMIN_RECOVERED`), mantém
 
 O servidor revalida loja, modalidade, status, data e ausência de vínculo dentro da transação. Pagamento revisado/pago exige reabertura prévia. Um lançamento manual sem UUID para o mesmo número/data exige conferência antes de alocar, evitando contagem dupla. Vínculos já existentes não são transferidos por esse botão.
 
+## Código versionado = código em produção
+
+O `npm start` só executa `node server.js`. Não existe mais `prestart`: os antigos scripts `scripts/apply-*.js`, que reescreviam `server.js`, `lib/`, `public/index.html`, o CSS e o service worker a cada inicialização, foram aplicados uma única vez e removidos. Toda mudança deve ser feita diretamente no código-fonte. O teste `scripts/selftest-no-startup-mutation.js` bloqueia a volta de hooks de inicialização e de scripts de patch.
+
+Regras que antes só existiam depois do `prestart` e agora estão no fonte:
+
+- **Janela de despacho** (`dispatchShiftAt` em `lib/operational-shift.js`): saídas, inclusões na rota e pré-saídas são aceitas no almoço até 17:59 e na janta até 01:59 do dia seguinte (a data operacional da madrugada continua sendo a da janta). Das 02:00 até o início do almoço, a saída é bloqueada.
+- **Planilha mensal** no Financeiro e coluna **LONGE manual** (contagem × R$ 6 no ajuste, bloqueada com a regra LONGE ativa).
+- Recuperação de senha, botões de mostrar senha, card do motoboy com Google Maps e estilos do login.
+
 ## Estrutura do projeto
 
 - `server.js`: servidor, regras de negócio e integração com o banco.
@@ -101,7 +111,7 @@ O servidor revalida loja, modalidade, status, data e ausência de vínculo dentr
 
 ## Configuração
 
-1. Instale o Node.js 20 ou superior.
+1. Instale o Node.js 22.
 2. Copie `.env.example` para `.env`.
 3. Preencha os valores somente no ambiente local ou no painel do Render.
 4. Execute `npm install` e depois `npm start`.

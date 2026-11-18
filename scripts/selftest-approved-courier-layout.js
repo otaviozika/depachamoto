@@ -6,7 +6,6 @@ const server=fs.readFileSync(new URL("../server.js",import.meta.url),"utf8");
 const html=fs.readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
 const css=fs.readFileSync(new URL("../public/courier-dark.css",import.meta.url),"utf8");
 const worker=fs.readFileSync(new URL("../public/service-worker.js",import.meta.url),"utf8");
-const prestart=fs.readFileSync(new URL("./apply-customer-name-card.js",import.meta.url),"utf8");
 
 assert.match(html,/APPROVED COURIER DELIVERY CARD V1/);
 assert.match(html,/delivery-platform-logo/);
@@ -16,7 +15,6 @@ assert.match(html,/courierDeliveryNavigationButtons\(x\)/);
 assert.match(css,/delivery-platform-logo\.ifood/);
 assert.match(css,/delivery-address-number/);
 assert.match(worker,/approved-delivery-card-v1/);
-assert.match(prestart,/APPROVED COURIER DELIVERY CARD V1/);
 
 const ifood=server.slice(server.indexOf("async function getCourierIfoodDeliveries("),
   server.indexOf("async function getCourierAnotaAiDeliveries("));
