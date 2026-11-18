@@ -2584,9 +2584,31 @@ function brl(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',cur
 function moneyNumber(v){const n=Number(String(v??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100)/100:0}
 
 
+function hasPendingOfflineDepartures(){
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key||!key.startsWith(OFFLINE_QUEUE_PREFIX))continue;
+      const rows=JSON.parse(localStorage.getItem(key)||'[]');
+      if(Array.isArray(rows)&&rows.length)return true;
+    }
+  }catch{return true}
+  return false;
+}
+// Leva ao domínio principal só quando não há saída guardada neste aparelho:
+// a fila sem internet fica presa ao endereço em que foi criada.
+function moveToCanonicalHost(host){
+  const target=String(host||'').trim().toLowerCase();
+  if(!target||location.hostname===target||location.protocol!=='https:')return false;
+  if(hasPendingOfflineDepartures())return false;
+  location.replace('https://'+target+location.pathname+location.search+location.hash);
+  return true;
+}
+
 async function loadPublicConfig(){
   try{
     const d=await api('/api/public/config');
+    if(moveToCanonicalHost(d.canonicalHost))return;
     $('tabRegister').disabled=!d.registrationEnabled;
     $('registerSubmit').disabled=!d.registrationEnabled;
     $('registrationNotice').textContent=d.registrationEnabled

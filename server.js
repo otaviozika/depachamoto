@@ -6371,8 +6371,23 @@ async function getAdminMonthlyPaymentRows(month) {
   return {month,start,end,through,rows,summary};
 }
 
+// Domínio principal do app (ex.: app.suaempresa.com.br). Vazio = desligado.
+// Com ele definido, quem abre o app por outro endereço (ex.: o .onrender.com)
+// é levado ao principal pelo próprio navegador, só depois que as saídas
+// guardadas sem internet foram enviadas. API e tempo real seguem nos dois.
+const CANONICAL_HOST = (() => {
+  const host = String(process.env.CANONICAL_HOST || "").trim().toLowerCase();
+  if (!host) return null;
+  if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) {
+    console.warn("CANONICAL_HOST ignorado: informe só o domínio, sem https:// nem caminho.");
+    return null;
+  }
+  return host;
+})();
+
 app.get("/api/public/config", asyncRoute(async (req, res) => {
   res.json({
+    canonicalHost: CANONICAL_HOST,
     registrationEnabled: (await getSetting("public_registration_enabled", "true")) === "true",
     version: VERSION,
     environment: APP_ENV,
