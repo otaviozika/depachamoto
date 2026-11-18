@@ -20,6 +20,7 @@ import { normalizeAuditEntityId } from "./lib/audit-entity.js";
 import { installPasswordRecovery } from "./lib/password-recovery.js";
 import { buildDatabaseConfig, isTlsVerificationError, sessionTimeoutSql } from "./lib/db-config.js";
 import { CSP_REPORT_PATH, createCspReportStore, helmetCspReportOnly, normalizeCspReports } from "./lib/csp.js";
+import { accountCacheTtlFromEnv, createAccountCache } from "./lib/session-account-cache.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -132,7 +133,12 @@ const sessionMiddleware = session({
   store: new PgSession({
     pool,
     tableName: "user_sessions",
-    createTableIfMissing: true
+    createTableIfMissing: true,
+    // O cookie vale 12 h a partir do login e não é reenviado depois (rolling
+    // desligado). "Tocar" a sessão só regravava a validade no banco a cada
+    // requisição, sem efeito para o usuário, e atrasava toda resposta em uma
+    // ida ao banco. A validade da linha passa a ser a mesma do cookie.
+    disableTouch: true
   }),
   secret: sessionSecret,
   resave: false,
@@ -146,6 +152,28 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
+
+// Conferência "a conta continua válida?" com cache curto (ver lib/session-account-cache.js).
+let accountCacheTtlMs;
+try {
+  accountCacheTtlMs = accountCacheTtlFromEnv(process.env.ACCOUNT_CACHE_TTL_MS);
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+const sessionAccounts = createAccountCache({ ttlMs: accountCacheTtlMs });
+
+// Qualquer alteração feita por um admin (desativar, aprovar, recusar, mudar papel,
+// excluir…) invalida o cache antes e depois da requisição: vale na hora, inclusive
+// para telas de admin criadas no futuro.
+app.use((req, res, next) => {
+  if (req.session?.user?.role === "admin" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    sessionAccounts.invalidateAll();
+    res.once("finish", () => sessionAccounts.invalidateAll());
+    res.once("close", () => sessionAccounts.invalidateAll());
+  }
+  next();
+});
 
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -1485,10 +1513,16 @@ async function auth(req, res, next) {
 
   // Contas excluídas, desativadas ou com papel alterado perdem acesso
   // imediatamente, inclusive quando já havia uma sessão aberta em outro aparelho.
-  const account = (await pool.query(
-    "SELECT role,active,approval_status FROM users WHERE id=$1",
-    [sessionUser.id]
-  )).rows[0];
+  // Só contas válidas ficam no cache; alterações de admin o limpam na hora.
+  let account = sessionAccounts.get(sessionUser.id);
+  if (!account) {
+    const generation = sessionAccounts.generation();
+    account = (await pool.query(
+      "SELECT role,active,approval_status FROM users WHERE id=$1",
+      [sessionUser.id]
+    )).rows[0];
+    if (sessionAccountValid(sessionUser, account)) sessionAccounts.set(sessionUser.id, account, generation);
+  }
 
   if (!sessionAccountValid(sessionUser, account)) {
     await new Promise(resolve => req.session.destroy(() => resolve()));

@@ -58,4 +58,4 @@ services:
       - key: CANONICAL_HOST
         sync: false          # domínio principal; ver README, "Domínio próprio"
       # Opcionais (padrões seguros no código; ver README, "Banco de dados"):
-      # DATABASE_SSL_VERIFY, DB_STATEMENT_TIMEOUT_MS, DB_IDLE_IN_TRANSACTION_TIMEOUT_MS
+      # DATABASE_SSL_VERIFY, DB_STATEMENT_TIMEOUT_MS, DB_IDLE_IN_TRANSACTION_TIMEOUT_MS, ACCOUNT_CACHE_TTL_MS
