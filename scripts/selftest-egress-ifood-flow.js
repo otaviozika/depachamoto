@@ -247,5 +247,47 @@ try {
     }
     console.log('IFOOD_LOAD '+JSON.stringify(await run(service.verify)));
   });
+  await test('a rejected code costs 3 database round trips (lookup, claim, save), not 4',async()=>{
+    for(const [m,expected] of [['rejected','IFOOD_VERIFY_REJECTED'],['bad-request','IFOOD_VERIFY_REJECTED']]){
+      const f=await fixture();mode=m;queryCount=0;
+      const res=await verify(f);
+      assert.equal(res.code,422);assert.equal(res.body.code,expected);
+      assert.equal(queryCount,3,`${m}: consultas por tentativa recusada`);
+    }
+    const f=await fixture();mode='valid';queryCount=0;
+    const wrong=await verify(f,{code:'9999'});
+    assert.equal(wrong.code,422);assert.equal(wrong.body.code,'DELIVERY_CODE_INVALID');assert.equal(queryCount,3);
+    queryCount=0;assert.equal((await verify(f)).body.verified,true);assert.equal(queryCount,3,'código aceito continua com 3');
+    mode='valid';
+  });
+  // Corridas durante a chamada ao iFood: o resultado precisa ser o mesmo de antes.
+  async function duringApiCall(f,change,{code='9999'}={}){
+    let release;gate=new Promise(r=>{release=r});
+    const pending=verify(f,{code});
+    while(!(await query('SELECT 1 FROM ifood_delivery_confirmations WHERE ifood_order_id=$1 AND status=$2',[f.id,'PROCESSING'])).rows.length)await wait(1);
+    await change();release();gate=null;
+    return pending;
+  }
+  await test('race: iFood code-validated event arrives during a rejected attempt and the courier sees confirmed',async()=>{
+    const f=await fixture();mode='valid';
+    const res=await duringApiCall(f,()=>query("UPDATE ifood_delivery_confirmations SET status='VERIFIED',verified_at=NOW() WHERE ifood_order_id=$1",[f.id]));
+    assert.equal(res.code,200);assert.equal(res.body.verified,true);assert.equal(res.body.state,'VERIFIED');
+    assert.equal((await query('SELECT status FROM ifood_delivery_confirmations WHERE ifood_order_id=$1',[f.id])).rows[0].status,'VERIFIED','evento não é sobrescrito');
+  });
+  await test('race: order reassigned to another courier during a rejected attempt answers not assigned',async()=>{
+    const f=await fixture();mode='valid';
+    const res=await duringApiCall(f,()=>query('UPDATE dispatches SET courier_id=3 WHERE id=$1',[f.dispatch]));
+    assert.equal(res.code,404);assert.equal(res.body.code,'DELIVERY_NOT_ASSIGNED');
+  });
+  await test('race: order cancelled during a rejected attempt answers cancelled',async()=>{
+    const f=await fixture();mode='valid';
+    const res=await duringApiCall(f,()=>query("UPDATE ifood_orders SET status='CANCELLED' WHERE order_id=$1",[f.id]));
+    assert.equal(res.code,409);assert.equal(res.body.code,'DELIVERY_CANCELLED');
+  });
+  await test('race: order concluded by iFood during a rejected attempt answers confirmed',async()=>{
+    const f=await fixture();mode='valid';
+    const res=await duringApiCall(f,()=>query("UPDATE ifood_orders SET status='CONCLUDED' WHERE order_id=$1",[f.id]));
+    assert.equal(res.code,200);assert.equal(res.body.verified,true);assert.equal(res.body.concluded,true);
+  });
   console.log(JSON.stringify({result:'PASS',scenarios:tests,syntheticExternalApi:true}));
 }finally{await db.close();}

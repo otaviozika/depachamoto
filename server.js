@@ -21,6 +21,7 @@ import { installPasswordRecovery } from "./lib/password-recovery.js";
 import { buildDatabaseConfig, isTlsVerificationError, sessionTimeoutSql } from "./lib/db-config.js";
 import { CSP_REPORT_PATH, createCspReportStore, helmetCspReportOnly, normalizeCspReports } from "./lib/csp.js";
 import { accountCacheTtlFromEnv, createAccountCache } from "./lib/session-account-cache.js";
+import { createRequestTiming } from "./lib/request-timing.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -94,6 +95,10 @@ pool.on("error", err => {
   console.error("PostgreSQL pool error:", err);
 });
 
+// Medição por requisição (tempo total, consultas e tempo de banco). Só observa.
+const requestTiming = createRequestTiming({ slowMs: Number(process.env.REQUEST_SLOW_MS || 1500) });
+pool.on("connect", client => requestTiming.instrumentClient(client));
+
 if (databaseConfig.tlsMode === "unverified") {
   console.warn("PostgreSQL: TLS sem verificação de certificado. Defina DATABASE_SSL_VERIFY=true quando a cadeia for confiável.");
 }
@@ -115,6 +120,8 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
+
+app.use(requestTiming.middleware);
 
 // CSP só em modo relatório: o navegador avisa o que seria bloqueado, sem bloquear nada.
 app.use(helmet({ contentSecurityPolicy: helmetCspReportOnly() }));
@@ -152,6 +159,8 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
+
+app.use(requestTiming.resume);
 
 // Conferência "a conta continua válida?" com cache curto (ver lib/session-account-cache.js).
 let accountCacheTtlMs;
