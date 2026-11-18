@@ -118,6 +118,18 @@ Todos os scripts são servidos pelo próprio app (o gerador de QR Code fica em `
 
 Com o resumo vazio por alguns dias de operação normal, a política pode passar a ser aplicada de verdade em uma mudança separada. Se aparecer uma violação legítima (um recurso novo do app), inclua a origem em `lib/csp.js`.
 
+## Domínio próprio
+
+O app funciona em qualquer endereço apontado para o serviço; nada no código depende de `depachamoto.onrender.com`. A sessão, a instalação na tela inicial, as notificações e a **fila de saídas feitas sem internet** ficam guardadas no aparelho, presas ao endereço em que foram criadas. Por isso a troca é feita em etapas:
+
+1. **Registrar o domínio** (ex.: `suaempresa.com.br` no registro.br).
+2. **Render → serviço `despachefull` → Settings → Custom Domains → Add**: informar `app.suaempresa.com.br` e criar no DNS o registro que o Render mostrar (CNAME para `depachamoto.onrender.com`). O Render emite o HTTPS sozinho. A partir daqui os dois endereços funcionam.
+3. **Avisar a equipe**: abrir o endereço novo, entrar de novo e adicionar à tela inicial; admins reativam as notificações em Sistema.
+4. **Definir `CANONICAL_HOST=app.suaempresa.com.br`** no Render. Quem abrir o endereço antigo passa a ser levado ao novo pelo próprio navegador, **somente quando não houver saída guardada sem internet naquele aparelho** (ela é enviada antes, no endereço antigo). API, tempo real e integrações continuam respondendo nos dois endereços.
+5. Atualizar links externos que usem o endereço antigo (integração Tagme, QR Codes ou links impressos da página Old Man). O endereço antigo continua funcionando enquanto o serviço existir no Render.
+
+Para desligar, basta apagar `CANONICAL_HOST`. Teste: `node scripts/selftest-canonical-host.js`.
+
 ## Estrutura do projeto
 
 - `server.js`: servidor, regras de negócio e integração com o banco.

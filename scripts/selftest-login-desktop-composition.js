@@ -58,7 +58,7 @@ const context=vm.createContext({$:element,me:null,sessionRedirecting:false,
   api:async(url,opt)=>{requests.push({url,opt});if(failure)throw failure;return response},
   showApp:()=>shown++
 });
-for(const name of ['setAuth','message','escapeHtml','showSessionNotice','redirectExpiredSession','login','register','loadPublicConfig'])vm.runInContext(source(name),context);
+for(const name of ['setAuth','message','escapeHtml','showSessionNotice','redirectExpiredSession','login','register','moveToCanonicalHost','loadPublicConfig'])vm.runInContext(source(name),context);
 const hidden=id=>element(id).classList.contains('hidden');
 for(const mode of ['login','register','login','register','login']){
   context.setAuth(mode);
