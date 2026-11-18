@@ -1,12 +1,9 @@
 // Regra LONGE na interface: tudo fica no admin (Financeiro com Normais/Longas/Valor
 // longa, correção com motivo, mapa da zona). A tela do motoboy não ganha nada novo:
-// nem selo, nem valor, nem mapa. As transformações do prestart continuam aplicáveis.
+// nem selo, nem valor, nem mapa. A contagem LONGE manual continua separada das Longas.
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 
 const root = new URL("../", import.meta.url);
 const html = fs.readFileSync(new URL("public/index.html", root), "utf8");
@@ -56,22 +53,14 @@ test("mapa da zona só no admin, com Leaflet servido pelo próprio app", () => {
   assert.ok(html.includes(".longe-map{") && html.includes("isolation:isolate"), "mapa não passa por cima dos modais");
 });
 
-test("prestart continua aplicável e não confunde LONGE manual com Longas", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "longe-ui-"));
-  fs.mkdirSync(path.join(tmp, "scripts")); fs.mkdirSync(path.join(tmp, "public"));
-  fs.writeFileSync(path.join(tmp, "public", "index.html"), html);
-  for (const script of ["apply-payment-clean-sheet.js", "apply-payment-longe.js"]) {
-    fs.copyFileSync(new URL(`scripts/${script}`, root), path.join(tmp, "scripts", script));
-    execFileSync(process.execPath, [path.join(tmp, "scripts", script)], { stdio: "ignore" });
-  }
-  const patched = fs.readFileSync(path.join(tmp, "public", "index.html"), "utf8");
-  fs.rmSync(tmp, { recursive: true, force: true });
+test("LONGE manual não se confunde com Longas", () => {
+  const patched = html;
   assert.ok(patched.includes(">LONGE manual</th>"));
   assert.ok(!patched.includes("row.longe_count??(Number(row.adjustment_amount"), "contagem manual lê só o ajuste salvo");
   assert.ok(patched.includes("${row.longe_rule_active?'disabled':''}"), "manual bloqueado com a regra ativa");
   assert.ok(patched.includes("<th>Observações</th><th>Normais</th><th>Longas</th><th>Valor longa</th></tr>"));
   const courierApp = patched.slice(patched.indexOf('<div id="courierApp"'), patched.indexOf('<div id="longeOrdersModal"'));
-  assert.doesNotMatch(courierApp, /longe/i, "prestart também não leva LONGE ao motoboy");
+  assert.doesNotMatch(courierApp, /longe/i, "LONGE manual também não chega ao motoboy");
 });
 
 console.log(`PASS: ${count} verificações da interface LONGE.`);

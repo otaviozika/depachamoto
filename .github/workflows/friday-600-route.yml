@@ -66,10 +66,9 @@ jobs:
             echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
             echo "LOAD_TEST_KEY=$LOAD_TEST_KEY"
           } >> "$GITHUB_ENV"
-      - name: Install and prestart
+      - name: Install dependencies
         run: |
           npm ci
-          npm run prestart
       - name: Verify isolated mock guards
         run: |
           node --check scripts/mock-ors-friday.js

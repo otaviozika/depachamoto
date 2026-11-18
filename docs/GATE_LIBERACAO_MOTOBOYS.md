@@ -12,7 +12,7 @@
 
 ## Testes e segurança — todos obrigatórios
 - [ ] Dois workflows GitHub Actions no SHA final do PR #76 concluídos SUCCESS, com jobs revisados.
-- [ ] Regressão integral de todos os scripts selftest depois do prestart, inclusive execução repetida e idempotente.
+- [ ] Regressão integral de todos os scripts selftest (o código versionado é o que roda em produção; não há mais `prestart`).
 - [ ] Selftest de viabilidade por tempo aprovado: desvios de mão única, limites 10%/3 minutos, 120 permutações, pino e bloqueio de atalhos.
 - [ ] Selftests de pré-saída e provedores aprovados; npm audit sem vulnerabilidades altas ou críticas.
 - [ ] Migrações aditivas ensaiadas em banco isolado; tabelas sem acesso público; Supabase Advisors verificados.

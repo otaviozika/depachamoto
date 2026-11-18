@@ -14,9 +14,11 @@ import crypto from "crypto";
 import { authorizedTagme, parseTagmeCount } from "./lib/tagme-queue.js";
 import compression from "compression";
 import webpush from "web-push";
-import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
+import { getCurrentOperationalShift, getSPDateTime, normalizeShiftCode, operationalShiftAt, dispatchShiftAt, resolveDispatchShift, shiftLabel } from "./lib/operational-shift.js";
 import { calculateShiftPayment, defaultShiftPaymentRule } from "./lib/payment-shifts.js";
 import { normalizeAuditEntityId } from "./lib/audit-entity.js";
+import { installPasswordRecovery } from "./lib/password-recovery.js";
+import { buildDatabaseConfig, isTlsVerificationError, sessionTimeoutSql } from "./lib/db-config.js";
 import { createAnotaAiClient, normalizeAnotaAiOrder } from "./lib/anotaai.js";
 import { createLongeService } from "./lib/longe-service.js";
 import { createPreDepartureService } from "./lib/pre-departure-service.js";
@@ -54,28 +56,57 @@ function assertExternalMutationAllowed(target) {
   if (STAGING_SAFE_MODE) throw stagingSafetyError(target);
 }
 
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL não configurada.");
-  process.exit(1);
-}
-
 const sessionSecret = String(process.env.SESSION_SECRET || "").trim();
 if (sessionSecret.length < 32) {
   console.error("SESSION_SECRET precisa ter pelo menos 32 caracteres.");
   process.exit(1);
 }
 
+let databaseConfig;
+try {
+  databaseConfig = buildDatabaseConfig(process.env);
+} catch (err) {
+  console.error("Configuração do banco inválida:", err.message);
+  process.exit(1);
+}
+const databaseSessionSql = sessionTimeoutSql(databaseConfig);
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: Number(process.env.DB_POOL_MAX || 20),
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000
+  ...databaseConfig.poolConfig,
+  // Executado e aguardado antes de cada conexão nova ser entregue.
+  onConnect: async client => {
+    // Uma conexão emprestada que o banco encerra (timeout, queda de rede) emite
+    // "error"; sem ouvinte, isso derrubaria o processo inteiro. A consulta em
+    // andamento falha normalmente e o pool descarta a conexão na devolução.
+    client.on("error", err => {
+      console.error("PostgreSQL connection error:", err?.code || "", err?.message || err);
+    });
+    // Limita consultas presas e transações esquecidas abertas, que seguram conexões e travas.
+    // Falha aqui não é fatal: a conexão segue utilizável, só sem os limites.
+    await client.query(databaseSessionSql).catch(err => {
+      console.error("PostgreSQL session timeouts:", err?.message || err);
+    });
+  }
 });
 
 pool.on("error", err => {
   console.error("PostgreSQL pool error:", err);
 });
+
+if (databaseConfig.tlsMode === "unverified") {
+  console.warn("PostgreSQL: TLS sem verificação de certificado. Defina DATABASE_SSL_VERIFY=true quando a cadeia for confiável.");
+}
+try {
+  await pool.query("SELECT 1");
+} catch (err) {
+  if (isTlsVerificationError(err)) {
+    console.error(`PostgreSQL: o certificado do banco não foi validado (${err.code}). A conexão foi recusada para evitar interceptação. ` +
+      "Confira o host da DATABASE_URL. Em emergência, DATABASE_SSL_VERIFY=false restaura a conexão sem verificação.");
+  } else {
+    console.error("PostgreSQL: falha ao conectar:", err?.message || err);
+  }
+  process.exit(1);
+}
+console.log(`PostgreSQL conectado (TLS: ${databaseConfig.tlsMode}).`);
 
 const app = express();
 const server = http.createServer(app);
@@ -1438,27 +1469,31 @@ app.use(express.static(path.join(__dirname, "public"), {
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+function sessionAccountValid(sessionUser, account) {
+  if (!account || !account.active) return false;
+  if (!["admin", "courier"].includes(account.role) || account.role !== sessionUser?.role) return false;
+  return account.role !== "courier" || account.approval_status === "APPROVED";
+}
+
 async function auth(req, res, next) {
   const sessionUser = req.session.user;
   if (!sessionUser) {
     return res.status(401).json({ error: "Não autenticado.", code: "SESSION_EXPIRED" });
   }
 
-  // Contas de motoboy excluídas ou desativadas perdem acesso imediatamente,
-  // inclusive quando já havia uma sessão aberta em outro aparelho.
-  if (sessionUser.role === "courier") {
-    const account = (await pool.query(
-      "SELECT active,approval_status FROM users WHERE id=$1 AND role='courier'",
-      [sessionUser.id]
-    )).rows[0];
+  // Contas excluídas, desativadas ou com papel alterado perdem acesso
+  // imediatamente, inclusive quando já havia uma sessão aberta em outro aparelho.
+  const account = (await pool.query(
+    "SELECT role,active,approval_status FROM users WHERE id=$1",
+    [sessionUser.id]
+  )).rows[0];
 
-    if (!account || !account.active || account.approval_status !== "APPROVED") {
-      await new Promise(resolve => req.session.destroy(() => resolve()));
-      return res.status(401).json({
-        error: "Este acesso de motoboy não está mais ativo.",
-        code: "SESSION_EXPIRED"
-      });
-    }
+  if (!sessionAccountValid(sessionUser, account)) {
+    await new Promise(resolve => req.session.destroy(() => resolve()));
+    return res.status(401).json({
+      error: sessionUser.role === "courier" ? "Este acesso de motoboy não está mais ativo." : "Este acesso não está mais ativo.",
+      code: "SESSION_EXPIRED"
+    });
   }
 
   next();
@@ -6343,6 +6378,8 @@ app.get("/api/public/config", asyncRoute(async (req, res) => {
   });
 }));
 
+await installPasswordRecovery({ app, pool, asyncRoute, auth, adminOnly, audit, sessionSecret });
+
 app.post("/api/login", loginIpBurstLimiter, loginLimiter, asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -7879,7 +7916,7 @@ async function addRouteOrder(req, res, recovery) {
   }
 
   if (!completedAssignment) {
-    const routeShift = getCurrentOperationalShift();
+    const routeShift = dispatchShiftAt();
     if (!routeShift) {
       return res.status(409).json({
         error:'A hamburgueria está entre turnos. Aguarde o próximo turno para adicionar uma entrega.',
@@ -8005,7 +8042,7 @@ app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) =
     return res.status(403).json({ error: "Altere sua senha temporária antes de registrar uma saída." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = dispatchShiftAt();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.",
@@ -9038,7 +9075,7 @@ app.post("/api/admin/dispatches/manual", auth, adminOnly, asyncRoute(async (req,
     return res.status(400).json({ error: "O motoboy selecionado não está ativo e aprovado." });
   }
 
-  const departureShift = getCurrentOperationalShift();
+  const departureShift = dispatchShiftAt();
   if (!departureShift) {
     return res.status(409).json({
       error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída manual.",
@@ -10543,7 +10580,7 @@ app.get("/api/admin/monitoring", auth, adminOnly, asyncRoute(async (req, res) =>
       total: pool.totalCount,
       idle: pool.idleCount,
       waiting: pool.waitingCount,
-      max: Number(process.env.DB_POOL_MAX || 20)
+      max: databaseConfig.poolConfig.max
     },
     activity: dispatchQ.rows[0],
     errors: countsQ.rows[0],
@@ -11007,7 +11044,7 @@ app.get("/api/admin/health-center", auth, adminOnly, asyncRoute(async (req, res)
           total: pool.totalCount,
           idle: pool.idleCount,
           waiting: pool.waitingCount,
-          max: Number(process.env.DB_POOL_MAX || 20)
+          max: databaseConfig.poolConfig.max
         },
         memory: {
           rssMb: Math.round(mem.rss / 1024 / 1024),
@@ -11167,7 +11204,7 @@ app.put("/api/admin/payments/:date/:courierId", auth, adminOnly, asyncRoute(asyn
   const shift=paymentShiftForRequest(date,req.body.shift_code||req.query.shift_code||null);if(date>=WORK_SHIFT_CUTOVER_DATE&&!shift)return res.status(400).json({error:'Informe o turno do pagamento.',code:'PAYMENT_SHIFT_REQUIRED'});
   const courier=(await pool.query(`SELECT id,name,username,nickname,pix_key,pix_type,pix_holder_name,pix_status FROM users WHERE id=$1 AND role='courier'`,[courierId])).rows[0];if(!courier)return res.status(404).json({error:'Motoboy não encontrado.'});
   const existing=(await pool.query(`SELECT * FROM courier_payments WHERE payment_date=$1::date AND courier_id=$2 AND (($3::text IS NULL AND shift_code IS NULL) OR shift_code=$3) LIMIT 1`,[date,courierId,shift])).rows[0]||null;
-  const tip=parseMoneyValue(req.body.tip_amount,0),discount=parseMoneyValue(req.body.discount_amount,0),adjustment=parseMoneyValue(req.body.adjustment_amount,0),rain=!!req.body.rain;
+  /* payment-longe-backend-v1 */ const longeProvided=req.body.longe_count!==undefined;const longeCount=Number(req.body.longe_count);if(longeProvided&&(!Number.isSafeInteger(longeCount)||longeCount<0||longeCount>10000))return res.status(400).json({error:"LONGE deve ser um número inteiro entre 0 e 10000."});const tip=parseMoneyValue(req.body.tip_amount,0),discount=parseMoneyValue(req.body.discount_amount,0),adjustment=longeProvided?longeCount*6:parseMoneyValue(req.body.adjustment_amount,0),rain=!!req.body.rain;
   const paymentMethod=String(req.body.payment_method||'').trim().slice(0,40)||null,notes=String(req.body.notes||'').trim().slice(0,600)||null,status=String(req.body.status||'OPEN').trim().toUpperCase();
   if(!['OPEN','REVIEWED','PAID'].includes(status))return res.status(400).json({error:'Status de pagamento inválido.'});if(![tip,discount,adjustment].every(Number.isFinite)||tip<0||discount<0)return res.status(400).json({error:'Gorjeta, desconto ou ajuste inválido.'});
   if(existing?.status==='PAID'&&status!=='PAID'&&req.body.confirm_reopen_paid!==true)return res.status(409).json({error:'Este pagamento já está marcado como PAGO. Confirme explicitamente para reabrir.',code:'PAYMENT_REOPEN_CONFIRMATION'});
@@ -11326,8 +11363,8 @@ async function requirePreDepartureFlag(flag, courierId) {
 async function courierDepartureGate(courierId) {
   const user = await currentUser(courierId);
   if (user?.must_change_password) return { status: 403, body: { error: "Altere sua senha temporária antes de registrar uma saída.", code: "PASSWORD_CHANGE_REQUIRED" } };
-  // Mesma janela da saída: o prestart troca esta linha junto com a da saída (late-shift).
-  const preDepartureShift = getCurrentOperationalShift();
+  // Mesma janela da saída definitiva (almoço até 17:59, janta até 01:59).
+  const preDepartureShift = dispatchShiftAt();
   const shift = preDepartureShift;
   if (!shift) return { status: 409, body: { error: "A hamburgueria está entre turnos. Aguarde o próximo turno para registrar uma saída.", code: "OUTSIDE_OPERATIONAL_SHIFT" } };
   const attendance = await getCourierAttendance(courierId, shift.operational_date, shift.shift_code);
@@ -12618,10 +12655,8 @@ io.use(async (socket, next) => {
     }
 
     const account = await currentUser(sessionUser.id);
-    const validRole = account && ["admin", "courier"].includes(account.role);
-    const courierApproved = account?.role !== "courier" || account.approval_status === "APPROVED";
 
-    if (!account || !account.active || !validRole || !courierApproved) {
+    if (!sessionAccountValid(sessionUser, account)) {
       if (socket.request.session) {
         await new Promise(resolve => socket.request.session.destroy(() => resolve()));
       }
@@ -12666,13 +12701,8 @@ io.on("connection", socket => {
       }
 
       const account = await currentUser(user.id);
-      const valid =
-        account &&
-        account.active &&
-        ["admin", "courier"].includes(account.role) &&
-        (account.role !== "courier" || account.approval_status === "APPROVED");
-
-      if (!valid) socket.disconnect(true);
+      // O papel precisa continuar o mesmo: a sala do socket foi escolhida por ele.
+      if (!sessionAccountValid(sessionUser, account) || account.role !== user.role) socket.disconnect(true);
     } catch {
       socket.disconnect(true);
     }

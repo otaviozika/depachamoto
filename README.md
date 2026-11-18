@@ -2,7 +2,7 @@
 
 Sistema de despacho para operação com administradores e motoboys, desenvolvido em Node.js, Express, PostgreSQL e Socket.IO.
 
-Versão atual: **3.6.1**
+Versão atual: **3.7.0**
 
 ## Integração Anota AI
 
@@ -90,6 +90,23 @@ A alocação cria um registro histórico concluído (`ADMIN_RECOVERED`), mantém
 
 O servidor revalida loja, modalidade, status, data e ausência de vínculo dentro da transação. Pagamento revisado/pago exige reabertura prévia. Um lançamento manual sem UUID para o mesmo número/data exige conferência antes de alocar, evitando contagem dupla. Vínculos já existentes não são transferidos por esse botão.
 
+## Código versionado = código em produção
+
+O `npm start` só executa `node server.js`. Não existe mais `prestart`: os antigos scripts `scripts/apply-*.js`, que reescreviam `server.js`, `lib/`, `public/index.html`, o CSS e o service worker a cada inicialização, foram aplicados uma única vez e removidos. Toda mudança deve ser feita diretamente no código-fonte. O teste `scripts/selftest-no-startup-mutation.js` bloqueia a volta de hooks de inicialização e de scripts de patch.
+
+Regras que antes só existiam depois do `prestart` e agora estão no fonte:
+
+- **Janela de despacho** (`dispatchShiftAt` em `lib/operational-shift.js`): saídas, inclusões na rota e pré-saídas são aceitas no almoço até 17:59 e na janta até 01:59 do dia seguinte (a data operacional da madrugada continua sendo a da janta). Das 02:00 até o início do almoço, a saída é bloqueada.
+- **Planilha mensal** no Financeiro e coluna **LONGE manual** (contagem × R$ 6 no ajuste, bloqueada com a regra LONGE ativa).
+- Recuperação de senha, botões de mostrar senha, card do motoboy com Google Maps e estilos do login.
+
+## Banco de dados: TLS, limites e sessões
+
+- **TLS verificado:** na Supabase (hosts `*.supabase.co` e `*.supabase.com`, inclusive o pooler), a conexão só é aceita se o certificado for assinado pela Supabase Root 2021 CA (`certs/supabase-root-ca-2021.crt`) ou por uma autoridade pública, e se o hostname conferir. Os parâmetros `sslmode` da `DATABASE_URL` não desligam mais essa verificação. Outros hosts (como o Postgres interno do Render usado no staging) mantêm TLS sem verificação, a menos que `DATABASE_SSL_VERIFY=true`.
+- **Se o deploy não subir** com `PostgreSQL: o certificado do banco não foi validado`, defina `DATABASE_SSL_VERIFY=false` no Render (rollback de emergência, volta ao comportamento anterior) e confira o host da `DATABASE_URL`.
+- **Limites por conexão:** consultas acima de 60 s (`DB_STATEMENT_TIMEOUT_MS`) são canceladas e transações paradas por mais de 120 s (`DB_IDLE_IN_TRANSACTION_TIMEOUT_MS`) são encerradas, liberando conexões e travas. `0` desativa. Uma conexão encerrada pelo banco não derruba mais o processo.
+- **Sessões:** toda requisição e o tempo real revalidam a conta. Admin ou motoboy desativado, removido ou com papel alterado perde o acesso na hora (antes, admin desativado mantinha a sessão por até 12 h).
+
 ## Estrutura do projeto
 
 - `server.js`: servidor, regras de negócio e integração com o banco.
@@ -101,7 +118,7 @@ O servidor revalida loja, modalidade, status, data e ausência de vínculo dentr
 
 ## Configuração
 
-1. Instale o Node.js 20 ou superior.
+1. Instale o Node.js 22.
 2. Copie `.env.example` para `.env`.
 3. Preencha os valores somente no ambiente local ou no painel do Render.
 4. Execute `npm install` e depois `npm start`.

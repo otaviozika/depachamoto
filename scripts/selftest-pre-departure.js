@@ -85,7 +85,7 @@ const context = vm.createContext({
   logOperationalConflict: async () => {}, touchPresence: async () => {},
   currentUser: async id => ({ id, must_change_password: false }),
   getCurrentOperationalShift: () => ({ operational_date: today, shift_code: "LUNCH", shift_label: "Almoço" }),
-  // Depois do prestart (apply-late-shift-dispatch) a saída e a pré-saída usam dispatchShiftAt.
+  // A saída e a pré-saída usam a janela de despacho (almoço até 17:59, janta até 01:59).
   dispatchShiftAt: () => ({ operational_date: today, shift_code: "LUNCH", shift_label: "Almoço" }),
   getCourierAttendance: async () => ({ checked_out_at: null }),
   resolveDispatchShift: ({ departedAt }) => ({ operational_date: new TestDate(departedAt).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }), shift_code: "LUNCH", shift_label: "Almoço" }),

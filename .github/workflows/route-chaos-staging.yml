@@ -75,7 +75,6 @@ jobs:
       - name: Install dependencies and prepare actual app
         run: |
           npm ci
-          npm run prestart
           node --check scripts/mock-ors-chaos.js
           node --check scripts/smoke-route-chaos-http.js
       - name: Prove chaos injection fails closed outside staging

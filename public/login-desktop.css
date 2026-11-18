@@ -136,20 +136,7 @@
   #loginScreen .btn.primary{min-height:50px}
 }
 
-/* PASSWORD TOGGLE STYLES START */
-.form .password-field{position:relative;display:block;width:100%;margin-top:7px}
-.form .password-field>input{margin-top:0!important;padding-right:55px!important}
-.form .password-toggle{position:absolute;top:50%;right:7px;transform:translateY(-50%);z-index:12;display:flex;align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;padding:0;border:0;border-radius:9px;background:transparent;color:#aeb4bc;cursor:pointer;transition:color .15s ease,background .15s ease,transform .1s ease;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.form .password-toggle svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-.form .password-toggle:hover{color:#fff;background:rgba(255,255,255,.06)}
-.form .password-toggle:active{transform:translateY(-50%) scale(.92)}
-.form .password-toggle:focus-visible{outline:2px solid #ef334a!important;outline-offset:2px!important}
-.form .password-eye-closed{display:none}
-.form .password-toggle[aria-pressed="true"]{color:#ef334a}
-.form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
-.form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
-#loginScreen .form .password-field{margin-top:7px}
-/* PASSWORD TOGGLE STYLES END */
+
 
 /* Match the approved composition: one card in desktop, a separate form card on mobile. */
 #loginScreen .auth-box:has(#loginForm:not(.hidden)) #registrationNotice{display:none}
@@ -179,3 +166,76 @@
   #loginScreen .login-access-card{display:contents}
   #loginScreen .auth-box::before{background:linear-gradient(135deg,rgba(242,13,47,.8),rgba(255,255,255,.25) 65%,rgba(242,13,47,.3))}
 }
+
+
+/* PASSWORD TOGGLE STYLES START */
+.form .password-field{
+  position:relative;
+  display:block;
+  width:100%;
+  margin-top:6px;
+}
+.form .password-field>input{
+  margin-top:0!important;
+  padding-right:58px!important;
+}
+.form .password-toggle{
+  position:absolute;
+  top:50%;
+  right:8px;
+  transform:translateY(-50%);
+  z-index:12;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:42px;
+  height:42px;
+  min-width:42px;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:#aeb4bc;
+  cursor:pointer;
+  transition:color .15s ease,background .15s ease,transform .1s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.form .password-toggle svg{
+  width:22px;
+  height:22px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+.form .password-toggle:hover{
+  color:#fff;
+  background:rgba(255,255,255,.06);
+}
+.form .password-toggle:active{
+  transform:translateY(-50%) scale(.92);
+}
+.form .password-toggle:focus-visible{
+  outline:2px solid #ef334a!important;
+  outline-offset:2px!important;
+}
+.form .password-eye-closed{display:none}
+.form .password-toggle[aria-pressed="true"]{color:#ef334a}
+.form .password-toggle[aria-pressed="true"] .password-eye-open{display:none}
+.form .password-toggle[aria-pressed="true"] .password-eye-closed{display:block}
+
+/* Keep the toggle aligned with the labeled access fields. */
+#loginScreen .form .password-field{margin-top:7px}
+
+@media (max-width:900px){
+  #loginScreen .form .password-toggle{
+    right:8px;
+    width:42px;
+    height:42px;
+  }
+}
+/* PASSWORD TOGGLE STYLES END */
+

@@ -60,11 +60,9 @@ jobs:
             node "$test" || failed=$((failed+1))
           done
           test "$failed" -eq 0
-      - name: Apply the same production prestart to both copies
-        run: |
-          npm run prestart
-          npm run prestart --prefix ../baseline
-      - name: Runtime integration regression after prestart
+      - name: Apply legacy prestart to the baseline copy, if it still has one
+        run: npm run prestart --if-present --prefix ../baseline
+      - name: Runtime integration regression
         run: |
           node --check server.js
           node scripts/selftest-egress-equivalence.js

@@ -106,7 +106,7 @@ const checks={
   close_day_ui:html.includes('id="paymentCloseDay"')&&html.includes('Fechar / atualizar planilha'),
   connection_test_endpoint:server.includes('app.get("/api/admin/payments/sheets/test-connection"'),
   connection_test_ui:html.includes('id="paymentSheetTestConnection"')&&html.includes('Testar conexão Google'),
-  no_monthly_access:!html.includes('id="paymentMonthView"')&&!html.includes('onclick="setPaymentView(\'month\')"'),
+  monthly_view_wired:html.includes('id="paymentMonthView"')&&html.includes('onclick="setPaymentView(\'month\')"')&&html.includes('function loadPaymentMonth('),
   monthly_sheet_links:html.includes('id="paymentSheetLunchUrl"')&&html.includes('id="paymentSheetDinnerUrl"'),
   render_env:envExample.includes('GOOGLE_SERVICE_ACCOUNT_EMAIL=')&&envExample.includes('GOOGLE_SHEETS_SPREADSHEET_ID=')
 };

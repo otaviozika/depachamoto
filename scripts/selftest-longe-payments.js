@@ -4,11 +4,8 @@
 // intactos, correção manual com motivo no histórico, CSV e planilha — e nada disso
 // aparece para o motoboy (card e API de ganhos sem campos LONGE).
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
 import { createLongeService } from "../lib/longe-service.js";
 import { LONGE_STORE, destinationPoint, haversineMeters, longeUnitAmount, modeAt } from "../lib/longe-zone.js";
@@ -16,16 +13,8 @@ import { calculateShiftPayment, defaultShiftPaymentRule } from "../lib/payment-s
 import { normalizeShiftCode, shiftLabel } from "../lib/operational-shift.js";
 import { paymentDayTotalFormula, paymentRowsToDailySheetData } from "../lib/google-sheets.js";
 
-const original = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
-// Aplica a transformação real do prestart (contagem LONGE manual) numa cópia.
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "longe-"));
-fs.mkdirSync(path.join(tmp, "scripts"));
-fs.writeFileSync(path.join(tmp, "server.js"), original);
-fs.copyFileSync(new URL("./apply-payment-longe-backend.js", import.meta.url), path.join(tmp, "scripts", "apply-payment-longe-backend.js"));
-execFileSync(process.execPath, [path.join(tmp, "scripts", "apply-payment-longe-backend.js")], { stdio: "ignore" });
-const source = fs.readFileSync(path.join(tmp, "server.js"), "utf8");
-fs.rmSync(tmp, { recursive: true, force: true });
-assert.ok(source.includes("payment-longe-backend-v1"), "patch do prestart aplicado");
+const source = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+assert.ok(source.includes("payment-longe-backend-v1"), "contagem LONGE manual presente no servidor");
 
 const db = new PGlite();
 await db.exec(source.split("await pool.query(`")[1].split("`);")[0]);
