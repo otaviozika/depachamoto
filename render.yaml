@@ -1,11 +1,21 @@
+# Configuração do serviço de produção no Render, igual à do painel
+# (serviço "despachefull", endereço https://depachamoto.onrender.com).
+#
+# Este arquivo documenta o serviço; ele não está ligado a um Blueprint. Se um
+# Blueprint for criado a partir dele, os valores abaixo não alteram nada do que
+# já roda: segredos e chaves de ativação usam "sync: false", ou seja, o Render
+# pede o valor no painel e nunca sobrescreve um valor existente.
 services:
   - type: web
-    name: despachamoto
+    name: despachefull
     runtime: node
-    plan: free
+    region: oregon
+    plan: starter            # 0,5 CPU e 512 MB; o plano gratuito dorme sem tráfego e para o polling do iFood
+    numInstances: 1
     buildCommand: npm install
-    startCommand: npm start
-    healthCheckPath: /api/health
+    startCommand: npm start  # só "node server.js": o código não é mais alterado na inicialização
+    healthCheckPath: /api/live
+    autoDeploy: true         # publica a cada commit na main
     envVars:
       - key: NODE_ENV
         value: production
@@ -19,13 +29,22 @@ services:
         sync: false
       - key: ADMIN_NAME
         value: Administrador
+      - key: IFOOD_ENABLED
+        sync: false
+      - key: IFOOD_DISPATCH_ENABLED
+        sync: false
+      - key: IFOOD_ENVIRONMENT
+        sync: false
+      - key: IFOOD_CLIENT_ID
+        sync: false
+      - key: IFOOD_CLIENT_SECRET
+        sync: false
       - key: IFOOD_CUSTOMER_ID
         sync: false
-
       - key: IFOOD_MERCHANT_ID
         sync: false
       - key: ANOTAAI_ENABLED
-        value: "false"
+        sync: false
       - key: ANOTAAI_CLIENT_ID
         sync: false
       - key: ANOTAAI_CLIENT_SECRET
@@ -36,3 +55,5 @@ services:
         sync: false
       - key: OPENROUTESERVICE_API_KEY
         sync: false
+      # Opcionais (padrões seguros no código; ver README, "Banco de dados"):
+      # DATABASE_SSL_VERIFY, DB_STATEMENT_TIMEOUT_MS, DB_IDLE_IN_TRANSACTION_TIMEOUT_MS
