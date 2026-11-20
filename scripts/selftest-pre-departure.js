@@ -20,7 +20,11 @@ const db = new PGlite();
 await db.exec(source.split("await pool.query(`")[1].split("`);")[0]);
 await db.exec("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS operational_date DATE; ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS shift_code TEXT;");
 let tail = Promise.resolve();
+let queryLog = null;
 const query = async (sql, args = []) => {
+  if (queryLog) queryLog.push(sql);
+  // PGlite tem uma conexão só: a trava do motoboy não se aplica, mas o BEGIN que vem junto sim.
+  if (/^BEGIN; SELECT pg_advisory_xact_lock\(-?\d+::int\)$/.test(sql)) { await db.query("BEGIN"); return { rows: [], rowCount: 1 }; }
   if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
   const result = await db.query(sql, args);
   return { ...result, rowCount: result.rows.length || result.affectedRows || 0 };
@@ -1066,6 +1070,48 @@ await scenario("S7", "Ativação para o plantão com dispensa por dia operaciona
   assert.equal((await getState(41)).enabled.pre_departure, true);
   assert.equal((await getState(42)).enabled.pre_departure, false);
   return "16 motoboys abrangidos, dispensa individual, pré-saída aberta preservada, saída direta autorizada, expiração diária e retorno ao piloto";
+});
+
+await scenario("S8", "Conferência de sacola com menos idas ao banco e o mesmo resultado", async () => {
+  const previous = (await getState(41)).pre_departure;
+  if (previous) await service.cancel({ actorUserId: 41, courierId: 41, id: previous.id });
+  const orders = [await ifood(3801, at(200, 800)), await ifood(3802, at(250, 900))];
+  const created = await createPd(41, orders);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  let pd = created.body.pre_departure;
+  const check = async o => {
+    queryLog = [];
+    try { return await call("POST /api/courier/pre-departures/:id/orders/:orderId/check", { user: courier(41), params: { id: String(pd.id), orderId: String(o.id) }, body: { composition_version: pd.composition_version } }); }
+    finally { queryLog = queryLog.splice(0); }
+  };
+  const first = await check(pd.orders[0]);
+  const log = queryLog; queryLog = null;
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.pre_departure.status, "PARTIALLY_CHECKED");
+  assert.equal(first.body.pre_departure.counts.checked, 1);
+  assert.equal(first.body.pre_departure.version, pd.version + 1);
+  assert.match(log[0], /^BEGIN; SELECT pg_advisory_xact_lock\(41::int\)$/, "BEGIN e a trava do motoboy juntos");
+  assert.ok(log.some(q => /FROM pre_departures WHERE id=\$1 FOR UPDATE/.test(q)), "pré-saída travada");
+  assert.ok(log.some(q => /FROM pre_departure_orders WHERE pre_departure_id=\$1 AND active ORDER BY position FOR UPDATE/.test(q)), "sacolas travadas depois da pré-saída");
+  assert.equal(log.filter(q => /^\s*WITH bag AS \(/.test(q)).length, 1, "sacola, status e histórico num comando");
+  const inTx = log.slice(0, log.indexOf("COMMIT") + 1);
+  assert.equal(inTx.length, 5, "transação: BEGIN+trava, pré-saída, sacolas, gravação, COMMIT — " + inTx.length);
+  const events = (await query("SELECT event,actor_user_id,details FROM pre_departure_events WHERE pre_departure_id=$1 AND event='BAG_CHECKED'", [pd.id])).rows;
+  assert.equal(events.length, 1);
+  assert.deepEqual(events[0].details, { order_number: pd.orders[0].order_number, platform: "ifood", external_order_id: pd.orders[0].external_order_id, composition_version: pd.composition_version, status: "PARTIALLY_CHECKED" });
+  const bag = (await query("SELECT checked_at,checked_by,checked_composition_version FROM pre_departure_orders WHERE id=$1", [pd.orders[0].id])).rows[0];
+  assert.ok(bag.checked_at); assert.equal(Number(bag.checked_by), 41); assert.equal(Number(bag.checked_composition_version), pd.composition_version);
+  const again = await check(pd.orders[0]); queryLog = null;
+  assert.equal(again.status, 200); assert.equal(again.body.pre_departure.version, first.body.pre_departure.version, "segundo toque não altera nada");
+  const second = await check(pd.orders[1]); queryLog = null;
+  assert.equal(second.body.pre_departure.status, "CHECKED");
+  assert.equal(second.body.pre_departure.can_dispatch, true);
+  const missing = await check({ id: 999999 }); queryLog = null;
+  assert.equal(missing.status, 404); assert.equal(missing.body.code, "PRE_DEPARTURE_ORDER_NOT_FOUND");
+  const stale = await call("POST /api/courier/pre-departures/:id/orders/:orderId/check", { user: courier(41), params: { id: String(pd.id), orderId: String(pd.orders[0].id) }, body: { composition_version: pd.composition_version + 5 } });
+  assert.equal(stale.body.code, "PRE_DEPARTURE_VERSION_CONFLICT");
+  await service.cancel({ actorUserId: 41, courierId: 41, id: pd.id });
+  return `${log.length} consultas no toque (transação com ${inTx.length}); status, versão, histórico e gravação da sacola iguais às regras; segundo toque, sacola inexistente e versão antiga tratados como antes`;
 });
 
 const failed = results.filter(r => r.result === "FAIL");
