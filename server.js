@@ -11398,6 +11398,7 @@ async function markConfirmedIncident(dispatchId,platform,orderId){
 const SERVICE_ERROR_FIELDS = ["blockers","current_status","composition_version","version","route_version","order_number","platform","pre_departure_id","missing","problems","holder_courier_id"];
 function sendServiceError(res, e) {
   if (!e?.status) throw e;
+  if (res.locals && e.status >= 500) res.locals.errorCode = String(e.code || "");
   const extra = Object.fromEntries(SERVICE_ERROR_FIELDS.filter(k => e[k] !== undefined).map(k => [k, e[k]]));
   return res.status(e.status).json({ error: e.message, code: e.code || null, ...extra, server_now: new Date().toISOString() });
 }
@@ -12983,6 +12984,7 @@ app.use("/api", (req, res) => {
 
 app.use((err, req, res, next) => {
   const status = err.status || 500;
+  if (res.locals) res.locals.errorCode = String(err.code || err.name || "");
   console.error(`[${req.requestId || "-"}]`, err);
   recordSystemError(req, status, err).catch(() => {});
   // Erros criados de propósito (com status) já trazem mensagem para o usuário.
