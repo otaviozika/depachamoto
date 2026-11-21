@@ -7971,14 +7971,25 @@ async function addRouteOrder(req, res, recovery) {
       });
     }
   } else {
-    // Adição à rota pelo motoboy mantém a validação atual do iFood.
-    const inspection = await inspectIfoodOrdersForDeparture(orders);
-    if (inspection.blocked.length || inspection.accepted.length !== 1) {
+    // Adição à rota pelo motoboy: mesma validação da saída direta (iFood ou Anota AI).
+    const resolution = await resolveCourierOrderPlatforms(orders, req.body);
+    if (resolution.ambiguities.length) {
       return res.status(409).json({
-        error: inspection.blocked[0]?.message || 'Pedido não encontrado no iFood.'
+        error: "Esse número existe no iFood e no Anota AI. Escolha a plataforma e confirme novamente.",
+        code: "ORDER_PLATFORM_REQUIRED",
+        platforms: resolution.ambiguities[0].platforms
       });
     }
-    ifoodLinks = inspection.accepted;
+    if (resolution.errors.length) {
+      const first = resolution.errors[0];
+      return res.status(409).json({ error: first.message, code: first.code || "ORDER_PLATFORM_INVALID" });
+    }
+    ifoodLinks = resolution.ifoodLinks;
+    anotaAiLinks = resolution.anotaAiLinks;
+    if (ifoodLinks.length + anotaAiLinks.length !== 1) {
+      return res.status(409).json({ error: "Pedido não encontrado no iFood nem no Anota AI.", code: "ORDER_PLATFORM_REQUIRED" });
+    }
+    selectedPlatform = anotaAiLinks.length ? "anotaai" : "ifood";
   }
 
   if (!completedAssignment) {
@@ -8061,12 +8072,9 @@ async function addRouteOrder(req, res, recovery) {
     ));
   }
 }
-app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute(async (req,res)=>{
-  if ((await preDepartureService.readCourierSettings(req.session.user.id)).pre_departure) {
-    return res.status(409).json({ error: "Com a conferência de sacolas ligada, peça ao admin para incluir o pedido nesta saída.", code: "PRE_DEPARTURE_REQUIRED" });
-  }
-  return addRouteOrder(req,res,false);
-}));
+// O motoboy pode incluir mais uma entrega na saída em andamento, mesmo com a
+// conferência de sacolas ligada: o pedido entra no fim da rota (extra_orders).
+app.post('/api/courier/route/orders', auth, courierOnly, asyncRoute((req,res)=>addRouteOrder(req,res,false)));
 app.post('/api/admin/dispatches/link-external', auth, adminOnly, asyncRoute((req,res)=>addRouteOrder(req,res,true)));
 
 app.post("/api/courier/depart", auth, courierOnly, asyncRoute(async (req, res) => {

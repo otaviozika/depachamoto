@@ -36,6 +36,7 @@ const fetched = [];
 const context = vm.createContext({ pool, console, crypto, Date: TestDate, process: { env: { IFOOD_MERCHANT_ID: 'shop' } },
   io: { emit() {} }, emitRealtime:()=>{}, auditBestEffort: async () => {},
   inspectAnotaAiOrdersForAdminAllocation:async()=>({accepted:[],blocked:[],matched:[]}),
+  inspectAnotaAiOrdersForDeparture:async()=>({accepted:[],blocked:[],matched:[]}),
   normalizeIfoodLifecycleStatus: v => String(v || '').toUpperCase(),
   getOperationalSlaSettings: async () => ({ route: {1:25,2:30,3:35,4:40,5:45}, returnMinutes:15 }),
   getCourierAttendance: async () => ({ checked_out_at: null }), getSPDate: async () => today,
@@ -63,6 +64,7 @@ include('async function inspectOrders', 'async function notificationEnabled');
 include('async function createDispatchTransaction', 'async function checkTimeNotifications');
 include('function operationalRouteSlaMinutes', 'function operationalTiming');
 include('async function getCourierDeliveryCount', 'async function buildPaymentRow');
+include('function platformInspectionEntry', 'app.get("/api/courier/orders/lookup"');
 include('async function assignCompletedIfoodOrder', "app.post('/api/courier/route/orders'");
 await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(1,'Admin','admin','test','admin',true,'APPROVED')");
 for (let id = 2; id <= 30; id++) await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES($1,$2,$2,'test','courier',true,'APPROVED')", [id, 'courier-'+id]);

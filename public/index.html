@@ -4539,7 +4539,8 @@ async function loadCourierDeliveries(){
       ? `<div class="courier-route-kicker">PEDIDOS DA SAÍDA</div><p class="courier-helper">Confirme qualquer entrega, na ordem em que realizar.</p>`
       : '';
     const route=courierPreDeparture?.route;
-    $('courierRouteProgress').textContent=route?.counts
+    // Entregas incluídas depois da conferência ficam fora da contagem da rota conferida.
+    $('courierRouteProgress').textContent=route?.counts&&!route.extra_orders?.length
       ? `${route.counts.delivered} de ${route.counts.total} entregues`
       : current.length?`${current.length} pedido(s) em rota`:'';
     $('courierRouteProgress').classList.toggle('hidden',!current.length);
@@ -5112,7 +5113,7 @@ async function loadCourier({related=true}={}){
       <div class="op-progress"><span class="sla-badge ${x.sla_state}">${slaStateLabel(x.sla_state)}</span><span>${resolved} de ${total} pedidos resolvidos</span></div>
       <div class="courier-route-clock"><span>Saída às <b>${localTime(x.departed_at)}</b></span><strong class="big live" data-start-ms="${Date.parse(x.departed_at)}">${elapsedFromMs(Date.parse(x.departed_at))}</strong><small>Tempo de entrega • encerramento automático após a última confirmação</small></div>
       <div style="background:#3b291b;border:1px solid #a86c27;border-radius:12px;padding:16px;margin-top:14px;color:#fde68a"><b>🔒 Nova saída bloqueada</b><p>Confirme os ${pending} pedido(s) pendente(s). Se não conseguir, solicite liberação ao administrador.</p><button type="button" class="btn outline courier-route-action" onclick="requestAdminRelease(${x.id})">Solicitar liberação ao admin</button></div>
-      ${courierPreDeparture.enabled?.pre_departure?'':'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar pedido à rota atual</button>'}
+      ${x.operational_stage==='RETURNING'?'':'<button type="button" class="btn outline courier-route-action" onclick="openRouteOrderModal(false)">+ Adicionar mais uma entrega</button>'}
     </section>`;
     if(!$('currentDepartureNote')){
       const note=document.createElement('div');note.id='currentDepartureNote';note.className='current-active-note';
@@ -5150,10 +5151,10 @@ function openRouteOrderModal(recovery){
   $('routeOrderForm').reset();$('routeOrderMsg').innerHTML='';
   $('routePlatform').value='';
   $('routePlatformLabel').classList.add('hidden');
-  $('routeOrderTitle').textContent=recovery?'Alocar pedido sem motoboy':'Adicionar pedido à rota atual';
+  $('routeOrderTitle').textContent=recovery?'Alocar pedido sem motoboy':'Adicionar mais uma entrega';
   $('routeOrderHelp').textContent=recovery
     ? 'Localize pedidos de entrega do iFood ou Anota AI e aloque ao motoboy correto. Pedidos já concluídos também podem ser recuperados para o histórico e pagamento sem reabrir a entrega.'
-    : 'O pedido será validado no iFood e adicionado à mesma saída. A rota pode conter até 5 pedidos.';
+    : 'O pedido será validado no iFood ou Anota AI e entra nesta mesma saída, no fim da rota. A saída pode ter até 5 pedidos.';
   for(const id of ['routeCourierLabel','routeReasonLabel','routeTimeLabel'])$(id).classList.toggle('hidden',!recovery);
   for(const id of ['routeCourier','routeReason','routeDepartureTime'])$(id).required=recovery;
   $('routeCourier').innerHTML='<option value="">Selecione...</option>'+(dashboard?.couriers||[]).map(c=>'<option value="'+Number(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
