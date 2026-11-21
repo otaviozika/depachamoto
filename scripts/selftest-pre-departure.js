@@ -125,6 +125,7 @@ include("function operationalRouteSlaMinutes", "function operationalTiming");
 include("async function getCourierDeliveryCount", "// LONGE do turno");
 include("function platformInspectionEntry", 'app.get("/api/courier/orders/lookup"');
 include("function validateDepartureCount", "async function addRouteOrder");
+include("async function addRouteOrder", "app.post('/api/admin/dispatches/link-external'");
 include('app.post("/api/courier/depart"', "function normalizePeriodQuery");
 include("function preDepartureOrderDetails", "const preDepartureService = createPreDepartureService");
 include("const SERVICE_ERROR_FIELDS", "// Endereço corrigido pelo admin vale");
@@ -1112,6 +1113,39 @@ await scenario("S8", "Conferência de sacola com menos idas ao banco e o mesmo r
   assert.equal(stale.body.code, "PRE_DEPARTURE_VERSION_CONFLICT");
   await service.cancel({ actorUserId: 41, courierId: 41, id: pd.id });
   return `${log.length} consultas no toque (transação com ${inTx.length}); status, versão, histórico e gravação da sacola iguais às regras; segundo toque, sacola inexistente e versão antiga tratados como antes`;
+});
+
+await scenario("S9", "Motoboy coloca mais uma entrega na rota com a conferência ligada", async () => {
+  await setFlags({ pre_departure: true, route_planner: false });
+  const scope = scope => call("PUT /api/admin/pre-departure/settings", { user: admin, body: { scope, flags: { pre_departure: true }, reason: "Conferência no plantão de teste" } });
+  assert.equal((await scope("all")).body.settings.scope, "all");
+  await query("INSERT INTO users(id,name,username,password_hash,role,active,approval_status) VALUES(160,'Motoboy 160','m160','x','courier',true,'APPROVED')");
+  assert.equal((await service.readCourierSettings(160)).pre_departure, true);
+  const orders = [await ifood(9900, at(20, 800)), await anota(9901, at(110, 900))];
+  const pd = await checkAll(160, (await createPd(160, orders)).body.pre_departure);
+  const out = await depart(160, pd);
+  assert.equal(out.status, 201, JSON.stringify(out.body));
+  const dispatchId = out.body.dispatch.id;
+  const extraIfood = await ifood(9902, at(200, 1000));
+  const extraAnota = await anota(9903, at(300, 1200));
+  const addIfood = await call("POST /api/courier/route/orders", { user: courier(160), body: { order_numbers: [extraIfood.number] } });
+  assert.equal(addIfood.status, 201, JSON.stringify(addIfood.body));
+  assert.equal(addIfood.body.platform, "ifood");
+  assert.equal(addIfood.body.dispatch.id, dispatchId, "entra na mesma saída");
+  const addAnota = await call("POST /api/courier/route/orders", { user: courier(160), body: { order_numbers: [extraAnota.number] } });
+  assert.equal(addAnota.status, 201, JSON.stringify(addAnota.body));
+  assert.equal(addAnota.body.platform, "anotaai");
+  assert.equal(await count("SELECT COUNT(*)::int c FROM dispatch_orders WHERE dispatch_id=$1", [dispatchId]), 4);
+  assert.equal(await count("SELECT COUNT(*)::int c FROM anotaai_dispatch_links WHERE anotaai_order_id=$1 AND dispatch_id=$2", [extraAnota.id, dispatchId]), 1);
+  const view = (await getState(160)).route;
+  assert.equal(view.stops.length, 2, "sequência conferida preservada");
+  assert.deepEqual(view.extra_orders.map(x => x.platform).sort(), ["anotaai", "ifood"]);
+  const again = await call("POST /api/courier/route/orders", { user: courier(160), body: { order_numbers: [extraIfood.number] } });
+  assert.equal(again.status, 409, "o mesmo pedido não entra duas vezes");
+  await query("UPDATE dispatches SET status='RELEASED' WHERE id=$1", [dispatchId]);
+  await query("DELETE FROM active_order_locks WHERE dispatch_id=$1", [dispatchId]);
+  assert.equal((await scope("configured")).body.settings.scope, "configured");
+  return "2 sacolas conferidas → saída → +1 iFood e +1 Anota AI na mesma saída (4 pedidos), rota conferida intacta e extras listados; repetição recusada";
 });
 
 const failed = results.filter(r => r.result === "FAIL");
