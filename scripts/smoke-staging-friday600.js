@@ -1,7 +1,7 @@
 /**
  * HTTP/PostgreSQL REAL isolado, 600 pedidos e 36 motoboys ficticios.
  * A ORS roda como mock por preload estritamente em staging. Nenhum DB/servico de producao.
- * 8 ondas de 72 entregas + 1 de 24, cada saida com 2 pedidos.
+ * Teste isolado de fluxos sem rota obrigatoria: 8 ondas de 72 + 1 de 24, cada saida com 2 pedidos.
  */
 import assert from "node:assert/strict";
 import pg from "pg";
@@ -27,7 +27,7 @@ const run = "fri"+String(Date.now()).slice(-9);
 const password="FridaySyntheticOnly!001";
 const fixedNow="2026-09-29T15:00:00Z";
 const shift=operationalShiftAt(new Date(fixedNow),{required:true});
-const cookies=[],users=[],records=[],routeTimes=[],fullTimes=[],waveTimes=[],failures=[];
+const cookies=[],users=[],records=[],bagCheckTimes=[],departureTimes=[],fullTimes=[],waveTimes=[],failures=[];
 let adminCookie=null;const incidentValidation={};
 const statuses={};
 const jsonHeaders={ "content-type":"application/json","x-load-test-key":process.env.LOAD_TEST_KEY };
@@ -110,25 +110,23 @@ async function executeTwo(i,courierIndex){
   let pd=created.value.pre_departure;
   assert.ok(pd&&pd.counts.total===2);
   for(const order of pd.orders){
+    const tcheck=performance.now();
     const check=await must(`/api/courier/pre-departures/${pd.id}/orders/${order.id}/check`,cookie,"POST",
       {composition_version:pd.composition_version,checked:true},200);
+    bagCheckTimes.push(performance.now()-tcheck);
     pd=check.value.pre_departure;
   }
-  const t=performance.now();
-  const route=await must(`/api/courier/pre-departures/${pd.id}/route`,cookie,"POST",{},200);
-  routeTimes.push(performance.now()-t);
-  pd=route.value.pre_departure;
-  assert.equal(pd.status,"ROUTE_READY");
-  assert.equal(pd.can_dispatch,true);
-  assert.equal(pd.route?.source,"ROAD_MATRIX","rota automatica precisa estar ligada");
-  assert.equal(pd.route?.stops?.length,2);
-  assert.equal(pd.route?.evaluated,2);
+  assert.equal(pd.status,"CHECKED","all checked bags must release without route");
+  assert.equal(pd.can_dispatch,true,"route provider cannot block checkout");
+  assert.equal(pd.route,null,"not even a mocked route must be calculated");
+  const tdepart=performance.now();
   const depart=await must("/api/courier/depart",cookie,"POST",
     {pre_departure_id:pd.id,composition_version:pd.composition_version},201);
+  departureTimes.push(performance.now()-tdepart);
   const dispatchId=Number(depart.value?.dispatch?.id);
   assert.ok(dispatchId>0);
   if(i===0){
-    const orderId=String(pd.route.stops[0].external_order_id);
+    const orderId=String(batch[0].orderId);
     const reportPath="/api/courier/dispatches/"+dispatchId+"/incidents";
     const payload={platform:"anotaai",order_id:orderId,reason:"CLIENT_NOT_FOUND"};
     const other=await must(reportPath,cookies[1],"POST",payload,409);
@@ -204,30 +202,34 @@ try{
   const slotCount=Number((await pool.query(
     "SELECT count(*)::int AS c FROM route_matrix_quota_ledger WHERE scope='ORS_MATRIX'"
   )).rows[0].c);
-  assert.ok(slotCount>0 && slotCount<=300,"reserva global de cota deve registrar as chamadas Matrix");
+  assert.equal(slotCount,0,"cálculo de rota não obrigatório não deve reservar qualquer cota Matrix");
   const totals=(await pool.query(
     "SELECT (SELECT count(*)::int FROM anotaai_orders WHERE order_id LIKE $1) AS orders, "+
     "(SELECT count(*)::int FROM anotaai_delivery_confirmations c JOIN anotaai_orders a ON a.order_id=c.anotaai_order_id WHERE a.order_id LIKE $1) AS confirmed, "+
     "(SELECT count(*)::int FROM dispatches WHERE courier_id=ANY($2::int[]) AND status='RELEASED') AS dispatches, "+
-    "(SELECT count(*)::int FROM pre_departures WHERE courier_id=ANY($2::int[]) AND route_status='READY') AS ready",
+    "(SELECT count(*)::int FROM dispatch_routes WHERE route_status='DISABLED') AS ready",
     [run+"_order_%",users.map(x=>x.id)])).rows[0];
-  const report={result:failures.length?"FAIL":"PASS",environment:"ephemeral PostgreSQL + local HTTP + fake ORS",
+  const report={result:failures.length?"FAIL":"PASS",environment:"ephemeral PostgreSQL + local HTTP; NO route calls",
     synthetic_only:true,production_database_access:false,real_provider_requests:0,
     orders_requested:ORDERS,couriers:COURIERS,dispatches_expected:300,
-    counts:{...totals,completed_routes:routeTimes.length,full_roundtrips:fullTimes.length,quota_reservations:slotCount},
-    route_http_latency:metrics(routeTimes),full_predeparture_to_confirmation_latency:metrics(fullTimes),
+    counts:{...totals,bag_checks:bagCheckTimes.length,departure_posts:departureTimes.length,full_roundtrips:fullTimes.length,quota_reservations:slotCount},
+    bag_check_http_latency:metrics(bagCheckTimes),departure_http_latency:metrics(departureTimes),
+    full_predeparture_to_confirmation_latency:metrics(fullTimes),
     wave_elapsed:metrics(waveTimes),status_codes:statuses,incident_validation:incidentValidation,
     failures:failures.slice(0,12),
-    limitations:["mock ORS 150-650ms, no external latency or real API quota",
+    limitations:["NO route provider calls; checkout is free of matrix usage",
       "PostgreSQL local on GitHub runner; NOT Supabase hosted latency",
-      "Conferencias instantaneas em teste; nao mede tempo de sacola ou viagem"]};
-  console.log("FRIDAY_HTTP_600_REPORT_START");console.log(JSON.stringify(report,null,2));console.log("FRIDAY_HTTP_600_REPORT_END");
+      "Conferências sintéticas não medem tempo físico de sacola nem rede celular"]};
+  console.log("FRIDAY_HTTP_600_NO_ROUTE_REPORT_START");console.log(JSON.stringify(report,null,2));console.log("FRIDAY_HTTP_600_NO_ROUTE_REPORT_END");
   assert.equal(failures.length,0,"falhas em etapas do fluxo");
   assert.equal(Number(totals.orders),ORDERS);
   assert.equal(Number(totals.confirmed),ORDERS);
   assert.equal(Number(totals.dispatches),300);
   assert.equal(Number(totals.ready),300);
-  assert.equal(routeTimes.length,300);
+  assert.equal(bagCheckTimes.length,600);
+  assert.equal(departureTimes.length,300);
+  assert.ok(metrics(bagCheckTimes).p95_ms < 2500,'local check p95 above 2.5s under simulated load');
+  assert.ok(metrics(departureTimes).p95_ms < 2500,'local depart p95 above 2.5s under simulated load');
   assert.equal(Object.keys(incidentValidation).length,8,"oito verificacoes de ocorrencia Anota AI");
   // iFood falso adicional, fora das 600 entregas Anota AI. Nao chama API real.
   {
